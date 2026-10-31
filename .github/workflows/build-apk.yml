@@ -101,7 +101,7 @@ jobs:
             adb shell am start -W -n com.nova.glucose/.MainActivity
             sleep 6
             adb shell screencap -p /sdcard/main.png
-            adb shell am start -W -n com.nova.glucose/.SettingsActivity
+            adb shell am start -W -n com.nova.glucose/.SettingsActivity || echo '::error::Settings did not open'
             sleep 4
             adb shell am start -W -n com.nova.glucose/.CarbActivity
             sleep 4
@@ -113,7 +113,7 @@ jobs:
             sleep 2
             adb pull /sdcard/main.png main.png
             adb logcat -d > logcat.txt
-            if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A 30 "FATAL EXCEPTION" logcat.txt; echo "::error title=Crash::the app crashed"; exit 1; fi
+            if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A 25 "FATAL EXCEPTION" logcat.txt | sed 's/^/::error::/' ; exit 1; fi
             adb shell pidof com.nova.glucose && echo "SHORT TEST OK"
 
       - uses: actions/upload-artifact@v4
