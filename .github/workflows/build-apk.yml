@@ -34,6 +34,9 @@ jobs:
         run: |
           if [ -z "$NOVA_GLUCOSE_KEY" ]; then
             echo "::error title=Signing key missing::Add the NOVA_GLUCOSE_KEY secret in Settings > Secrets and variables > Actions"
+            # still compile, so code errors show up while the key is being added
+            gradle :app:compileReleaseKotlin --no-daemon 2>&1 | tee build.log || true
+            grep -E "^e: |error:" build.log | head -30 | while read -r l; do echo "::error::$l"; done
             exit 1
           fi
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in keystore/nova-glucose.jks.enc \
