@@ -50,7 +50,7 @@ class CarbActivity : BaseActivity() {
     companion object {
         private const val REQ_PHOTO = 1; private const val REQ_GALLERY = 2
         private const val REQ_VIDEO = 3; private const val REQ_VIDEO_PICK = 4
-        private const val MAX_IMAGES = 4
+        private const val MAX_IMAGES = 8
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -147,7 +147,7 @@ class CarbActivity : BaseActivity() {
 
     private fun recordVideo() {
         val i = Intent(MediaStore.ACTION_VIDEO_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, newCapture("mp4"))
-            .putExtra(MediaStore.EXTRA_DURATION_LIMIT, 10)
+            .putExtra(MediaStore.EXTRA_DURATION_LIMIT, 15)
             .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         try { startActivityForResult(i, REQ_VIDEO) } catch (_: Exception) { Ui.toast(this, "No camera app found") }
     }
@@ -209,7 +209,7 @@ class CarbActivity : BaseActivity() {
             mr.setDataSource(this, uri)
             val durMs = mr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             val free = MAX_IMAGES - images.size
-            val n = free.coerceAtMost(4)
+            val n = free.coerceAtMost(6)
             for (k in 0 until n) {
                 val t = if (durMs > 0) durMs * (k + 1) / (n + 1) else 0L
                 val f = mr.getFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: continue
@@ -220,7 +220,7 @@ class CarbActivity : BaseActivity() {
 
     /** Scale to at most 1280 px and compress, so uploads are quick and cheap. */
     private fun jpeg(src: Bitmap, rotate: Float): ByteArray {
-        val scale = minOf(1f, 1280f / maxOf(src.width, src.height))
+        val scale = minOf(1f, 1152f / maxOf(src.width, src.height))
         val m = Matrix().apply { postScale(scale, scale); if (rotate != 0f) postRotate(rotate) }
         val b = Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
         return ByteArrayOutputStream().use { b.compress(Bitmap.CompressFormat.JPEG, 82, it); it.toByteArray() }

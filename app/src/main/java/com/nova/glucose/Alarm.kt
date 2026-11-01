@@ -224,6 +224,7 @@ class AlarmActivity : Activity() {
             AlarmPlayer.stopSound(this)
             startActivity(Intent(this, MainActivity::class.java)); finish()
         }, Ui.lp(top = Ui.dp(this, 10)))
+        root.addView(Ui.signature(this).apply { setTextColor(0xCCFFFFFF.toInt()) }, Ui.lp(top = Ui.dp(this, 20)))
         setContentView(root)
     }
 }

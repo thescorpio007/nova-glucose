@@ -157,7 +157,12 @@ object Ui {
            weight: Float = 0f, top: Int = 0, end: Int = 0): LinearLayout.LayoutParams =
         LinearLayout.LayoutParams(w, h, weight).apply { topMargin = top; marginEnd = end }
 
-    fun signature(c: Context): TextView = text(c, SIGNATURE, 12f, MUTED).apply {
+    /** "1.0 · build 11" */
+    fun version(c: Context): String =
+        try { c.packageManager.getPackageInfo(c.packageName, 0).versionName ?: "" } catch (_: Exception) { "" }
+
+    /** Signature with the build number below it, on every page. */
+    fun signature(c: Context): TextView = text(c, SIGNATURE + "\n" + version(c), 12f, MUTED).apply {
         gravity = Gravity.CENTER
         setPadding(0, dp(c, 12), 0, dp(c, 6))
     }

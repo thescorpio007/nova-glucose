@@ -152,7 +152,9 @@ object DailyPdf {
             text(doc, (0..23).mapNotNull { h -> byHour[h]?.let { l -> "%02d:00 %d".format(h, l.sumOf { it.mg } / l.size) } }.joinToString("   "), paint(10f))
         }
         doc.y += 10
-        text(doc, Foods.CARE_NOTE + " Designed by A.HAMROUNI", paint(9f, muted))
+        text(doc, Foods.CARE_NOTE, paint(9f, muted))
+        text(doc, "Designed by A.HAMROUNI", paint(9f, muted))
+        text(doc, Ui.version(c), paint(9f, muted))
 
         doc.page?.let { doc.pdf.finishPage(it) }
         val out = ByteArrayOutputStream()
