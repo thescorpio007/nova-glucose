@@ -19,6 +19,10 @@ class GraphView(c: Context) : View(c) {
     var low = 70; var high = 180; var lowLine = 70; var highLine = 180; var urgentLine = 55; var veryHighLine = 250
     /** Crosshair: null = live (latest reading); while the finger moves, the time under it. Returns to live on release. */
     private var cursorT: Long? = null
+    /** The small card hides 10 s after the chart appears (or after a drag); the guide lines and axis labels stay. */
+    private var cardUntil = System.currentTimeMillis() + 10_000L
+    fun showCard() { cardUntil = System.currentTimeMillis() + 10_000L; invalidate(); postInvalidateDelayed(10_100L) }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); showCard() }
     private var dragging = false
     private var downX = 0f; private var downY = 0f
     private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop
@@ -61,7 +65,7 @@ class GraphView(c: Context) : View(c) {
                 return true
             }
             android.view.MotionEvent.ACTION_UP -> {
-                if (dragging) { dragging = false; cursorT = null; invalidate(); return true }     // back to live immediately
+                if (dragging) { dragging = false; cursorT = null; showCard(); return true }     // back to live immediately
                 if (kotlin.math.abs(e.x - downX) < slop && kotlin.math.abs(e.y - downY) < slop) {
                     val m = markAt(e.x, e.y)
                     val inc = if (m == null) incidentAt(e.x, e.y) else null
@@ -69,7 +73,7 @@ class GraphView(c: Context) : View(c) {
                 }
                 return true
             }
-            android.view.MotionEvent.ACTION_CANCEL -> { dragging = false; cursorT = null; invalidate(); return true }
+            android.view.MotionEvent.ACTION_CANCEL -> { dragging = false; cursorT = null; showCard(); return true }
         }
         return true
     }
@@ -273,7 +277,8 @@ class GraphView(c: Context) : View(c) {
         val xl = (x - xw / 2).coerceIn(left - 4 * d, width - xw)
         cv.drawRoundRect(android.graphics.RectF(xl, bottom + 2 * d, xl + xw, bottom + 20 * d), 5 * d, 5 * d, fill)
         cv.drawText(xText, xl + 5 * d, bottom + 15 * d, chip)
-        // card
+        // card (hidden 10 s after the chart appears, shown while dragging)
+        if (!dragging && System.currentTimeMillis() > cardUntil) return
         val w = maxOf(card1.measureText(l1), card2.measureText(l2)) + 18 * d
         val h = 40 * d
         val bx = if (x + 10 * d + w < right) x + 8 * d else x - 8 * d - w

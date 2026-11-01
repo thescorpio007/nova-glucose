@@ -86,6 +86,7 @@ class MainActivity : BaseActivity() {
         refresh()
         ui.post(clock)
         FamilySync.listener = { ui.post { render(st.lastError.ifBlank { null }) } }
+        graph.showCard()
         FamilySync.kick(this)
     }
 

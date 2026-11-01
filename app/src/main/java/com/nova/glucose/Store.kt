@@ -156,6 +156,10 @@ class Store(c: Context) {
     var alarmSoundName: String get() = s("alarm_sound_name", "Default alarm"); set(v) = put("alarm_sound_name", v)
     /** "off", "normal", "strong". */
     var alarmVibrate: String get() = s("alarm_vib", "strong"); set(v) = put("alarm_vib", v)
+    /** Sound per alert type (urgent_low, low, high, very_high, stale); falls back to the single alarm sound. */
+    fun soundFor(kind: String): String = s("snd_$kind").ifBlank { alarmSound }
+    fun soundNameFor(kind: String): String = s("snd_${kind}_name").ifBlank { if (s("snd_$kind").isBlank()) alarmSoundName else "Sound" }
+    fun setSound(kind: String, uri: String, name: String) { sp.edit().putString("snd_$kind", uri).putString("snd_${kind}_name", name).apply() }
     var ringSec: Int get() = i("ring_sec", 60); set(v) = puti("ring_sec", v)
     var urgentRepeat: Int get() = i("urg_repeat", 5); set(v) = puti("urg_repeat", v)
     var alarmVolume: Int get() = i("alarm_vol", 80); set(v) = puti("alarm_vol", v)

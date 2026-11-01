@@ -88,7 +88,7 @@ object AlarmPlayer {
             }, k * 1000L)
         } catch (_: Exception) { savedVolume = -1 }
 
-        val uri = st.alarmSound.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+        val uri = st.soundFor(kind).takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
         player = try {

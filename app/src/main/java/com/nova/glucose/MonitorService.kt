@@ -22,8 +22,8 @@ class MonitorService : Service() {
 
     companion object {
         const val CH_STATUS = "status"
-        const val CH_ALERT = "alerts2"
-        const val CH_ALERT_LOW = "alerts_low2"
+        const val CH_ALERT = "alerts3"           // silent channels: the app plays the chosen sound per alert type
+        const val CH_ALERT_LOW = "alerts_low3"
         const val CH_TIP = "ai_tips"
         private const val ID_TIP = 9
         private const val ID_STATUS = 1
@@ -50,15 +50,14 @@ class MonitorService : Service() {
             nm.createNotificationChannel(NotificationChannel(CH_STATUS, "Live glucose", NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
             })
+            listOf("alerts2", "alerts_low2").forEach { try { nm.deleteNotificationChannel(it) } catch (_: Exception) { } }
             nm.createNotificationChannel(NotificationChannel(CH_ALERT, "High / old-reading alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                enableVibration(true)
+                enableVibration(true); setSound(null, null)
             })
             nm.createNotificationChannel(NotificationChannel(CH_ALERT_LOW, "Low glucose alarms", NotificationManager.IMPORTANCE_HIGH).apply {
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 600, 300, 600, 300, 600)
-                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                setSound(null, null)
                 setBypassDnd(true)
             })
         }
@@ -240,6 +239,7 @@ class MonitorService : Service() {
             .setLocalOnly(!(if (kind == "stale") st.watchStale else st.watchAlerts))
             .build()
         nm.notify(ID_ALERT, n)
+        Sounds.playOnce(this, kind)
         Vault.logAlert(this, title, body)
     }
 }

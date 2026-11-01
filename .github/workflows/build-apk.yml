@@ -147,12 +147,15 @@ jobs:
           adb shell am start -W -n $P/.MainActivity --ez demo true; sleep 3; adb shell input keyevent 4
           adb shell am start -W -n $P/.MainActivity; sleep 2; half; shot 13-chart-red-marks
           (adb shell input swipe $((W*88/100)) $((H*49/100)) $((W*30/100)) $((H*49/100)) 9000 &) ; shot 20-chart-drag; sleep 6; shot 20b-chart-back-to-live
+          sleep 6; shot 24-chart-card-hidden
           scroll; shot 15-home-split-buttons
           adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demoinc true; sleep 3; shot 16-incident; scroll; shot 16b-incident-prescription
           adb shell input keyevent 4; adb shell am start -W -n $P/.LogbookActivity; sleep 2; shot 17-logbook-incidents
           adb shell am start -W -n $P/.IncidentActivity; sleep 2; tapText "Fever"; shot 18-add-incident
           adb shell input keyevent 4
           adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Notifications and watch"; sleep 2; shot 19-watch; half; shot 19b-watch-2
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Urgent alarm"; sleep 2; findTap "Alert sounds"; half; shot 25-alert-sounds; half; shot 25b-alert-sounds-2
           adb shell input keyevent 4
           adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demotap true; sleep 4; shot 14-mark-history; half; shot 14b-mark-history-list
           tapText "Edit"; sleep 2; shot 21-edit-entry; adb shell input keyevent 4

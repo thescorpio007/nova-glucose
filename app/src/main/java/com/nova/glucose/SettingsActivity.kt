@@ -56,6 +56,8 @@ class SettingsActivity : BaseActivity() {
     private lateinit var pinSw: Switch
     private lateinit var allViews: View
     private lateinit var famBox: LinearLayout
+    private lateinit var soundRows: LinearLayout
+    private var soundKind = "urgent_low"
     private lateinit var famMsg: TextView
     private var uiLocked = false
     private val lockTick = android.os.Handler(android.os.Looper.getMainLooper())
@@ -84,7 +86,7 @@ class SettingsActivity : BaseActivity() {
         build()
     }
 
-    override fun onPause() { save(false); FamilySync.kick(this); lockTick.removeCallbacksAndMessages(null); super.onPause() }
+    override fun onPause() { Sounds.stop(); save(false); FamilySync.kick(this); lockTick.removeCallbacksAndMessages(null); super.onPause() }
 
     override fun finish() { save(false); Parent.lock(); super.finish() }
 
@@ -188,12 +190,12 @@ class SettingsActivity : BaseActivity() {
         cbH = check("High", st.urgHigh); cbVH = check("Very high", st.urgVeryHigh)
         cbNS = check("No signal — no new reading for the minutes set in Alerts", st.urgNoSignal)
         listOf(cbUL, cbL, cbH, cbVH, cbNS).forEach { uc.addView(it) }
-        soundTxt = Ui.text(this, "Sound: ${st.alarmSoundName}", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, 0) }
+        soundTxt = Ui.text(this, "Alert sounds (this phone)", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) }
         uc.addView(soundTxt)
-        val sr = Ui.row(this)
-        sr.addView(Ui.button(this, "Phone sounds…") { pickRingtone() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
-        sr.addView(Ui.button(this, "Song file…") { pickAudio() }, Ui.lp(0, weight = 1f))
-        uc.addView(sr, Ui.lp(top = Ui.dp(this, 6)))
+        soundRows = Ui.col(this); uc.addView(soundRows); renderSounds()
+        uc.addView(Ui.text(this, "Urgent alarms ring with these sounds through silent and Do Not Disturb. Normal alerts play their sound once " +
+            "(lows on the alarm volume; highs and no-signal at notification volume, not when the phone is silent). " +
+            "\"File…\" always opens Android's file chooser, so you can pick any folder.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
         uc.addView(Ui.text(this, "Vibration", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
         vibRow = Ui.row(this); uc.addView(vibRow); renderVib()
         uc.addView(numRow("ring_sec", "Ring for (seconds)", st.ringSec))
@@ -674,19 +676,23 @@ class SettingsActivity : BaseActivity() {
         if (req == REQ_RINGTONE) {
             @Suppress("DEPRECATION")
             val u = data?.getParcelableExtra<Uri>(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-            st.alarmSound = u?.toString() ?: ""
-            st.alarmSoundName = u?.let { android.media.RingtoneManager.getRingtone(this, it)?.getTitle(this) } ?: "Default alarm"
-            soundTxt.text = "Sound: ${st.alarmSoundName}"; return
+            st.setSound(soundKind, u?.toString() ?: "", u?.let { android.media.RingtoneManager.getRingtone(this, it)?.getTitle(this) } ?: "Default alarm")
+            renderSounds(); renderLock(); return
         }
         if (req == REQ_PEN_CAM) { penFile?.let { identifyPen(it.readBytes()) }; return }
         val uri = data?.data ?: return
         try {
             when (req) {
                 REQ_AUDIO -> {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    st.alarmSound = uri.toString()
-                    st.alarmSoundName = androidx.documentfile.provider.DocumentFile.fromSingleUri(this, uri)?.name ?: "Song file"
-                    soundTxt.text = "Sound: ${st.alarmSoundName}"
+                    try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+                    // Keep a private copy so the sound still works if the file is moved or the permission is lost.
+                    val name = (androidx.documentfile.provider.DocumentFile.fromSingleUri(this, uri)?.name ?: "Sound file").replace(Regex("[^A-Za-z0-9 ._()-]"), "_")
+                    val dir = java.io.File(filesDir, "sounds").apply { mkdirs() }
+                    val f = java.io.File(dir, "${soundKind}_$name")
+                    dir.listFiles()?.filter { it.name.startsWith("${soundKind}_") }?.forEach { it.delete() }
+                    contentResolver.openInputStream(uri)?.use { inp -> f.outputStream().use { inp.copyTo(it) } }
+                    st.setSound(soundKind, Uri.fromFile(f).toString(), name.substringBeforeLast('.'))
+                    renderSounds(); renderLock()
                 }
                 REQ_PEN_GAL -> contentResolver.openInputStream(uri)?.use { identifyPen(it.readBytes()) }
                 REQ_EXPORT -> {
@@ -983,18 +989,44 @@ class SettingsActivity : BaseActivity() {
         }
     }
 
+    private fun renderSounds() {
+        soundRows.removeAllViews()
+        Sounds.KINDS.forEach { k ->
+            val box = Ui.col(this).apply {
+                background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat())
+                setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
+            }
+            box.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true))
+            box.addView(Ui.text(this, st.soundNameFor(k), 12f, Ui.MUTED))
+            val r = Ui.row(this)
+            r.addView(Ui.smallButton(this, "Phone sounds…") { soundKind = k; pickRingtone() }, Ui.lp(0, Ui.dp(this, 38), weight = 1.3f, end = Ui.dp(this, 6)))
+            r.addView(Ui.smallButton(this, "File…") { soundKind = k; pickAudio() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f, end = Ui.dp(this, 6)))
+            r.addView(Ui.smallButton(this, "▶ Test") { if (Sounds.test(this, k)) Ui.toast(this, "Playing — tap Test again to stop") }.apply { tag = "free" },
+                Ui.lp(0, Ui.dp(this, 38), weight = 1f))
+            box.addView(r, Ui.lp(top = Ui.dp(this, 8)))
+            soundRows.addView(box, Ui.lp(top = Ui.dp(this, 8)))
+        }
+    }
+
     private fun pickRingtone() {
         val i = Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER)
             .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_ALARM or android.media.RingtoneManager.TYPE_RINGTONE)
-            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Urgent alarm sound")
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Sound: " + Sounds.label(st, soundKind))
             .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
             .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-        st.alarmSound.takeIf { it.isNotBlank() }?.let { i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(it)) }
+        st.soundFor(soundKind).takeIf { it.isNotBlank() && !it.startsWith("file:") }?.let { i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(it)) }
         try { startActivityForResult(i, REQ_RINGTONE) } catch (_: Exception) { Ui.toast(this, "No sound picker on this phone") }
     }
 
     private fun pickAudio() {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*"), REQ_AUDIO)
+        // A chooser every time: Android can't lock it to one app ("Always"), and every folder is reachable.
+        val get = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "application/ogg"))
+        val open = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
+        try {
+            startActivityForResult(Intent.createChooser(get, "Choose the sound for " + Sounds.label(st, soundKind))
+                .putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(open)), REQ_AUDIO)
+        } catch (_: Exception) { startActivityForResult(open, REQ_AUDIO) }
     }
 
     private fun renderPerms() {
