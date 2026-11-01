@@ -71,6 +71,8 @@ class MainActivity : BaseActivity() {
         }
         if (intent?.getBooleanExtra("demo", false) == true && SelfTest.canRun(this)) Demo.fill(this)
         build()
+        if (intent?.getBooleanExtra("demoinc", false) == true)
+            Db.get(this).incidents().firstOrNull()?.let { IncidentActivity.open(this, it.id) }
         if (intent?.getBooleanExtra("demotap", false) == true)
             Db.get(this).meals(1).firstOrNull()?.let { m -> window.decorView.postDelayed({ MarkHistory.show(this, m.ts) }, 1500) }
         askPermissions()
@@ -168,7 +170,10 @@ class MainActivity : BaseActivity() {
         navRow.addView(navLabel, Ui.lp(0, weight = 1f))
         navRow.addView(Ui.smallButton(this, "›") { if (offset < 0) { offset++; renderChart() } }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 32)))
         gc.addView(navRow)
-        graph = GraphView(this).apply { onMark = { t -> MarkHistory.show(this@MainActivity, t) } }
+        graph = GraphView(this).apply {
+            onMark = { t -> MarkHistory.show(this@MainActivity, t) }
+            onIncident = { id -> IncidentActivity.open(this@MainActivity, id) }
+        }
         gc.addView(graph, Ui.lp(top = Ui.dp(this, 6)))
         chartLegend = Ui.text(this, "", 11f, Ui.MUTED)
         gc.addView(chartLegend)
@@ -194,8 +199,11 @@ class MainActivity : BaseActivity() {
         root.addView(Ui.button(this, "💉  Rapid insulin before meal", true) {
             startActivity(Intent(this, InsulinActivity::class.java))
         }, Ui.lp(top = Ui.dp(this, 12)))
-        root.addView(Ui.button(this, "🕘  Add earlier injection or meal") { PastEntry.show(this) { render(null) } },
-            Ui.lp(top = Ui.dp(this, 8)))
+        val er = Ui.row(this)
+        er.addView(Ui.button(this, "🕘 Earlier insulin\nor meal") { PastEntry.show(this) { render(null) } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        er.addView(Ui.button(this, "🤒 Add incident\nsick, fever…") { IncidentActivity.open(this) }.apply { setTextColor(Incidents.COLOR) },
+            Ui.lp(0, weight = 1f))
+        root.addView(er, Ui.lp(top = Ui.dp(this, 8)))
         root.addView(Ui.button(this, "📷  Carbs from photo / video", true) {
             startActivity(Intent(this, CarbActivity::class.java))
         }, Ui.lp(top = Ui.dp(this, 8)))
@@ -294,6 +302,7 @@ class MainActivity : BaseActivity() {
         graph.lowLine = st.low; graph.highLine = st.high
         graph.meals = db.meals(500).map { it.ts }
         graph.doses = db.doses(a, b).filter { it.kind == "rapid" }.map { it.ts }
+        graph.incidents = db.incidents(a, b)
         graph.set(mode, a, b, pts)
         chartLegend.text = when (mode) {
             "12" -> MarkHistory.legend("Every hour labelled · tap a mark · ")

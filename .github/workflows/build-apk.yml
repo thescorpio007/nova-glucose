@@ -146,6 +146,11 @@ jobs:
           adb shell pm clear $P; adb shell pm grant $P android.permission.POST_NOTIFICATIONS || true
           adb shell am start -W -n $P/.MainActivity --ez demo true; sleep 3; adb shell input keyevent 4
           adb shell am start -W -n $P/.MainActivity; sleep 2; half; shot 13-chart-red-marks
+          scroll; shot 15-home-split-buttons
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demoinc true; sleep 3; shot 16-incident; scroll; shot 16b-incident-prescription
+          adb shell input keyevent 4; adb shell am start -W -n $P/.LogbookActivity; sleep 2; shot 17-logbook-incidents
+          adb shell am start -W -n $P/.IncidentActivity; sleep 2; tapText "Fever"; shot 18-add-incident
+          adb shell input keyevent 4
           adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demotap true; sleep 4; shot 14-mark-history; half; shot 14b-mark-history-list
           adb shell input keyevent 4
           sleep 2

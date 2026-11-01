@@ -34,12 +34,15 @@ object MarkHistory {
     private sealed class Entry(val ts: Long) {
         class M(val m: Meal) : Entry(m.ts)
         class I(val d: Dose) : Entry(d.ts)
+        class X(val i: Incident) : Entry(i.ts)
     }
 
     fun show(a: Activity, t: Long) {
         val db = Db.get(a)
         val since = System.currentTimeMillis() - 90L * 24 * 3600_000
-        val all = (db.meals(400).map { Entry.M(it) } + db.doses(since).map { Entry.I(it) }).sortedByDescending { it.ts }.take(250)
+        val all = (db.meals(400).map { Entry.M(it) } + db.doses(since).map { Entry.I(it) } + db.incidents(since).map { Entry.X(it) })
+            .sortedByDescending { it.ts }.take(250)
+        val now = System.currentTimeMillis()
 
         val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(Ui.dp(a, 18), Ui.dp(a, 8), Ui.dp(a, 18), Ui.dp(a, 4)) }
         val title = Ui.text(a, "", 17f, Ui.TEXT, true)
@@ -47,22 +50,25 @@ object MarkHistory {
         val list = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         root.addView(title)
         root.addView(details, Ui.lp(top = Ui.dp(a, 8)))
-        root.addView(Ui.text(a, "History of meals and insulin (newest first)", 12f, Ui.MUTED), Ui.lp(top = Ui.dp(a, 14)))
+        root.addView(Ui.text(a, "History of meals, insulin and incidents (newest first)", 12f, Ui.MUTED), Ui.lp(top = Ui.dp(a, 14)))
         root.addView(list, Ui.lp(top = Ui.dp(a, 6)))
         root.addView(Ui.signature(a))
         val sv = ScrollView(a).apply { addView(root); setBackgroundColor(Ui.CARD) }
 
         lateinit var select: (Long) -> Unit
         select = { at ->
-            val group = all.filter { kotlin.math.abs(it.ts - at) <= NEAR && (it is Entry.M || (it as Entry.I).d.kind == "rapid") }
-                .sortedBy { it.ts }.ifEmpty { all.filter { it.ts == at } }
+            val group = all.filter { e -> when (e) {
+                    is Entry.M -> kotlin.math.abs(e.ts - at) <= NEAR
+                    is Entry.I -> e.d.kind == "rapid" && kotlin.math.abs(e.ts - at) <= NEAR
+                    is Entry.X -> at >= e.i.ts - NEAR && at <= (if (e.i.ongoing) now else e.i.end) + NEAR
+                } }.sortedBy { it.ts }.ifEmpty { all.filter { it.ts == at } }
             val hasM = group.any { it is Entry.M }; val hasI = group.any { it is Entry.I }
-            title.text = (if (hasM && hasI) "Meal and insulin" else if (hasM) "Meal" else "Insulin") + " · " + day(at)
+            title.text = (if (hasM && hasI) "Meal and insulin" else if (hasM) "Meal" else if (hasI) "Insulin" else "Incident") + " · " + day(at)
             details.removeAllViews()
             if (group.isEmpty()) details.addView(Ui.text(a, "Nothing saved at this time.", 13f, Ui.MUTED))
             group.forEach { details.addView(detail(a, it)) }
             list.removeAllViews()
-            all.forEach { e -> list.addView(row(a, e, e in group) { select(e.ts) }) }
+            all.forEach { e -> list.addView(row(a, e, e in group) { if (e is Entry.X) IncidentActivity.open(a, e.i.id) else select(e.ts) }) }
         }
         select(t)
 
@@ -86,7 +92,7 @@ object MarkHistory {
 
     private fun letter(sb: SpannableStringBuilder, s: String) {
         val a = sb.length; sb.append(s)
-        sb.setSpan(ForegroundColorSpan(RED), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        sb.setSpan(ForegroundColorSpan(if (s == "!") Incidents.COLOR else RED), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         sb.setSpan(StyleSpan(Typeface.BOLD), a, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
@@ -124,6 +130,16 @@ object MarkHistory {
                     db.who("insulin", d.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") }
                 if (d.note.isNotBlank()) more += "Note: ${d.note}"
             }
+            is Entry.X -> {
+                val i = e.i
+                letter(head, "!"); head.append("  ${i.kind}")
+                more += Incidents.period(i)
+                if (i.details.isNotBlank()) more += i.details
+                if (i.meds.isNotBlank()) more += "Prescription:\n${i.meds}"
+                if (i.photo.isNotBlank()) more += "📄 Prescription photo saved — tap to open"
+                db.who("incidents", i.id).takeIf { it.isNotBlank() }?.let { more += "by $it" }
+                box.setOnClickListener { IncidentActivity.open(a, i.id) }
+            }
         }
         box.addView(TextView(a).apply { text = head; textSize = 15f; setTextColor(Ui.TEXT) })
         more.forEach { box.addView(Ui.text(a, it, 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 3), 0, 0) }) }
@@ -141,6 +157,7 @@ object MarkHistory {
                 sb.append("  ${day(e.ts)} · " + if (e.d.kind == "rapid") st.rapidName.ifBlank { "Rapid insulin" } else st.longName.ifBlank { "Long-acting insulin" })
                 right = "${units(e.d.units)} u"
             }
+            is Entry.X -> { letter(sb, "!"); sb.append("  ${day(e.ts)} · ${e.i.kind}"); right = if (e.i.ongoing) "ongoing" else "›" }
         }
         val r = Ui.row(a).apply {
             setPadding(Ui.dp(a, 10), Ui.dp(a, 9), Ui.dp(a, 10), Ui.dp(a, 9))

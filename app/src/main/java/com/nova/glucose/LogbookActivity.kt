@@ -16,6 +16,7 @@ import java.util.Locale
 class LogbookActivity : BaseActivity() {
     private lateinit var list: LinearLayout
     private lateinit var today: LinearLayout
+    private lateinit var incCard: LinearLayout
     private val fmt = SimpleDateFormat("EEE d MMM · HH:mm", Locale.US)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,6 +32,8 @@ class LogbookActivity : BaseActivity() {
         root.addView(Ui.button(this, "📤 Share with doctor", true) { DoctorReport.pick(this) }, Ui.lp(top = Ui.dp(this, 10)))
         today = Ui.card(this)
         root.addView(today, Ui.lp(top = Ui.dp(this, 10)))
+        incCard = Ui.card(this)
+        root.addView(incCard, Ui.lp(top = Ui.dp(this, 10)))
         list = Ui.col(this)
         root.addView(list, Ui.lp(top = Ui.dp(this, 10)))
         root.addView(Ui.signature(this))
@@ -55,8 +58,29 @@ class LogbookActivity : BaseActivity() {
             setPadding(0, Ui.dp(context, 6), 0, 0) })
     }
 
+    private fun renderIncidents() {
+        incCard.removeAllViews()
+        val h = Ui.row(this)
+        h.addView(Ui.text(this, "Incidents (sick days, events)", 13f, Ui.MUTED, true), Ui.lp(0, weight = 1f))
+        h.addView(Ui.smallButton(this, "+ Add") { IncidentActivity.open(this) })
+        incCard.addView(h)
+        val list = Db.get(this).incidents(System.currentTimeMillis() - 180L * 24 * 3600_000)
+        if (list.isEmpty()) { incCard.addView(Ui.text(this, "None in the last 6 months.", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }); return }
+        list.forEach { i ->
+            incCard.addView(Ui.col(this).apply {
+                setPadding(0, Ui.dp(context, 10), 0, 0)
+                addView(Ui.text(context, "! ${i.kind}" + if (i.photo.isNotBlank()) "  📄" else "", 15f, Incidents.COLOR, true))
+                addView(Ui.text(context, Incidents.period(i), 12f, Ui.MUTED))
+                if (i.details.isNotBlank()) addView(Ui.text(context, i.details, 13f, Ui.TEXT))
+                if (i.meds.isNotBlank()) addView(Ui.text(context, i.meds, 12f, Ui.MUTED))
+                setOnClickListener { IncidentActivity.open(this@LogbookActivity, i.id) }
+            })
+        }
+    }
+
     private fun render() {
         renderToday()
+        renderIncidents()
         list.removeAllViews()
         val db = Db.get(this)
         val meals = db.meals()

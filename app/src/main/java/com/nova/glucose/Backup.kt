@@ -65,7 +65,13 @@ object Backup {
             ds.put(JSONObject().put("gid", db.gid("insulin", d.id)).put("upd", db.upd("insulin", d.id)).put("ts", d.ts).put("kind", d.kind).put("units", d.units).put("carbs", d.carbs)
                 .put("wait", d.waitMin).put("mgAt", d.mgAt).put("note", d.note))
         }
-        return JSONObject().put("readings", rs).put("meals", ms).put("doses", ds)
+        val inc = org.json.JSONArray()
+        db.incidents().forEach { i ->
+            inc.put(JSONObject().put("gid", db.gid("incidents", i.id)).put("upd", db.upd("incidents", i.id)).put("ts", i.ts).put("end", i.end)
+                .put("kind", i.kind).put("details", i.details).put("meds", i.meds).put("who", db.who("incidents", i.id))
+                .put("photo", if (i.photo.isNotBlank()) java.io.File(i.photo).name else ""))
+        }
+        return JSONObject().put("readings", rs).put("meals", ms).put("doses", ds).put("incidents", inc)
     }
 
     private fun gzip(s: String): String {
@@ -274,7 +280,21 @@ object Backup {
                 db.addDose(Dose(0, ts, o.optString("kind", "rapid"), o.optDouble("units"), o.optInt("carbs"), o.optInt("wait"),
                     o.optInt("mgAt"), o.optString("note")), g, o.optLong("upd").takeIf { it > 0 }); nd++
             }
-            dataNote = " · ${ra.length()} readings · $nm meals · $nd doses"
+            var ni = 0
+            val ia = d.optJSONArray("incidents")
+            if (ia != null) {
+                for (i in 0 until ia.length()) {
+                    val o = ia.getJSONObject(i)
+                    val g = o.optString("gid")
+                    if (g.isNotBlank() && db.byGid("incidents", g) != null) continue
+                    if (g.isBlank() && db.incidents(o.getLong("ts"), o.getLong("ts")).any { it.ts == o.getLong("ts") && it.kind == o.optString("kind") }) continue
+                    val pn = o.optString("photo")
+                    val path = if (pn.isNotBlank() && java.io.File(Incidents.dir(c), pn).exists()) java.io.File(Incidents.dir(c), pn).absolutePath else ""
+                    db.addIncident(Incident(0, o.getLong("ts"), o.optLong("end"), o.optString("kind"), o.optString("details"), o.optString("meds"), path),
+                        g.ifBlank { null }, o.optLong("upd").takeIf { it > 0 }, who = o.optString("who")); ni++
+                }
+            }
+            dataNote = " · ${ra.length()} readings · $nm meals · $nd doses" + if (ni > 0) " · $ni incidents" else ""
         }
         return "Settings ${settings.length()} ✓ · $note$dataNote"
     }

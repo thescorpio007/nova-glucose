@@ -25,5 +25,14 @@ object Demo {
         db.addDose(Dose(0, m2 - 8 * 60_000L, "rapid", 5.5, 60, 10, 290, "entered later"), who = "Aycha's phone")
         db.addDose(Dose(0, now - 19 * 3600_000L, "long", 18.0, note = ""), who = "Dad's phone")
         db.addMeal(Meal(0, now - 20 * 3600_000L, "Rice, salad and fish", "[]", 55, 50, 60, 150, "", ""), who = "Mum's phone")
+        // A sick day with a (drawn) prescription
+        val bmp = android.graphics.Bitmap.createBitmap(700, 900, android.graphics.Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(bmp); cv.drawColor(0xFFF3EFE4.toInt())
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1F3A68.toInt(); textSize = 34f }
+        listOf("Dr. Sample Clinic", "1 Nov 2026", "", "Rx", "1. Paracetamol 250 mg", "   1 dose x 3 / day - 3 days", "2. Saline nasal spray", "   2 x / day - 5 days", "", "   signature")
+            .forEachIndexed { k, t -> cv.drawText(t, 50f, 90f + k * 70f, p) }
+        val photo = Incidents.savePhoto(c, Incidents.compress(bmp), "rx_demo")
+        db.addIncident(Incident(0, now - 9 * 3600_000L, 0, "Flu / cold", "Fever 38.4 °C, no appetite, tired",
+            "• Paracetamol 250 mg · 1 dose · 3 times a day · 3 days\n• Saline nasal spray · 2 times a day · 5 days\nDoctor: Sample Clinic · Date: 1 Nov 2026", photo), who = "Mum's phone")
     }
 }

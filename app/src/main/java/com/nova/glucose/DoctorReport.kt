@@ -241,6 +241,20 @@ object DoctorReport {
         if (evRows.size == 1) evRows += listOf("–", "No events", "", "")
         table(doc, evRows, listOf(130f, 100f, 130f, 163f), Color.rgb(252, 235, 235))
 
+        h2(doc, "Incidents (illness and other events)")
+        val incRows = mutableListOf(listOf("From", "Until", "Incident", "Details and prescription"))
+        db.incidents(start, now).sortedBy { it.ts }.take(30).forEach { i ->
+            incRows += listOf(tf.format(Date(i.ts)), if (i.ongoing) "ongoing" else tf.format(Date(i.end)), i.kind,
+                i.details.let { if (it.length > 58) it.take(56) + "…" else it })
+        }
+        if (incRows.size == 1) incRows += listOf("–", "", "No incidents", "")
+        table(doc, incRows, listOf(85f, 85f, 95f, 258f), Color.rgb(253, 243, 224))
+        db.incidents(start, now).sortedBy { it.ts }.filter { it.meds.isNotBlank() || it.details.length > 58 }.take(10).forEach { i ->
+            doc.y += 4
+            text(doc, "${i.kind} (${tf.format(Date(i.ts))}): " + listOf(i.details, i.meds.replace("\n", "; ").let { if (it.isNotBlank()) "Prescription: $it" else "" })
+                .filter { it.isNotBlank() }.joinToString(" · "), paint(8f))
+        }
+
         h2(doc, "Day by day")
         val dRows = mutableListOf(listOf("Date", "Average", "In range", "Lowest", "Highest", "Carbs logged", "Rapid insulin"))
         val ddf = SimpleDateFormat("EEE d MMM", Locale.US)

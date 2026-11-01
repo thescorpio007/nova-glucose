@@ -189,7 +189,14 @@ object FamilySync {
 
     /** Sends encrypted items (gid → item JSON). */
     fun push(s: Session, fam: String, key: ByteArray, items: List<Pair<String, JSONObject>>) {
-        items.chunked(200).forEach { part ->
+        val parts = mutableListOf<MutableList<Pair<String, JSONObject>>>(mutableListOf())
+        var size = 0
+        for (x in items) {
+            val n = x.second.toString().length
+            if (parts.last().size >= 200 || (size + n > 4_000_000 && parts.last().isNotEmpty())) { parts += mutableListOf<Pair<String, JSONObject>>(); size = 0 }
+            parts.last() += x; size += n
+        }
+        parts.filter { it.isNotEmpty() }.forEach { part ->
             val w = JSONArray()
             part.forEach { (gid, item) ->
                 w.put(JSONObject().put("update", JSONObject().put("name", doc("families/$fam/items/$gid"))
@@ -285,6 +292,7 @@ object FamilySync {
         if (kind == "eat") { val st = Store(c); return JSONObject().put("t", "eat").put("g", "eat").put("u", st.syncEatU).put("at", st.eatAt) }
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
+        db.byGid("incidents", gid)?.let { return Incidents.item(c, it.first) }
         val del = db.deletedAt(gid)
         return if (del > 0) JSONObject().put("t", "del").put("g", gid).put("u", del) else null
     }
@@ -295,6 +303,7 @@ object FamilySync {
         val out = mutableListOf<JSONObject>()
         db.meals(1_000_000).forEach { m -> mealItem(c, m.id)?.let { out += it } }
         db.doses().forEach { d -> doseItem(c, d.id)?.let { out += it } }
+        db.incidents().forEach { i -> Incidents.item(c, i.id)?.let { out += it } }
         db.deletedGids().forEach { (g, ts) -> out += JSONObject().put("t", "del").put("g", g).put("u", ts) }
         return out
     }
@@ -333,6 +342,7 @@ object FamilySync {
                 if (u <= r.second) return ""
                 db.updateDose(r.first, d, u); return "upd"
             }
+            "inc" -> return Incidents.apply(c, item)
             "del" -> {
                 db.byGid("meals", g)?.let { (id, _) -> db.meal(id)?.photo?.takeIf { p -> p.isNotBlank() }?.let { p -> java.io.File(p).delete() } }
                 return if (db.applyDelete(g, if (u > 0) u else System.currentTimeMillis())) "del" else ""
@@ -543,7 +553,7 @@ object FamilySync {
         if (changed.isNotEmpty()) kick(c)
         val parts = listOfNotNull(
             counts["meal+"]?.let { "$it new meal(s)" }, counts["dose+"]?.let { "$it new dose(s)" },
-            counts["upd"]?.let { "$it updated" }, counts["del"]?.let { "$it deleted" }, counts["eat"]?.let { "eat timer" })
+            counts["inc+"]?.let { "$it new incident(s)" }, counts["upd"]?.let { "$it updated" }, counts["del"]?.let { "$it deleted" }, counts["eat"]?.let { "eat timer" })
         return if (parts.isEmpty()) "Nothing new — this phone already had everything." else parts.joinToString(" · ")
     }
 }

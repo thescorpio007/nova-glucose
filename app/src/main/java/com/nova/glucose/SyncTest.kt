@@ -28,7 +28,8 @@ object SyncTest {
             // Phone A creates the family and sends a meal (with AI correction), a dose and the eat timer
             FamilySync.createFamily(sa, fam, key, "Phone A")
             val now = System.currentTimeMillis()
-            val mg = "t" + now.toString(36) + "m"; val dg = "t" + now.toString(36) + "d"; gids += listOf(mg, dg, "eat")
+            val mg = "t" + now.toString(36) + "m"; val dg = "t" + now.toString(36) + "d"; val ig = "t" + now.toString(36) + "i"
+            gids += listOf(mg, dg, "eat", ig)
             val meal = JSONObject().put("t", "meal").put("g", mg).put("u", now).put("ts", now - 3600_000L).put("title", "Couscous")
                 .put("items", "[{\"name\":\"Couscous\",\"portion\":\"1 cup\",\"carbs\":45}]").put("carbs", 45).put("low", 40).put("high", 50)
                 .put("mgAt", 140).put("note", "").put("ai", "[{\"name\":\"Couscous\",\"portion\":\"1 cup\",\"carbs\":40}]").put("aiC", 40)
@@ -36,8 +37,11 @@ object SyncTest {
                 .put("units", 4.5).put("carbs", 45).put("wait", 15).put("mgAt", 140).put("note", "NovoRapid before lunch")
             val eatAt = now + 15 * 60_000L
             val eat = JSONObject().put("t", "eat").put("g", "eat").put("u", now).put("at", eatAt)
-            FamilySync.push(sa, fam, key, listOf(mg to meal, dg to dose, "eat" to eat))
-            done += "family created, 3 items sent ✓"
+            val rx = android.util.Base64.encodeToString(ByteArray(200_000) { (it % 251).toByte() }, android.util.Base64.NO_WRAP)
+            val inc = JSONObject().put("t", "inc").put("g", ig).put("u", now).put("ts", now - 5 * 3600_000L).put("end", 0).put("kind", "Flu / cold")
+                .put("details", "Fever 38.4").put("meds", "Paracetamol 250 mg x3/day").put("by", "Phone A").put("photo", rx)
+            FamilySync.push(sa, fam, key, listOf(mg to meal, dg to dose, "eat" to eat, ig to inc))
+            done += "family created, 4 items sent (incl. incident + prescription photo) ✓"
 
             // A stranger can't read, can't join with a wrong password, and a wrong code is refused
             val denied = try { FamilySync.pull(x, fam, key, ""); "allowed" } catch (e: FamilySync.SyncError) { if (e.code == 403) "refused" else "error ${e.code}" }
@@ -53,10 +57,10 @@ object SyncTest {
             // Phone B joins and receives everything, encrypted at rest
             FamilySync.joinFamily(sb, fam, key, "Phone B")
             val p = FamilySync.pull(sb, fam, key, "")
-            check(p.items.size == 3) { "phone B received ${p.items.size} of 3 items" }
+            check(p.items.size == 4) { "phone B received ${p.items.size} of 4 items" }
             val raw = FamilySync.rawItems(sb, fam)
-            check(!raw.contains("Couscous") && !raw.contains("NovoRapid")) { "readable text stored in Firebase" }
-            done += "phone B joined, received 3/3 ✓ · stored encrypted ✓"
+            check(!raw.contains("Couscous") && !raw.contains("NovoRapid") && !raw.contains("Paracetamol")) { "readable text stored in Firebase" }
+            done += "phone B joined, received 4/4 ✓ · stored encrypted ✓"
 
             // Merge on this phone: no duplicates on repeat or twins
             p.items.forEach { FamilySync.apply(c, it) }
@@ -65,9 +69,12 @@ object SyncTest {
             check(db.ai(db.meals(1).first().id)?.second == 40) { "AI correction lost" }
             check(db.doses().first().note == "NovoRapid before lunch") { "dose note lost" }
             check(st.eatAt == eatAt) { "eat timer not started" }
+            val gotInc = db.incidents().firstOrNull()
+            check(gotInc != null && gotInc.meds.contains("Paracetamol") && gotInc.ongoing) { "incident not received" }
+            check(java.io.File(gotInc.photo).length() == 200_000L) { "prescription photo not received" }
             FamilySync.apply(c, JSONObject(meal.toString()).put("g", "zz-twin"))
             check(db.meals(10).size == 1) { "same meal under another id was duplicated" }
-            done += "merged here, no duplicates ✓ · AI correction ✓ · eat timer ✓"
+            done += "merged here, no duplicates ✓ · AI correction ✓ · eat timer ✓ · incident + photo ✓"
 
             // An edit and a deletion from B reach A
             FamilySync.push(sb, fam, key, listOf(dg to JSONObject(dose.toString()).put("u", now + 1000).put("units", 5.0),

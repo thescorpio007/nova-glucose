@@ -18,6 +18,13 @@ data class Meal(
     val note: String
 )
 
+/** Incident: kind (e.g. "Flu / cold"), start, end (0 = still ongoing), details, medicines (prescription text), photo path. */
+data class Incident(
+    val id: Long = 0, val ts: Long, val end: Long = 0, val kind: String, val details: String = "", val meds: String = "", val photo: String = ""
+) {
+    val ongoing get() = end == 0L
+}
+
 /** A logged insulin dose (what the family gave). kind = "rapid" or "long". */
 data class Dose(
     val id: Long = 0, val ts: Long, val kind: String, val units: Double,
@@ -25,7 +32,7 @@ data class Dose(
 )
 
 /** Readings history (kept 400 days) and the meal logbook, stored only on this phone. */
-class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 5) {
+class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 6) {
     private val app: Context = c.applicationContext
 
     companion object {
@@ -39,8 +46,54 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         db.execSQL("CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, title TEXT, items TEXT, carbs INTEGER, " +
             "low INTEGER, high INTEGER, mg_at INTEGER, photo TEXT, note TEXT)")
         db.execSQL("CREATE TABLE unexported(ts INTEGER PRIMARY KEY)")
-        v3(db); v4(db); v5(db)
+        v3(db); v4(db); v5(db); v6(db)
     }
+
+    /** Incidents: illness, hypo treated, sport, sensor issue, doctor visit… with an optional prescription. */
+    private fun v6(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS incidents(id INTEGER PRIMARY KEY AUTOINCREMENT, gid TEXT, upd INTEGER, who TEXT, " +
+            "ts INTEGER, ts_end INTEGER, kind TEXT, details TEXT, meds TEXT, photo TEXT)")
+    }
+
+    fun addIncident(i: Incident, gid: String? = null, upd: Long? = null, share: Boolean = true, who: String? = null): Long {
+        val g = gid ?: newGid()
+        val id = writableDatabase.insert("incidents", null, incValues(i).apply {
+            put("gid", g); put("upd", upd ?: System.currentTimeMillis()); put("who", who ?: Store(app).syncName); put("photo", i.photo) })
+        if (share) queue(g, "inc")
+        return id
+    }
+
+    private fun incValues(i: Incident) = ContentValues().apply {
+        put("ts", i.ts); put("ts_end", i.end); put("kind", i.kind); put("details", i.details); put("meds", i.meds)
+    }
+
+    /** Edit here (share) or from the family (photo given only when it changed). */
+    fun updateIncident(id: Long, i: Incident, upd: Long = System.currentTimeMillis(), share: Boolean = true, photo: String? = i.photo) {
+        writableDatabase.update("incidents", incValues(i).apply { put("upd", upd); if (photo != null) put("photo", photo) }, "id = ?", arrayOf(id.toString()))
+        if (share) gidOf("incidents", id)?.let { queue(it, "inc") }
+    }
+
+    fun deleteIncident(id: Long, share: Boolean = true) {
+        val g = gidOf("incidents", id)
+        incident(id)?.photo?.takeIf { it.isNotBlank() }?.let { java.io.File(it).delete() }
+        writableDatabase.delete("incidents", "id = ?", arrayOf(id.toString()))
+        if (g != null) { tombstone(g, System.currentTimeMillis()); if (share) queue(g, "del") }
+    }
+
+    private fun incRows(where: String, args: Array<String>): List<Incident> {
+        val out = mutableListOf<Incident>()
+        readableDatabase.rawQuery("SELECT id, ts, ts_end, kind, details, meds, photo FROM incidents WHERE $where ORDER BY ts DESC", args).use { c ->
+            while (c.moveToNext()) out += Incident(c.getLong(0), c.getLong(1), c.getLong(2), c.getString(3) ?: "", c.getString(4) ?: "",
+                c.getString(5) ?: "", c.getString(6) ?: "")
+        }
+        return out
+    }
+
+    /** Incidents overlapping [from, to] (ongoing ones count up to now). */
+    fun incidents(from: Long = 0, to: Long = Long.MAX_VALUE): List<Incident> =
+        incRows("ts <= ? AND (ts_end = 0 OR ts_end >= ?)", arrayOf(to.toString(), from.toString()))
+
+    fun incident(id: Long): Incident? = incRows("id = ?", arrayOf(id.toString())).firstOrNull()
 
     /** Which phone added the entry (family sync). */
     private fun v5(db: SQLiteDatabase) {
@@ -101,7 +154,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         db.beginTransaction()
         try {
             var q = System.nanoTime()
-            for ((t, k) in listOf("meals" to "meal", "insulin" to "dose"))
+            for ((t, k) in listOf("meals" to "meal", "insulin" to "dose", "incidents" to "inc"))
                 db.rawQuery("SELECT gid FROM $t", null).use { c -> while (c.moveToNext()) db.insertWithOnConflict("sync_out", null,
                     ContentValues().apply { put("gid", c.getString(0)); put("kind", k); put("q", q++) }, SQLiteDatabase.CONFLICT_REPLACE) }
             db.rawQuery("SELECT gid FROM sync_del", null).use { c -> while (c.moveToNext()) db.insertWithOnConflict("sync_out", null,
@@ -211,6 +264,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         if (o < 3) v3(db)
         if (o < 4) v4(db)
         if (o < 5) v5(db)
+        if (o < 6) v6(db)
     }
 
     /** New readings not yet written to the Download folder (also catches late, back-filled ones). */
@@ -248,7 +302,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
 
     /** Self-test only (blank install). */
     fun clearAll() { writableDatabase.apply { delete("readings", null, null); delete("meals", null, null); delete("insulin", null, null); delete("unexported", null, null)
-        delete("sync_out", null, null); delete("sync_del", null, null) } }
+        delete("sync_out", null, null); delete("sync_del", null, null); delete("incidents", null, null) } }
 
     fun resetExport() { writableDatabase.execSQL("INSERT OR IGNORE INTO unexported SELECT ts FROM readings") }
 
@@ -294,7 +348,9 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
     /** Applies a deletion received from the family; returns the photo path of a deleted meal (to remove it). */
     fun applyDelete(gid: String, ts: Long): Boolean {
         var hit = false
-        for (t in listOf("meals", "insulin")) byGid(t, gid)?.let { (id, _) -> writableDatabase.delete(t, "id = ?", arrayOf(id.toString())); hit = true }
+        for (t in listOf("meals", "insulin", "incidents")) byGid(t, gid)?.let { (id, _) ->
+            if (t == "incidents") incident(id)?.photo?.takeIf { it.isNotBlank() }?.let { java.io.File(it).delete() }
+            writableDatabase.delete(t, "id = ?", arrayOf(id.toString())); hit = true }
         tombstone(gid, ts)
         return hit
     }
