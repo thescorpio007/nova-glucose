@@ -55,6 +55,8 @@ class SettingsActivity : BaseActivity() {
     private lateinit var lockBanner: TextView
     private lateinit var pinSw: Switch
     private lateinit var allViews: View
+    private lateinit var famBox: LinearLayout
+    private lateinit var famMsg: TextView
     private var uiLocked = false
     private val lockTick = android.os.Handler(android.os.Looper.getMainLooper())
     private lateinit var urgSw: Switch
@@ -319,6 +321,21 @@ class SettingsActivity : BaseActivity() {
             "and changing the AI model need the PIN. Stays unlocked until you leave Settings (5 min at most). " +
             "Forgot the PIN? Use the backup password.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         root.addView(lc2)
+
+        // ---------------------------------------------------------- Family sync
+        root.addView(Ui.section(this, "Family sync (all phones)"))
+        val fc = Ui.card(this)
+        famBox = Ui.col(this)
+        fc.addView(famBox)
+        famMsg = Ui.text(this, "", 13f, Ui.MUTED)
+        fc.addView(famMsg, Ui.lp(top = Ui.dp(this, 6)))
+        fc.addView(Ui.button(this, "📤 Share family update file (WhatsApp…)") { shareFamilyFile() }, Ui.lp(top = Ui.dp(this, 10)))
+        fc.addView(Ui.text(this, "Shared between the phones: meals, insulin doses, earlier entries, deletions, the eat timer and AI corrections. " +
+            "Not shared: settings, alarms, the LibreLinkUp login and API keys — each phone keeps its own. Everything is encrypted with the " +
+            "family password before it leaves the phone. No internet? Send the update file and open it on the other phone: it adds what's missing.",
+            12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        root.addView(fc)
+        renderFamily()
 
         // ---------------------------------------------------------- Backup & folder
         root.addView(Ui.section(this, "Backup & Download folder"))
@@ -669,6 +686,126 @@ class SettingsActivity : BaseActivity() {
         lockTick.post(watch)
     }
 
+    // ================================================================ family sync
+    private fun famNote(s: String, col: Int = Ui.MUTED) { famMsg.setTextColor(col); famMsg.text = s }
+
+    private fun renderFamily() {
+        famBox.removeAllViews()
+        if (st.syncFam.isBlank()) {
+            famBox.addView(Ui.text(this, "Not set up. One phone creates the family, the others join with the code and the same password.", 14f, Ui.TEXT))
+            val name = Ui.input(this, "This phone's name (e.g. Dad's phone)", multi = false).apply { setText(st.syncName) }
+            val pwE = Ui.input(this, "Family password (at least ${FamilySync.MIN_PW} characters)", multi = false).apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+            famBox.addView(name, Ui.lp(top = Ui.dp(this, 10)))
+            famBox.addView(pwE, Ui.lp(top = Ui.dp(this, 8)))
+            famBox.addView(Ui.button(this, "➕ Create a new family", true) {
+                val n = name.text.toString().trim(); val p = pwE.text.toString()
+                if (n.isBlank()) { famNote("Give this phone a name first.", Ui.BAD); return@button }
+                if (p.length < FamilySync.MIN_PW) { famNote("The family password needs at least ${FamilySync.MIN_PW} characters.", Ui.BAD); return@button }
+                famWork("Creating the family…", showCode = true) { FamilySync.create(it, p, n) }
+            }, Ui.lp(top = Ui.dp(this, 10)))
+            famBox.addView(Ui.text(this, "— or join the family —", 12f, Ui.MUTED).apply {
+                gravity = android.view.Gravity.CENTER; setPadding(0, Ui.dp(context, 12), 0, 0) })
+            val code = Ui.input(this, "Family code (e.g. ABCD-EFGH-JK23)", multi = false).apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS }
+            famBox.addView(code, Ui.lp(top = Ui.dp(this, 8)))
+            famBox.addView(Ui.button(this, "🔗 Join the family") {
+                val n = name.text.toString().trim(); val p = pwE.text.toString(); val k = code.text.toString()
+                if (n.isBlank()) { famNote("Give this phone a name first.", Ui.BAD); return@button }
+                if (FamilySync.norm(k).length != 12) { famNote("Type the 12-character family code.", Ui.BAD); return@button }
+                if (p.isBlank()) { famNote("Type the family password.", Ui.BAD); return@button }
+                famWork("Joining…") { FamilySync.join(it, k, p, n) }
+            }, Ui.lp(top = Ui.dp(this, 8)))
+        } else {
+            val f = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US)
+            famBox.addView(Ui.text(this, "✓ Family sync on · this phone: ${st.syncName}", 14f, Ui.GOOD, true))
+            famBox.addView(Ui.text(this, "Family code:  ${st.syncCode}", 16f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 8), 0, 0); setTextIsSelectable(true) })
+            val cr = Ui.row(this)
+            cr.addView(Ui.button(this, "Copy code") { Ui.copy(this, st.syncCode) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+            cr.addView(Ui.button(this, "Send code") {
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,
+                    "Nova Glucose family code: ${st.syncCode}\nOpen Nova Glucose › Settings › Family sync › Join, and type the family password (I'll tell you)."), "Send the family code"))
+            }, Ui.lp(0, weight = 1f))
+            famBox.addView(cr, Ui.lp(top = Ui.dp(this, 8)))
+            famBox.addView(Ui.text(this, "Send the code by message, but say the password out loud — never send them together.", 12f, Ui.WARN)
+                .apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+            famBox.addView(Ui.text(this, (if (st.syncLast > 0) "Last sync ${f.format(java.util.Date(st.syncLast))}  " else "") + st.syncInfo, 13f, Ui.MUTED)
+                .apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+            val members = Ui.text(this, "Phones: loading…", 13f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
+            famBox.addView(members)
+            val app = applicationContext
+            Thread {
+                val txt = try {
+                    val now = System.currentTimeMillis()
+                    "Phones in the family:\n" + FamilySync.members(app).joinToString("\n") { (n, seen, me) ->
+                        val ago = if (seen <= 0) "" else ((now - seen) / 60_000).let { m -> when {
+                            m < 2 -> " · active now"; m < 60 -> " · seen $m min ago"; m < 48 * 60 -> " · seen ${m / 60} h ago"; else -> " · seen ${m / 1440} days ago" } }
+                        "•  $n${if (me) " (this phone)" else ""}$ago"
+                    }
+                } catch (e: Exception) { "Phones: couldn't load (${e.message})" }
+                runOnUiThread { if (!isFinishing) members.text = txt }
+            }.start()
+            val sr = Ui.row(this)
+            sr.addView(Ui.button(this, "🔄 Sync now", true) { famWork("Syncing…") { FamilySync.run(it) } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+            sr.addView(Ui.button(this, "Leave") {
+                android.app.AlertDialog.Builder(this).setTitle("Leave the family?")
+                    .setMessage("This phone stops syncing. Everything already on it stays here, and the other phones keep their data.")
+                    .setPositiveButton("Leave") { _, _ -> famWork("Leaving…") { FamilySync.leave(it); "Left the family" } }
+                    .setNegativeButton("Cancel", null).show()
+            }, Ui.lp(0, weight = 1f))
+            famBox.addView(sr, Ui.lp(top = Ui.dp(this, 10)))
+        }
+        if (::allViews.isInitialized) renderLock()
+    }
+
+    /** Runs a family-sync action in the background, then refreshes the section. */
+    private fun famWork(busy: String, showCode: Boolean = false, job: (android.content.Context) -> String) {
+        famNote(busy)
+        val app = applicationContext
+        Thread {
+            val r = try { Result.success(job(app)) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                renderFamily(); renderFolds()
+                r.onSuccess { msg ->
+                    if (!showCode) famNote(msg, if (msg.startsWith("⚠")) Ui.WARN else Ui.GOOD)
+                    else {
+                        famNote("✓ Family created", Ui.GOOD)
+                        android.app.AlertDialog.Builder(this).setTitle("👨‍👩‍👧 Family created")
+                            .setMessage("Family code:\n\n$msg\n\nOn each other phone: Settings › Family sync › type a phone name, this code and the same family password › Join.")
+                            .setPositiveButton("Copy code") { _, _ -> Ui.copy(this, msg) }.setNegativeButton("OK", null).show()
+                    }
+                }.onFailure { famNote(it.message ?: "Failed", Ui.BAD) }
+            }
+        }.start()
+    }
+
+    private fun shareFamilyFile() {
+        val pwd = st.syncPw.ifBlank { st.backupPw }
+        if (pwd.isBlank()) { famNote("Set up the family or a backup password first (the file is encrypted with it).", Ui.BAD); return }
+        famNote("Preparing the update file…")
+        val app = applicationContext
+        Thread {
+            val r = try {
+                val bytes = FamilySync.exportFile(app, pwd)
+                val stamp = java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.US).format(java.util.Date())
+                val who = st.syncName.ifBlank { st.fileName }.replace(Regex("[^A-Za-z0-9]"), "")
+                val dir = java.io.File(cacheDir, "capture").apply { mkdirs() }
+                dir.listFiles()?.filter { it.name.endsWith(Vault.EXT) }?.forEach { it.delete() }
+                Result.success(java.io.File(dir, "NovaGlucose-family-$who-$stamp${Vault.EXT}").apply { writeBytes(bytes) })
+            } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                r.onSuccess { f ->
+                    famNote("✓ Update file ready (encrypted with the ${if (st.syncPw.isNotBlank()) "family" else "backup"} password)", Ui.GOOD)
+                    val uri = androidx.core.content.FileProvider.getUriForFile(this, "com.nova.glucose.files", f)
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(Backup.MIME)
+                        .putExtra(Intent.EXTRA_STREAM, uri).putExtra(Intent.EXTRA_SUBJECT, f.name)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Send the family update"))
+                }.onFailure { famNote(it.message ?: "Failed", Ui.BAD) }
+            }
+        }.start()
+    }
+
     private fun driveMsg(s: String, col: Int) { driveMsgV.setTextColor(col); driveMsgV.text = s }
 
     private fun renderFreq() {
@@ -786,6 +923,8 @@ class SettingsActivity : BaseActivity() {
             t.startsWith("CARB") -> "Meals ${st.mealMin}–${st.mealMax} g · snacks ${st.snackMin}–${st.snackMax} g · low ${st.lowTreatG} g"
             t.startsWith("AI") -> st.current().label + " · " + st.model(st.current())
             t.startsWith("PARENTAL") -> if (Parent.enabled(st)) "PIN on" else "Off"
+            t.startsWith("FAMILY") -> if (st.syncFam.isBlank()) "Not set up" else "${st.syncName.ifBlank { "This phone" }} · " +
+                (if (st.syncLast > 0) "synced ${f.format(java.util.Date(st.syncLast))}" else "waiting to sync")
             t.startsWith("BACKUP") -> if (st.lastBackupTs > 0) "Last backup ${f.format(java.util.Date(st.lastBackupTs))}" else "No backup yet"
             t.startsWith("GOOGLE") -> if (!st.driveOn) "Not connected" else (when (st.driveFreq) { "3" -> "Every 3 days"; "w" -> "Every week"; else -> "Every day" } +
                 if (st.driveLast > 0) " · last ${f.format(java.util.Date(st.driveLast))}" else "")

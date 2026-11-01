@@ -55,14 +55,14 @@ object Backup {
         val ms = org.json.JSONArray()
         db.meals(1_000_000).forEach { m ->
             val ai = db.ai(m.id)
-            ms.put(JSONObject().put("ts", m.ts).put("title", m.title).put("items", m.itemsJson).put("carbs", m.carbs)
+            ms.put(JSONObject().put("gid", db.gid("meals", m.id)).put("upd", db.upd("meals", m.id)).put("ts", m.ts).put("title", m.title).put("items", m.itemsJson).put("carbs", m.carbs)
                 .put("low", m.low).put("high", m.high).put("mgAt", m.mgAt).put("note", m.note)
                 .put("photo", if (m.photo.isNotBlank()) java.io.File(m.photo).name else "")
                 .apply { if (ai != null) { put("aiItems", ai.first); put("aiCarbs", ai.second) } })
         }
         val ds = org.json.JSONArray()
         db.doses().forEach { d ->
-            ds.put(JSONObject().put("ts", d.ts).put("kind", d.kind).put("units", d.units).put("carbs", d.carbs)
+            ds.put(JSONObject().put("gid", db.gid("insulin", d.id)).put("upd", db.upd("insulin", d.id)).put("ts", d.ts).put("kind", d.kind).put("units", d.units).put("carbs", d.carbs)
                 .put("wait", d.waitMin).put("mgAt", d.mgAt).put("note", d.note))
         }
         return JSONObject().put("readings", rs).put("meals", ms).put("doses", ds)
@@ -137,7 +137,13 @@ object Backup {
         val st = Store(c)
         val header = JSONObject().put("app", "Nova Glucose").put("name", st.patientName.ifBlank { st.fileName })
             .put("created", root.optLong("created")).put("version", Ui.version(c)).put("contents", root.optJSONObject("contents"))
-            .toString().toByteArray(Charsets.UTF_8)
+        return seal(header, inner, password)
+    }
+
+    /** Encrypted .novaglucose container around any inner JSON (full backup or family update file). */
+    fun seal(headerJson: JSONObject, inner: String, password: String): ByteArray {
+        require(password.isNotBlank()) { "A password is needed." }
+        val header = headerJson.toString().toByteArray(Charsets.UTF_8)
         val rnd = SecureRandom()
         val salt = ByteArray(16).also { rnd.nextBytes(it) }
         val iv = ByteArray(12).also { rnd.nextBytes(it) }
@@ -153,6 +159,12 @@ object Backup {
             write(salt); write(iv); write(enc)
         }.toByteArray()
     }
+
+    /** "family" for a family update file, "backup" otherwise. */
+    fun kind(b: ByteArray): String = header(b)?.optString("kind")?.takeIf { it.isNotBlank() } ?: "backup"
+
+    /** The readings/meals/doses part of a full backup JSON. */
+    fun dataOf(root: JSONObject): JSONObject? = root.optString("data").takeIf { it.isNotBlank() }?.let { JSONObject(gunzip(it)) }
 
     /** Readable details shown before the password is typed (no health data). */
     fun header(b: ByteArray): JSONObject? = try {
@@ -246,9 +258,11 @@ object Backup {
                 if (db.hasMealAt(ts)) continue
                 val pn = o.optString("photo")
                 val path = if (pn.isNotBlank() && java.io.File(local, pn).exists()) java.io.File(local, pn).absolutePath else ""
+                val g = o.optString("gid").takeIf { it.isNotBlank() && db.byGid("meals", it) == null }
+                val u = o.optLong("upd").takeIf { it > 0 }
                 val id = db.addMeal(Meal(0, ts, o.optString("title"), o.optString("items", "[]"), o.optInt("carbs"), o.optInt("low"),
-                    o.optInt("high"), o.optInt("mgAt"), path, o.optString("note")))
-                if (o.has("aiItems")) db.setAi(id, o.optString("aiItems"), o.optInt("aiCarbs"))
+                    o.optInt("high"), o.optInt("mgAt"), path, o.optString("note")), g, u)
+                if (o.has("aiItems")) db.setAi(id, o.optString("aiItems"), o.optInt("aiCarbs"), upd = u)
                 nm++
             }
             var nd = 0
@@ -256,8 +270,9 @@ object Backup {
             for (i in 0 until da.length()) {
                 val o = da.getJSONObject(i); val ts = o.getLong("ts")
                 if (db.hasDoseAt(ts)) continue
+                val g = o.optString("gid").takeIf { it.isNotBlank() && db.byGid("insulin", it) == null }
                 db.addDose(Dose(0, ts, o.optString("kind", "rapid"), o.optDouble("units"), o.optInt("carbs"), o.optInt("wait"),
-                    o.optInt("mgAt"), o.optString("note"))); nd++
+                    o.optInt("mgAt"), o.optString("note")), g, o.optLong("upd").takeIf { it > 0 }); nd++
             }
             dataNote = " · ${ra.length()} readings · $nm meals · $nd doses"
         }

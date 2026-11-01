@@ -61,6 +61,14 @@ class MainActivity : BaseActivity() {
                 runOnUiThread { android.app.AlertDialog.Builder(this).setTitle("Backup self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
             }.start()
         }
+        if (intent?.getBooleanExtra("synctest", false) == true && SelfTest.canRun(this)) {
+            val app = applicationContext
+            Thread {
+                val r = SyncTest.run(app)
+                android.util.Log.i("NOVA_SYNCTEST", r)
+                runOnUiThread { android.app.AlertDialog.Builder(this).setTitle("Family sync self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
+            }.start()
+        }
         build()
         askPermissions()
     }
@@ -72,10 +80,13 @@ class MainActivity : BaseActivity() {
         render(st.lastError.ifBlank { null })
         refresh()
         ui.post(clock)
+        FamilySync.listener = { ui.post { render(st.lastError.ifBlank { null }) } }
+        FamilySync.kick(this)
     }
 
     override fun onPause() {
         MonitorService.listeners -= listener
+        FamilySync.listener = null
         ui.removeCallbacks(clock)
         super.onPause()
     }

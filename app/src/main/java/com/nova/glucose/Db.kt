@@ -25,7 +25,8 @@ data class Dose(
 )
 
 /** Readings history (kept 400 days) and the meal logbook, stored only on this phone. */
-class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 3) {
+class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 4) {
+    private val app: Context = c.applicationContext
 
     companion object {
         @Volatile private var inst: Db? = null
@@ -38,8 +39,78 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         db.execSQL("CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, title TEXT, items TEXT, carbs INTEGER, " +
             "low INTEGER, high INTEGER, mg_at INTEGER, photo TEXT, note TEXT)")
         db.execSQL("CREATE TABLE unexported(ts INTEGER PRIMARY KEY)")
-        v3(db)
+        v3(db); v4(db)
     }
+
+    /** Family sync: every meal/dose gets a global id (gid) and an edit time (upd); deletions are remembered. */
+    private fun v4(db: SQLiteDatabase) {
+        for (t in listOf("meals", "insulin")) {
+            try { db.execSQL("ALTER TABLE $t ADD COLUMN gid TEXT") } catch (_: Exception) { }
+            try { db.execSQL("ALTER TABLE $t ADD COLUMN upd INTEGER") } catch (_: Exception) { }
+            db.execSQL("UPDATE $t SET gid = lower(hex(randomblob(16))) WHERE gid IS NULL OR gid = ''")
+            db.execSQL("UPDATE $t SET upd = ts WHERE upd IS NULL")
+        }
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_out(gid TEXT PRIMARY KEY, kind TEXT, q INTEGER)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_del(gid TEXT PRIMARY KEY, ts INTEGER)")
+    }
+
+    private fun newGid() = java.util.UUID.randomUUID().toString().replace("-", "")
+    private fun syncing() = Store(app).syncFam.isNotBlank()
+
+    /** Marks an item to be sent to the family (when sync is on) and wakes the sync. */
+    fun queue(gid: String, kind: String, kick: Boolean = true) {
+        if (!syncing()) return
+        writableDatabase.insertWithOnConflict("sync_out", null, ContentValues().apply {
+            put("gid", gid); put("kind", kind); put("q", System.nanoTime())
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+        if (kick) FamilySync.kick(app)
+    }
+
+    /** Pending items: (gid, kind, q). */
+    fun outbox(limit: Int = 200): List<Triple<String, String, Long>> {
+        val out = mutableListOf<Triple<String, String, Long>>()
+        readableDatabase.rawQuery("SELECT gid, kind, q FROM sync_out ORDER BY q LIMIT $limit", null).use { c ->
+            while (c.moveToNext()) out += Triple(c.getString(0), c.getString(1), c.getLong(2))
+        }
+        return out
+    }
+
+    fun outboxCount(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM sync_out", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+
+    /** Removes sent items (only if not changed again meanwhile). */
+    fun sent(items: List<Triple<String, String, Long>>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try { items.forEach { db.delete("sync_out", "gid = ? AND q = ?", arrayOf(it.first, it.third.toString())) }; db.setTransactionSuccessful() }
+        finally { db.endTransaction() }
+    }
+
+    fun clearOutbox() { writableDatabase.delete("sync_out", null, null) }
+
+    /** Everything on this phone goes to the family (first join). */
+    fun queueAll() {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            var q = System.nanoTime()
+            for ((t, k) in listOf("meals" to "meal", "insulin" to "dose"))
+                db.rawQuery("SELECT gid FROM $t", null).use { c -> while (c.moveToNext()) db.insertWithOnConflict("sync_out", null,
+                    ContentValues().apply { put("gid", c.getString(0)); put("kind", k); put("q", q++) }, SQLiteDatabase.CONFLICT_REPLACE) }
+            db.rawQuery("SELECT gid FROM sync_del", null).use { c -> while (c.moveToNext()) db.insertWithOnConflict("sync_out", null,
+                ContentValues().apply { put("gid", c.getString(0)); put("kind", "del"); put("q", q++) }, SQLiteDatabase.CONFLICT_REPLACE) }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    fun deletedAt(gid: String): Long = readableDatabase.rawQuery("SELECT ts FROM sync_del WHERE gid = ?", arrayOf(gid)).use { if (it.moveToFirst()) it.getLong(0) else 0L }
+    fun markDeleted(gid: String, ts: Long) = tombstone(gid, ts)
+    fun deletedGids(): List<Pair<String, Long>> = readableDatabase.rawQuery("SELECT gid, ts FROM sync_del", null).use { c ->
+        val o = mutableListOf<Pair<String, Long>>(); while (c.moveToNext()) o += c.getString(0) to c.getLong(1); o }
+    private fun tombstone(gid: String, ts: Long) {
+        if (gid.isBlank()) return
+        writableDatabase.insertWithOnConflict("sync_del", null, ContentValues().apply { put("gid", gid); put("ts", ts) }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun deletedCount(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM sync_del", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
 
     private fun v3(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS insulin(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, kind TEXT, units REAL, " +
@@ -48,12 +119,54 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         try { db.execSQL("ALTER TABLE meals ADD COLUMN ai_carbs INTEGER") } catch (_: Exception) { }
     }
 
-    fun addDose(d: Dose): Long = writableDatabase.insert("insulin", null, ContentValues().apply {
+    fun addDose(d: Dose, gid: String? = null, upd: Long? = null, share: Boolean = true): Long {
+        val g = gid ?: newGid()
+        val id = writableDatabase.insert("insulin", null, doseValues(d).apply { put("gid", g); put("upd", upd ?: System.currentTimeMillis()) })
+        if (share) queue(g, "dose")
+        return id
+    }
+
+    private fun doseValues(d: Dose) = ContentValues().apply {
         put("ts", d.ts); put("kind", d.kind); put("units", d.units); put("carbs", d.carbs)
         put("wait_min", d.waitMin); put("mg_at", d.mgAt); put("note", d.note)
-    })
+    }
 
-    fun deleteDose(id: Long) { writableDatabase.delete("insulin", "id = ?", arrayOf(id.toString())) }
+    fun updateDose(id: Long, d: Dose, upd: Long) { writableDatabase.update("insulin", doseValues(d).apply { put("upd", upd) }, "id = ?", arrayOf(id.toString())) }
+
+    fun deleteDose(id: Long, share: Boolean = true) {
+        val g = gidOf("insulin", id)
+        writableDatabase.delete("insulin", "id = ?", arrayOf(id.toString()))
+        if (g != null) { tombstone(g, System.currentTimeMillis()); if (share) queue(g, "del") }
+    }
+
+    private fun gidOf(t: String, id: Long): String? =
+        readableDatabase.rawQuery("SELECT gid FROM $t WHERE id = ?", arrayOf(id.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
+
+    /** Local id, edit time for a gid ("meals" or "insulin"). */
+    fun byGid(t: String, gid: String): Pair<Long, Long>? =
+        readableDatabase.rawQuery("SELECT id, upd FROM $t WHERE gid = ?", arrayOf(gid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null }
+
+    fun gid(t: String, id: Long): String = gidOf(t, id) ?: ""
+
+    /** Gives a row a gid received from the family (same entry already here, e.g. after a restore). */
+    fun adoptGid(t: String, id: Long, gid: String) { writableDatabase.update(t, ContentValues().apply { put("gid", gid) }, "id = ?", arrayOf(id.toString())) }
+
+    fun findDose(ts: Long, kind: String, units: Double): Long? =
+        readableDatabase.rawQuery("SELECT id FROM insulin WHERE ts = ? AND kind = ? AND abs(units - ?) < 0.001", arrayOf(ts.toString(), kind, units.toString()))
+            .use { if (it.moveToFirst()) it.getLong(0) else null }
+
+    fun findMeal(ts: Long, title: String): Long? =
+        readableDatabase.rawQuery("SELECT id FROM meals WHERE ts = ? AND title = ?", arrayOf(ts.toString(), title)).use { if (it.moveToFirst()) it.getLong(0) else null }
+
+    fun dose(id: Long): Dose? = readableDatabase.rawQuery("SELECT id, ts, kind, units, carbs, wait_min, mg_at, note FROM insulin WHERE id = ?",
+        arrayOf(id.toString())).use { c -> if (c.moveToFirst()) Dose(c.getLong(0), c.getLong(1), c.getString(2) ?: "rapid", c.getDouble(3),
+            c.getInt(4), c.getInt(5), c.getInt(6), c.getString(7) ?: "") else null }
+
+    fun meal(id: Long): Meal? = readableDatabase.rawQuery("SELECT id, ts, title, items, carbs, low, high, mg_at, photo, note FROM meals WHERE id = ?",
+        arrayOf(id.toString())).use { c -> if (c.moveToFirst()) Meal(c.getLong(0), c.getLong(1), c.getString(2) ?: "", c.getString(3) ?: "[]",
+            c.getInt(4), c.getInt(5), c.getInt(6), c.getInt(7), c.getString(8) ?: "", c.getString(9) ?: "") else null }
+
+    fun upd(t: String, id: Long): Long = readableDatabase.rawQuery("SELECT upd FROM $t WHERE id = ?", arrayOf(id.toString())).use { if (it.moveToFirst()) it.getLong(0) else 0L }
 
     fun doses(from: Long = 0, to: Long = Long.MAX_VALUE): List<Dose> {
         val out = mutableListOf<Dose>()
@@ -69,9 +182,11 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         readableDatabase.rawQuery("SELECT 1 FROM insulin WHERE ts = ?", arrayOf(ts.toString())).use { it.moveToFirst() }
 
     /** AI's original estimate for a meal, saved for the family's corrections (training). */
-    fun setAi(id: Long, itemsJson: String, carbs: Int) {
-        writableDatabase.update("meals", ContentValues().apply { put("ai_items", itemsJson); put("ai_carbs", carbs) },
-            "id = ?", arrayOf(id.toString()))
+    fun setAi(id: Long, itemsJson: String, carbs: Int, share: Boolean = true, upd: Long? = null) {
+        writableDatabase.update("meals", ContentValues().apply {
+            put("ai_items", itemsJson); put("ai_carbs", carbs); put("upd", upd ?: System.currentTimeMillis())
+        }, "id = ?", arrayOf(id.toString()))
+        if (share) gidOf("meals", id)?.let { queue(it, "meal") }
     }
 
     fun ai(id: Long): Pair<String, Int>? =
@@ -85,6 +200,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
             db.execSQL("INSERT OR IGNORE INTO unexported SELECT ts FROM readings")
         }
         if (o < 3) v3(db)
+        if (o < 4) v4(db)
     }
 
     /** New readings not yet written to the Download folder (also catches late, back-filled ones). */
@@ -121,7 +237,8 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
     }
 
     /** Self-test only (blank install). */
-    fun clearAll() { writableDatabase.apply { delete("readings", null, null); delete("meals", null, null); delete("insulin", null, null); delete("unexported", null, null) } }
+    fun clearAll() { writableDatabase.apply { delete("readings", null, null); delete("meals", null, null); delete("insulin", null, null); delete("unexported", null, null)
+        delete("sync_out", null, null); delete("sync_del", null, null) } }
 
     fun resetExport() { writableDatabase.execSQL("INSERT OR IGNORE INTO unexported SELECT ts FROM readings") }
 
@@ -137,15 +254,39 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
     /** The reading closest to [t] (within 20 minutes), or null. */
     fun near(t: Long): Reading? = readings(t - 20 * 60_000, t + 20 * 60_000).minByOrNull { kotlin.math.abs(it.ts - t) }
 
-    fun addMeal(m: Meal): Long = writableDatabase.insert("meals", null, ContentValues().apply {
+    fun addMeal(m: Meal, gid: String? = null, upd: Long? = null, share: Boolean = true): Long {
+        val g = gid ?: newGid()
+        val id = writableDatabase.insert("meals", null, mealValues(m).apply { put("photo", m.photo); put("gid", g); put("upd", upd ?: System.currentTimeMillis()) })
+        if (share) queue(g, "meal")
+        return id
+    }
+
+    private fun mealValues(m: Meal) = ContentValues().apply {
         put("ts", m.ts); put("title", m.title); put("items", m.itemsJson); put("carbs", m.carbs)
-        put("low", m.low); put("high", m.high); put("mg_at", m.mgAt); put("photo", m.photo); put("note", m.note)
-    })
+        put("low", m.low); put("high", m.high); put("mg_at", m.mgAt); put("note", m.note)
+    }
+
+    /** Update from the family (the local photo is kept). */
+    fun updateMeal(id: Long, m: Meal, upd: Long) { writableDatabase.update("meals", mealValues(m).apply { put("upd", upd) }, "id = ?", arrayOf(id.toString())) }
+
+    fun clearAi(id: Long) { writableDatabase.update("meals", ContentValues().apply { putNull("ai_items"); putNull("ai_carbs") }, "id = ?", arrayOf(id.toString())) }
 
     fun hasMealAt(ts: Long): Boolean =
         readableDatabase.rawQuery("SELECT 1 FROM meals WHERE ts = ?", arrayOf(ts.toString())).use { it.moveToFirst() }
 
-    fun deleteMeal(id: Long) { writableDatabase.delete("meals", "id = ?", arrayOf(id.toString())) }
+    fun deleteMeal(id: Long, share: Boolean = true) {
+        val g = gidOf("meals", id)
+        writableDatabase.delete("meals", "id = ?", arrayOf(id.toString()))
+        if (g != null) { tombstone(g, System.currentTimeMillis()); if (share) queue(g, "del") }
+    }
+
+    /** Applies a deletion received from the family; returns the photo path of a deleted meal (to remove it). */
+    fun applyDelete(gid: String, ts: Long): Boolean {
+        var hit = false
+        for (t in listOf("meals", "insulin")) byGid(t, gid)?.let { (id, _) -> writableDatabase.delete(t, "id = ?", arrayOf(id.toString())); hit = true }
+        tombstone(gid, ts)
+        return hit
+    }
 
     fun meals(limit: Int = 200): List<Meal> {
         val out = mutableListOf<Meal>()

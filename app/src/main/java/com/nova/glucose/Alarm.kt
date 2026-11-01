@@ -234,8 +234,10 @@ object EatTimer {
     const val CH_EAT = "eat_timer"
     private const val ID_EAT = 4
 
-    fun schedule(c: Context, at: Long) {
+    /** [share]: also start it on the family's other phones (family sync). */
+    fun schedule(c: Context, at: Long, share: Boolean = true) {
         Store(c).eatAt = at
+        if (share) { Store(c).syncEatU = System.currentTimeMillis(); Db.get(c).queue("eat", "eat") }
         val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pi = PendingIntent.getBroadcast(c, 41, Intent(c, AlarmReceiver::class.java).setAction(AlarmReceiver.EAT),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -246,8 +248,9 @@ object EatTimer {
         } catch (_: SecurityException) { am.set(AlarmManager.RTC_WAKEUP, at, pi) }
     }
 
-    fun cancel(c: Context) {
+    fun cancel(c: Context, share: Boolean = true) {
         Store(c).eatAt = 0
+        if (share) { Store(c).syncEatU = System.currentTimeMillis(); Db.get(c).queue("eat", "eat") }
         val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         am.cancel(PendingIntent.getBroadcast(c, 41, Intent(c, AlarmReceiver::class.java).setAction(AlarmReceiver.EAT),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))

@@ -119,6 +119,7 @@ class MonitorService : Service() {
                 notifyListeners(null, st.lastError)
                 update(null)
             }
+            FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             handler.postDelayed(this, next)
         }
     }

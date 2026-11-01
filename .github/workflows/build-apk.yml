@@ -104,6 +104,13 @@ jobs:
           grep -q "PASS" selftest.txt || { echo "::error title=Backup self-test::$(grep NOVA_SELFTEST selftest.txt | tail -1)"; exit 1; }
           echo "::notice title=Backup self-test::$(grep NOVA_SELFTEST selftest.txt | tail -1 | cut -c1-400)"
           adb shell input keyevent 4; adb shell am force-stop $P
+          adb logcat -c
+          adb shell am start -W -n $P/.MainActivity --ez synctest true
+          for i in $(seq 1 36); do sleep 5; adb logcat -d -s NOVA_SYNCTEST:I > synctest.txt; grep -q "PASS\|FAIL\|SKIPPED" synctest.txt && break; done
+          sleep 2; shot 00b-sync-selftest; cat synctest.txt
+          grep -q "PASS" synctest.txt || { echo "::error title=Family sync self-test::$(grep NOVA_SYNCTEST synctest.txt | tail -1 | cut -c1-600)"; exit 1; }
+          echo "::notice title=Family sync self-test::$(grep NOVA_SYNCTEST synctest.txt | tail -1 | cut -c1-600)"
+          adb shell input keyevent 4; adb shell am force-stop $P
           adb shell am start -W -n $P/.MainActivity; sleep 3; adb shell input keyevent 4; adb shell am start -W -n $P/.MainActivity
           tapText() { adb shell uiautomator dump /sdcard/u.xml >/dev/null; adb pull /sdcard/u.xml u.xml >/dev/null; b=$(grep -io "text=\"[^\"]*$1[^\"]*\"[^>]*bounds=\"[^\"]*\"" u.xml | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9][0-9]*' | tr '\n' ' '); set -- $b; [ -n "$4" ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); }
           tapExact() { adb shell uiautomator dump /sdcard/u.xml >/dev/null; adb pull /sdcard/u.xml u.xml >/dev/null; b=$(grep -io "text=\"$1\"[^>]*bounds=\"[^\"]*\"" u.xml | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9][0-9]*' | tr '\n' ' '); set -- $b; [ -n "$4" ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); }
@@ -132,6 +139,9 @@ jobs:
           adb shell am start -W -n $P/.SettingsActivity; tapText "Unlock"; shot 11d-unlock-pin
           adb shell input keyevent 4; adb shell input keyevent 4
           adb shell am start -W -n $P/.AlarmActivity --ez test true; shot 10-urgent-alarm
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; tapText "Unlock" && { adb shell input text 1234; tapExact "OK"; sleep 1; }
+          findTap "Family sync"; sleep 2; shot 12-family-sync; half; shot 12b-family-sync-2
           adb shell input keyevent 4
           sleep 2
           adb logcat -d > logcat.txt

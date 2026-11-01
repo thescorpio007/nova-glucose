@@ -183,6 +183,28 @@ class Store(c: Context) {
     var pinFails: Int get() = i("last_pin_fails", 0); set(v) = puti("last_pin_fails", v)
     var pinBlockUntil: Long get() = sp.getLong("last_pin_block", 0); set(v) = sp.edit().putLong("last_pin_block", v).apply()
 
+    // ---------------------------------------------------------------- family sync (per phone, never in backups)
+    /** Firestore id of the family ("" = not joined). */
+    var syncFam: String get() = s("sync_fam"); set(v) = put("sync_fam", v)
+    var syncCode: String get() = dec(s("sync_code")); set(v) = put("sync_code", enc(v))
+    var syncPw: String get() = dec(s("sync_pw")); set(v) = put("sync_pw", enc(v))
+    /** Encryption key derived from the family password (saved so it isn't recomputed every minute). */
+    var syncKey: String get() = dec(s("sync_key")); set(v) = put("sync_key", enc(v))
+    var syncUid: String get() = s("sync_uid"); set(v) = put("sync_uid", v)
+    var syncRefresh: String get() = dec(s("sync_rt")); set(v) = put("sync_rt", enc(v))
+    var syncIdToken: String get() = dec(s("sync_it")); set(v) = put("sync_it", enc(v))
+    var syncIdExp: Long get() = sp.getLong("sync_it_exp", 0); set(v) = sp.edit().putLong("sync_it_exp", v).apply()
+    /** Phone name shown to the family, e.g. "Dad's phone". */
+    var syncName: String get() = s("sync_name"); set(v) = put("sync_name", v.trim())
+    /** Server time of the newest change received (RFC 3339). */
+    var syncSince: String get() = s("sync_since"); set(v) = put("sync_since", v)
+    var syncLast: Long get() = sp.getLong("sync_last", 0); set(v) = sp.edit().putLong("sync_last", v).apply()
+    var syncInfo: String get() = s("sync_info"); set(v) = put("sync_info", v)
+    var syncSeen: Long get() = sp.getLong("sync_seen", 0); set(v) = sp.edit().putLong("sync_seen", v).apply()
+    /** Edit time of the eat timer last applied (family-wide). */
+    var syncEatU: Long get() = sp.getLong("sync_eat_u", 0); set(v) = sp.edit().putLong("sync_eat_u", v).apply()
+    var syncOwner: Boolean get() = b("sync_owner", false); set(v) = putb("sync_owner", v)
+
     var layout: Int get() = i("folder_layout", 1); set(v) = puti("folder_layout", v)
     var lastPdf: Long get() = sp.getLong("last_pdf", 0); set(v) = sp.edit().putLong("last_pdf", v).apply()
 
@@ -191,6 +213,6 @@ class Store(c: Context) {
         const val PREFS = "nova_glucose"
         /** Never copied as plain settings (secrets, per-phone state). */
         fun privateKey(k: String) = k in setOf("pw", "token", "token_exp", "account_id", "backup_pw", "folder_uri", "resume_asked", "folder_layout") ||
-            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_")
+            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_") || k.startsWith("sync_")
     }
 }
