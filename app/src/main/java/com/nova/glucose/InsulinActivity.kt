@@ -121,7 +121,7 @@ class InsulinActivity : BaseActivity() {
         lc.addView(lr)
         root.addView(lc, Ui.lp(top = Ui.dp(this, 12)))
 
-        root.addView(Ui.section(this, "Recent doses — long-press to delete"))
+        root.addView(Ui.section(this, "Recent doses — tap to edit · long-press to delete"))
         history = Ui.col(this)
         root.addView(history)
         root.addView(Ui.signature(this))
@@ -249,6 +249,7 @@ class InsulinActivity : BaseActivity() {
             if (extra.isNotBlank()) col.addView(Ui.text(this, extra, 13f, Ui.TEXT))
             row.addView(col, Ui.lp(0, weight = 1f))
             row.addView(Ui.text(this, "${fmt(d.units)} u", 17f, Ui.ACCENT, true))
+            row.setOnClickListener { EditEntry.dose(this, d.id) { renderHistory(); exportLater() } }
             row.setOnLongClickListener {
                 Parent.guard(this, "Enter the PIN to delete a dose.") {
                     AlertDialog.Builder(this).setMessage("Delete this dose?")

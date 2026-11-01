@@ -40,6 +40,15 @@ class AskActivity : BaseActivity() {
         val r = reading()
         val ctx = if (r != null) "${r.mg} ${Libre.trendArrow(r.trend)} mg/dL (${Libre.trendText(r.trend)})" else "no recent reading"
         root.addView(Ui.text(this, "AI: ${st.current().label}  ·  glucose $ctx", 13f, Ui.MUTED))
+        val sees = Ui.text(this, AiData.summary(this).joinToString("\n"), 12f, Ui.TEXT).apply {
+            visibility = android.view.View.GONE; setPadding(Ui.dp(context, 10), Ui.dp(context, 6), 0, 0) }
+        val seesBtn = Ui.text(this, "▸ The AI sees (last 24 h)", 13f, Ui.ACCENT).apply { setPadding(0, Ui.dp(context, 8), 0, 0) }
+        seesBtn.setOnClickListener {
+            val open = sees.visibility != android.view.View.VISIBLE
+            sees.visibility = if (open) android.view.View.VISIBLE else android.view.View.GONE
+            seesBtn.text = (if (open) "▾" else "▸") + " The AI sees (last 24 h)"
+        }
+        root.addView(seesBtn); root.addView(sees)
 
         val (csv, row) = Ui.chipRow(this)
         chips = row
@@ -64,34 +73,15 @@ class AskActivity : BaseActivity() {
     private fun reading(): Reading? =
         if (st.lastTs > 0 && System.currentTimeMillis() - st.lastTs < 20 * 60_000) Reading(st.lastTs, st.lastMg, st.lastTrend) else null
 
-    private fun context(): String {
-        val now = System.currentTimeMillis()
-        val tf = SimpleDateFormat("HH:mm", Locale.US)
-        val r = reading()
-        val hist = Db.get(this).readings(now - 3 * 3600_000L)
-            .filterIndexed { i, _ -> i % 2 == 0 }.takeLast(12)
-            .joinToString(", ") { "${tf.format(Date(it.ts))} ${it.mg}" }
-        val meals = Db.get(this).meals(5).filter { now - it.ts < 8 * 3600_000L }
-            .joinToString("; ") { "${tf.format(Date(it.ts))} ${it.title} (${it.carbs} g)" }
-        return buildString {
-            append("Time now: ${tf.format(Date(now))} (${Foods.mealSlot()} time).\n")
-            append("Current glucose: ").append(r?.let { "${it.mg} mg/dL, ${Libre.trendText(it.trend)}" } ?: "unknown (no recent reading)").append("\n")
-            if (hist.isNotBlank()) append("Last 3 hours (time mg/dL): $hist\n")
-            if (meals.isNotBlank()) append("Meals logged today: $meals\n")
-            append("Her ranges: low below ${st.low}, high above ${st.high} mg/dL. ")
-            append("Carb plan: meals ${st.mealMin}–${st.mealMax} g, snacks ${st.snackMin}–${st.snackMax} g, low treatment ${st.lowTreatG} g fast sugar.\n")
-            if (st.foodNotes.isNotBlank()) append("Family food notes: ${st.foodNotes}\n")
-            append("About her: ${st.aboutLine()}\n")
-            append(Incidents.context(this@AskActivity))
-            val insulin = listOfNotNull(
-                st.longName.takeIf { it.isNotBlank() }?.let { "long-acting $it" + (st.longTime.takeIf { t -> t.isNotBlank() }?.let { t -> " (given around $t)" } ?: "") },
-                st.rapidName.takeIf { it.isNotBlank() }?.let { "rapid $it" })
-            if (insulin.isNotEmpty()) append("Her insulins: ${insulin.joinToString(", ")}.\n")
-            val recent = Db.get(this@AskActivity).doses(now - 4 * 3600_000L).filter { it.kind == "rapid" }
-            if (recent.isNotEmpty()) append("Rapid insulin given in the last 4 hours at: ${recent.joinToString { tf.format(Date(it.ts)) }}" +
-                " (so it is still active — take that into account for food timing; never comment on the dose).\n")
-            if (st.eatAt > now) append("An eat timer is running: she should start eating at ${tf.format(Date(st.eatAt))}.\n")
-        }
+    private fun context(): String = buildString {
+        append(AiData.picture(this@AskActivity, 24))
+        append("Carb plan: meals ${st.mealMin}–${st.mealMax} g, snacks ${st.snackMin}–${st.snackMax} g, low treatment ${st.lowTreatG} g fast sugar.\n")
+        if (st.foodNotes.isNotBlank()) append("Family food notes: ${st.foodNotes}\n")
+        append("About her: ${st.aboutLine()}\n")
+        val insulin = listOfNotNull(
+            st.longName.takeIf { it.isNotBlank() }?.let { "long-acting $it" + (st.longTime.takeIf { t -> t.isNotBlank() }?.let { t -> " (given around $t)" } ?: "") },
+            st.rapidName.takeIf { it.isNotBlank() }?.let { "rapid $it" })
+        if (insulin.isNotEmpty()) append("Her insulins: ${insulin.joinToString(", ")}.\n")
     }
 
     private val system get() = """
@@ -99,7 +89,7 @@ You help a family choose food for their daughter (age ${st.age}) who has diabete
 Suggest practical food ideas from a mix of Tunisian, Gulf/Middle Eastern and international cuisine, each with a portion and an
 approximate carb count in grams. Keep answers short, friendly and easy to scan on a phone (short lines, simple bullets, no tables).
 Rules:
-- NEVER suggest insulin doses, units, or changes to her treatment. If asked, say to follow her diabetes care team.
+- ${AiData.NO_DOSE}
 - If glucose is low (below her low limit): first say to have the fast-sugar treatment from her plan and recheck in 15 minutes,
   avoid fatty/chocolate treatments; only then any snack advice.
 - If glucose is very high, mention drinking water and checking ketones as her care team advised; suggest low-carb choices.

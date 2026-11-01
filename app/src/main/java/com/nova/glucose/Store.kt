@@ -217,6 +217,11 @@ class Store(c: Context) {
     var watchEat: Boolean get() = b("watch_eat", true); set(v) = putb("watch_eat", v)
     /** Glucose message for the watch every N minutes (0 = off). */
     var watchGlucose: Int get() = i("watch_glucose", 0); set(v) = puti("watch_glucose", v)
+    /** Short AI food tip a few seconds after a high/low alert (this phone). */
+    var aiTips: Boolean get() = b("ai_tips", true); set(v) = putb("ai_tips", v)
+    var aiReview: String get() = s("ai_review"); set(v) = put("ai_review", v)
+    var aiReviewTs: Long get() = sp.getLong("ai_review_ts", 0); set(v) = sp.edit().putLong("ai_review_ts", v).apply()
+    var aiReviewDays: Int get() = i("ai_review_days", 7); set(v) = puti("ai_review_days", v)
     var lastWatchPost: Long get() = sp.getLong("last_watch", 0); set(v) = sp.edit().putLong("last_watch", v).apply()
 
     var syncOwner: Boolean get() = b("sync_owner", false); set(v) = putb("sync_owner", v)

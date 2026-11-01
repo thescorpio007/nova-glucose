@@ -24,6 +24,8 @@ class MonitorService : Service() {
         const val CH_STATUS = "status"
         const val CH_ALERT = "alerts2"
         const val CH_ALERT_LOW = "alerts_low2"
+        const val CH_TIP = "ai_tips"
+        private const val ID_TIP = 9
         private const val ID_STATUS = 1
         private const val ID_ALERT = 2
         private const val POLL_MS = 60_000L
@@ -162,6 +164,21 @@ class MonitorService : Service() {
         if (st.alertsOn) checkAlerts(shown, nm)
     }
 
+    /** The AI's short food tip, a few seconds after the normal alert (never delays it). */
+    private fun aiTip(kind: String, r: Reading) {
+        val app = applicationContext
+        Thread {
+            val tip = AiData.alertTip(app, kind) ?: return@Thread
+            val nm = app.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CH_TIP, "AI food tips after alerts", NotificationManager.IMPORTANCE_DEFAULT))
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(app, CH_TIP) else @Suppress("DEPRECATION") Notification.Builder(app)
+            nm.notify(ID_TIP, b.setSmallIcon(android.R.drawable.ic_menu_info_details)
+                .setContentTitle("✦ AI tip · ${r.mg} ${Libre.trendArrow(r.trend)} mg/dL")
+                .setContentText(tip).setStyle(Notification.BigTextStyle().bigText(tip + "\nAI tip — food only, not medical advice."))
+                .setAutoCancel(true).setContentIntent(openApp()).setLocalOnly(!st.watchAlerts).build())
+        }.start()
+    }
+
     /** Watches don't show the permanent live notification, so post a quiet glucose message every N minutes. */
     private fun watchGlucose(r: Reading?, nm: NotificationManager) {
         val every = st.watchGlucose
@@ -206,6 +223,7 @@ class MonitorService : Service() {
             else -> "${adv.title}: ${r!!.mg} ${Libre.trendArrow(r.trend)} mg/dL"
         }
         val low = kind == "urgent_low" || kind == "low"
+        if (kind != "stale" && st.aiTips) aiTip(kind, r!!)
         if (urgent) {
             // Rings through silent / Do Not Disturb at the chosen volume, full screen, Stop / Snooze.
             AlarmPlayer.start(this, kind, title, body)

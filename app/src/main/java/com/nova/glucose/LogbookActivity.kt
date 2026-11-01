@@ -27,9 +27,12 @@ class LogbookActivity : BaseActivity() {
         head.addView(Ui.title(this, "Logbook"), Ui.lp(0, weight = 1f))
         head.addView(Ui.smallButton(this, "Close") { finish() })
         root.addView(head)
-        root.addView(Ui.text(this, "Each meal shows glucose at the meal and 2 hours later, to help judge future estimates. Long-press a meal to delete it.",
+        root.addView(Ui.text(this, "Each meal shows glucose at the meal and 2 hours later, to help judge future estimates. Tap a meal to edit it, long-press to delete it.",
             13f, Ui.MUTED))
-        root.addView(Ui.button(this, "📤 Share with doctor", true) { DoctorReport.pick(this) }, Ui.lp(top = Ui.dp(this, 10)))
+        val br = Ui.row(this)
+        br.addView(Ui.button(this, "📊 AI review") { startActivity(android.content.Intent(this, AiReviewActivity::class.java)) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        br.addView(Ui.button(this, "📤 Share with doctor", true) { DoctorReport.pick(this) }, Ui.lp(0, weight = 1f))
+        root.addView(br, Ui.lp(top = Ui.dp(this, 10)))
         today = Ui.card(this)
         root.addView(today, Ui.lp(top = Ui.dp(this, 10)))
         incCard = Ui.card(this)
@@ -131,6 +134,7 @@ class LogbookActivity : BaseActivity() {
             }
             if (m.note.isNotBlank()) card.addView(Ui.text(this, "Note: ${m.note}", 12f, Ui.MUTED))
 
+            card.setOnClickListener { EditEntry.meal(this, m.id) { render() } }
             card.setOnLongClickListener {
                 Parent.guard(this, "Enter the PIN to delete a meal.") { AlertDialog.Builder(this).setMessage("Delete this meal?")
                     .setPositiveButton("Delete") { _, _ ->

@@ -55,6 +55,8 @@ object MarkHistory {
         root.addView(Ui.signature(a))
         val sv = ScrollView(a).apply { addView(root); setBackgroundColor(Ui.CARD) }
 
+        var dlg: AlertDialog? = null
+        val reopen: (Long) -> Unit = { at -> dlg?.dismiss(); show(a, at) }
         lateinit var select: (Long) -> Unit
         select = { at ->
             val group = all.filter { e -> when (e) {
@@ -66,13 +68,13 @@ object MarkHistory {
             title.text = (if (hasM && hasI) "Meal and insulin" else if (hasM) "Meal" else if (hasI) "Insulin" else "Incident") + " · " + day(at)
             details.removeAllViews()
             if (group.isEmpty()) details.addView(Ui.text(a, "Nothing saved at this time.", 13f, Ui.MUTED))
-            group.forEach { details.addView(detail(a, it)) }
+            group.forEach { details.addView(detail(a, it) { reopen(at) }) }
             list.removeAllViews()
             all.forEach { e -> list.addView(row(a, e, e in group) { if (e is Entry.X) IncidentActivity.open(a, e.i.id) else select(e.ts) }) }
         }
         select(t)
 
-        AlertDialog.Builder(a).setView(sv)
+        dlg = AlertDialog.Builder(a).setView(sv)
             .setPositiveButton("Close", null)
             .setNeutralButton("Open logbook") { _, _ -> a.startActivity(Intent(a, LogbookActivity::class.java)) }
             .show()
@@ -98,7 +100,7 @@ object MarkHistory {
 
     private fun units(u: Double) = if (u % 1.0 == 0.0) u.toInt().toString() else u.toString()
 
-    private fun detail(a: Activity, e: Entry): View {
+    private fun detail(a: Activity, e: Entry, edited: () -> Unit): View {
         val st = Store(a); val db = Db.get(a)
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
@@ -143,6 +145,11 @@ object MarkHistory {
         }
         box.addView(TextView(a).apply { text = head; textSize = 15f; setTextColor(Ui.TEXT) })
         more.forEach { box.addView(Ui.text(a, it, 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 3), 0, 0) }) }
+        when (e) {
+            is Entry.M -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.meal(a, e.m.id) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
+            is Entry.I -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.dose(a, e.d.id) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
+            is Entry.X -> { }
+        }
         return LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; addView(box); setPadding(0, 0, 0, Ui.dp(a, 8)) }
     }
 

@@ -255,6 +255,11 @@ object DoctorReport {
                 .filter { it.isNotBlank() }.joinToString(" · "), paint(8f))
         }
 
+        if (st.aiReview.isNotBlank() && st.aiReviewTs >= start) {
+            h2(doc, "AI review (${tf.format(Date(st.aiReviewTs))}, ${st.aiReviewDays} day(s)) — not medical advice")
+            st.aiReview.lines().filter { it.isNotBlank() }.forEach { text(doc, it.trim(), paint(8.5f)) }
+        }
+
         h2(doc, "Day by day")
         val dRows = mutableListOf(listOf("Date", "Average", "In range", "Lowest", "Highest", "Carbs logged", "Rapid insulin"))
         val ddf = SimpleDateFormat("EEE d MMM", Locale.US)

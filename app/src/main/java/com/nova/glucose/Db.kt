@@ -193,7 +193,10 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         put("wait_min", d.waitMin); put("mg_at", d.mgAt); put("note", d.note)
     }
 
-    fun updateDose(id: Long, d: Dose, upd: Long) { writableDatabase.update("insulin", doseValues(d).apply { put("upd", upd) }, "id = ?", arrayOf(id.toString())) }
+    fun updateDose(id: Long, d: Dose, upd: Long, share: Boolean = false) {
+        writableDatabase.update("insulin", doseValues(d).apply { put("upd", upd) }, "id = ?", arrayOf(id.toString()))
+        if (share) gidOf("insulin", id)?.let { queue(it, "dose") }
+    }
 
     fun deleteDose(id: Long, share: Boolean = true) {
         val g = gidOf("insulin", id)
@@ -332,7 +335,10 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
     }
 
     /** Update from the family (the local photo is kept). */
-    fun updateMeal(id: Long, m: Meal, upd: Long) { writableDatabase.update("meals", mealValues(m).apply { put("upd", upd) }, "id = ?", arrayOf(id.toString())) }
+    fun updateMeal(id: Long, m: Meal, upd: Long, share: Boolean = false) {
+        writableDatabase.update("meals", mealValues(m).apply { put("upd", upd) }, "id = ?", arrayOf(id.toString()))
+        if (share) gidOf("meals", id)?.let { queue(it, "meal") }
+    }
 
     fun clearAi(id: Long) { writableDatabase.update("meals", ContentValues().apply { putNull("ai_items"); putNull("ai_carbs") }, "id = ?", arrayOf(id.toString())) }
 

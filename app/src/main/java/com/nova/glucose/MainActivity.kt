@@ -175,7 +175,7 @@ class MainActivity : BaseActivity() {
             onIncident = { id -> IncidentActivity.open(this@MainActivity, id) }
         }
         gc.addView(graph, Ui.lp(top = Ui.dp(this, 6)))
-        chartLegend = Ui.text(this, "", 11f, Ui.MUTED)
+        chartLegend = Ui.text(this, "", 11f, Ui.MUTED).apply { visibility = View.GONE }   // no text under the chart
         gc.addView(chartLegend)
         val sr = Ui.row(this).apply { setPadding(0, Ui.dp(c(), 10), 0, 0) }
         tirBox = statBox("Time in range"); avgBox = statBox("Average")
@@ -213,7 +213,10 @@ class MainActivity : BaseActivity() {
         ar.addView(Ui.button(this, "📒 Logbook") { startActivity(Intent(this, LogbookActivity::class.java)) },
             Ui.lp(0, weight = 0.7f))
         root.addView(ar, Ui.lp(top = Ui.dp(this, 8)))
-        root.addView(Ui.button(this, "📤 Share with doctor") { DoctorReport.pick(this) }, Ui.lp(top = Ui.dp(this, 8)))
+        val dr = Ui.row(this)
+        dr.addView(Ui.button(this, "📊 AI review") { startActivity(Intent(this, AiReviewActivity::class.java)) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        dr.addView(Ui.button(this, "📤 Share with doctor") { DoctorReport.pick(this) }, Ui.lp(0, weight = 1f))
+        root.addView(dr, Ui.lp(top = Ui.dp(this, 8)))
 
         advice = Ui.card(this)
         root.addView(advice, Ui.lp(top = Ui.dp(this, 12)))
@@ -299,7 +302,7 @@ class MainActivity : BaseActivity() {
         val db = Db.get(this)
         val pts = db.readings(a, b).ifEmpty { if (mode == "12") snap?.graph ?: emptyList() else emptyList() }
         graph.low = snap?.targetLow ?: st.low; graph.high = snap?.targetHigh ?: st.high
-        graph.lowLine = st.low; graph.highLine = st.high
+        graph.lowLine = st.low; graph.highLine = st.high; graph.urgentLine = st.urgentLow; graph.veryHighLine = st.veryHigh
         graph.meals = db.meals(500).map { it.ts }
         graph.doses = db.doses(a, b).filter { it.kind == "rapid" }.map { it.ts }
         graph.incidents = db.incidents(a, b)

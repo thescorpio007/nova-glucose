@@ -341,6 +341,8 @@ class SettingsActivity : BaseActivity() {
             }
         }
         renderWg(); wc.addView(wg)
+        wc.addView(check("✦ AI food tip a few seconds after a high/low alert", st.aiTips).apply { setOnCheckedChangeListener { _, v -> st.aiTips = v } },
+            Ui.lp(top = Ui.dp(this, 10)))
         wc.addView(check("Show the time-to-eat reminder on this phone", st.notifyEat).apply { setOnCheckedChangeListener { _, v -> st.notifyEat = v } },
             Ui.lp(top = Ui.dp(this, 10)))
         wc.addView(Ui.text(this, "Unticked items stay on this phone only. Some watch apps forward everything anyway — use the test to check. " +
