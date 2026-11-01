@@ -13,7 +13,8 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** Settings kept privately on the phone. Password and API keys are encrypted with the phone's own key store. */
 class Store(c: Context) {
-    private val sp: SharedPreferences = c.applicationContext.getSharedPreferences("nova_glucose", Context.MODE_PRIVATE)
+    private val sp: SharedPreferences = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val raw: SharedPreferences get() = sp
 
     private fun s(k: String, d: String = "") = sp.getString(k, d) ?: d
     private fun put(k: String, v: String) = sp.edit().putString(k, v).apply()
@@ -103,5 +104,19 @@ class Store(c: Context) {
         } catch (_: Exception) { "" }
     }
 
-    companion object { private const val ALIAS = "nova_glucose_secret" }
+    // ---------------------------------------------------------------- Download/NovaGlucose folder & backup
+    var folderUri: String get() = s("folder_uri"); set(v) = put("folder_uri", v)
+    var backupPw: String get() = dec(s("backup_pw")); set(v) = put("backup_pw", enc(v))
+    var lastExport: Long get() = sp.getLong("last_export", 0); set(v) = sp.edit().putLong("last_export", v).apply()
+    var lastExportReading: Long get() = sp.getLong("last_export_reading", 0); set(v) = sp.edit().putLong("last_export_reading", v).apply()
+    var lastBackupTs: Long get() = sp.getLong("last_backup", 0); set(v) = sp.edit().putLong("last_backup", v).apply()
+    var resumeAsked: Boolean get() = b("resume_asked", false); set(v) = putb("resume_asked", v)
+
+    companion object {
+        private const val ALIAS = "nova_glucose_secret"
+        const val PREFS = "nova_glucose"
+        /** Never copied as plain settings (secrets, per-phone state). */
+        fun privateKey(k: String) = k in setOf("pw", "token", "token_exp", "account_id", "backup_pw", "folder_uri", "resume_asked") ||
+            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_")
+    }
 }

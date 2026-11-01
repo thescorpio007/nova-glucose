@@ -106,6 +106,7 @@ class MonitorService : Service() {
                 st.lastError = ""
                 notifyListeners(snap, null)
                 update(snap.latest)
+                if (System.currentTimeMillis() - st.lastExport >= 15 * 60_000L) Vault.exportAll(this@MonitorService)
             } catch (e: LibreException) {
                 st.lastError = e.message ?: "error"
                 notifyListeners(null, st.lastError)
@@ -199,6 +200,7 @@ class MonitorService : Service() {
             .setCategory(if (low) Notification.CATEGORY_ALARM else Notification.CATEGORY_STATUS)
             .build()
         nm.notify(ID_ALERT, n)
+        Vault.logAlert(this, title, body)
     }
 }
 

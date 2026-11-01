@@ -29,6 +29,8 @@ class MainActivity : BaseActivity() {
     private lateinit var graph: GraphView
     private lateinit var advice: LinearLayout
     private lateinit var connectCard: LinearLayout
+    private lateinit var folderCard: LinearLayout
+    private lateinit var folderText: TextView
     private var snap: Snapshot? = null
     private val ui = Handler(Looper.getMainLooper())
 
@@ -66,6 +68,12 @@ class MainActivity : BaseActivity() {
 
     private fun c() = this
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+        super.onActivityResult(req, res, data)
+        FolderFlow.onResult(this, req, res, data) { render(null); refresh() }
+    }
+
     @SuppressLint("SetTextI18n")
     private fun build() {
         root = Ui.col(this, 16)
@@ -80,6 +88,14 @@ class MainActivity : BaseActivity() {
         head.addView(Ui.smallButton(this, "↻") { refresh(true) }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 36), end = Ui.dp(this, 8)))
         head.addView(Ui.smallButton(this, "⚙ Settings") { startActivity(Intent(this, SettingsActivity::class.java)) })
         root.addView(head)
+
+        folderCard = Ui.card(this).apply {
+            addView(Ui.text(c(), "📁 Download/NovaGlucose folder", 17f, Ui.TEXT, true))
+            folderText = Ui.text(c(), "", 14f, Ui.MUTED)
+            addView(folderText)
+            addView(Ui.button(c(), "Choose folder", true) { FolderFlow.pick(c()) }, Ui.lp(top = Ui.dp(c(), 10)))
+        }
+        root.addView(folderCard, Ui.lp(top = Ui.dp(this, 12)))
 
         connectCard = Ui.card(this).apply {
             addView(Ui.text(c(), "Connect LibreLinkUp", 17f, Ui.TEXT, true))
@@ -141,6 +157,10 @@ class MainActivity : BaseActivity() {
     @SuppressLint("SetTextI18n")
     private fun render(err: String?) {
         connectCard.visibility = if (st.loggedIn) View.GONE else View.VISIBLE
+        val folderOk = Vault.ready(this)
+        folderCard.visibility = if (folderOk) View.GONE else View.VISIBLE
+        folderText.text = if (st.loggedIn) "Choose it once so readings, meals, alerts, daily assessments and the backup are kept safe in Download."
+            else "Reinstalled the app? Choose Download/NovaGlucose to resume everything from your backup. New here? Choose it to keep all data safe."
         val r = current()
         name.text = st.patientName.ifBlank { if (st.loggedIn) "Loading…" else "Not connected" }
         value.text = r?.mg?.toString() ?: "--"

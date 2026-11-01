@@ -71,4 +71,5 @@ android {
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
     implementation("androidx.core:core:1.13.1")   // FileProvider for camera photos/videos
+    implementation("androidx.documentfile:documentfile:1.0.1")   // Download/NovaGlucose folder
 }

@@ -28,6 +28,10 @@ class SettingsActivity : BaseActivity() {
     private val models = mutableMapOf<String, EditText>()
     private lateinit var aiChips: LinearLayout
     private lateinit var lluVersion: EditText
+    private lateinit var folderStatus: TextView
+    private lateinit var backupPw: EditText
+    private lateinit var backupMsg: TextView
+    private var pendingBackup: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,14 +114,14 @@ class SettingsActivity : BaseActivity() {
             }
             keys[p.id] = k
             ic.addView(k, Ui.lp(top = Ui.dp(this, 6)))
-            val m = Ui.input(this, "Model (auto)", multi = false).apply { setText(st.model(p)) }
+            val m = Ui.input(this, "Model (found automatically by Save & test)", multi = false).apply { setText(st.model(p)) }
             models[p.id] = m
             ic.addView(m, Ui.lp(top = Ui.dp(this, 6)))
             val r = Ui.row(this)
             val res = Ui.text(this, "", 12f, Ui.MUTED)
-            r.addView(Ui.smallButton(this, "Get key") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.keyPage))) },
-                Ui.lp(Ui.dp(this, 90), Ui.dp(this, 32), end = Ui.dp(this, 8)))
-            r.addView(Ui.smallButton(this, "Detect model & test") { test(p, res) }, Ui.lp(-2, Ui.dp(this, 32)))
+            r.addView(Ui.button(this, "Get key") { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.keyPage))) },
+                Ui.lp(-2, end = Ui.dp(this, 8)))
+            r.addView(Ui.button(this, "💾 Save & test", true) { test(p, res) }, Ui.lp(0, weight = 1f))
             ic.addView(r, Ui.lp(top = Ui.dp(this, 8)))
             ic.addView(res, Ui.lp(top = Ui.dp(this, 4)))
         }
@@ -128,6 +132,32 @@ class SettingsActivity : BaseActivity() {
         val tc = Ui.card(this)
         Foods.PHOTO_TIPS.forEach { tc.addView(Ui.text(this, "•  $it", 13f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 3), 0, 0) }) }
         root.addView(tc)
+
+        // ---------------------------------------------------------- Backup & folder
+        root.addView(Ui.section(this, "Backup & Download folder"))
+        val bc = Ui.card(this)
+        folderStatus = Ui.text(this, "", 14f, Ui.TEXT)
+        bc.addView(folderStatus)
+        bc.addView(Ui.text(this, "Saved there: readings (CSV per month, every 15 min), meals with photos, alerts, a daily glucose assessment, and the backup. After a reinstall, choose the folder again to resume.",
+            12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
+        bc.addView(Ui.button(this, "📁 Choose folder") { FolderFlow.pick(this) }, Ui.lp(top = Ui.dp(this, 10)))
+        backupPw = Ui.input(this, "Backup password (locks login & API keys)", multi = false).apply {
+            setText(st.backupPw); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        bc.addView(backupPw, Ui.lp(top = Ui.dp(this, 10)))
+        bc.addView(Ui.text(this, "Keep this password safe — it's needed to restore the LibreLinkUp login and API keys.", 12f, Ui.WARN))
+        backupMsg = Ui.text(this, "", 13f, Ui.MUTED)
+        bc.addView(Ui.button(this, "💾 Save backup now", true) { backupNow() }, Ui.lp(top = Ui.dp(this, 10)))
+        val br = Ui.row(this)
+        br.addView(Ui.button(this, "📤 Save as file…") { save(false); exportFile() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        br.addView(Ui.button(this, "♻ Restore file…") { importFile() }, Ui.lp(0, weight = 1f))
+        bc.addView(br, Ui.lp(top = Ui.dp(this, 8)))
+        bc.addView(Ui.button(this, "♻ Resume everything from folder") {
+            if (!Vault.ready(this)) FolderFlow.pick(this) else FolderFlow.askResume(this) { recreate() }
+        }, Ui.lp(top = Ui.dp(this, 8)))
+        bc.addView(backupMsg, Ui.lp(top = Ui.dp(this, 6)))
+        root.addView(bc)
+        renderFolder()
 
         // ---------------------------------------------------------- About
         root.addView(Ui.section(this, "About"))
@@ -196,11 +226,15 @@ class SettingsActivity : BaseActivity() {
             st.setModel(p, models[p.id]!!.text.toString())
         }
         st.appVersion = lluVersion.text.toString().trim().ifBlank { Libre.DEFAULT_VERSION }
+        st.backupPw = backupPw.text.toString()
         val wasOn = st.monitorOn
         st.monitorOn = monitor.isChecked
         if (!st.monitorOn && wasOn) MonitorService.stop(this)
         if (st.monitorOn && st.loggedIn) MonitorService.start(this)
-        if (toast) Ui.toast(this, "Saved")
+        if (toast) {
+            Ui.toast(this, "Saved")
+            if (Vault.ready(this)) { val app = applicationContext; Thread { try { Vault.backupNow(app) } catch (_: Exception) { } }.start() }
+        }
     }
 
     private fun connect() {
@@ -242,18 +276,100 @@ class SettingsActivity : BaseActivity() {
     private fun test(p: Provider, out: TextView) {
         save(false)
         if (st.key(p).isBlank()) { out.setTextColor(Ui.BAD); out.text = "Paste the API key first."; return }
-        out.setTextColor(Ui.MUTED); out.text = "Testing…"
+        st.aiProvider = p.id; renderAiChips()
+        out.setTextColor(Ui.MUTED); out.text = "Saved · checking the key and finding a model…"
         Thread {
-            val msg = try {
-                val m = Providers.pickModel(p, Providers.listModels(p, st.key(p)))
-                st.setModel(p, m)
-                runOnUiThread { models[p.id]!!.setText(m) }
-                val a = Providers.ask(st, p, "Answer in one short sentence.", "Say hello to a teenager managing diabetes.")
-                true to "OK · model $m · \"${a.take(80)}\""
-            } catch (e: Exception) { false to (e.message ?: "Failed") }
-            runOnUiThread { out.setTextColor(if (msg.first) Ui.GOOD else Ui.BAD); out.text = msg.second }
+            val r = try { Result.success(Providers.saveTest(st, p) { s -> runOnUiThread { out.text = s } }) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                r.onSuccess { (m, a) ->
+                    models[p.id]!!.setText(m)
+                    out.setTextColor(Ui.GOOD); out.text = "✓ Saved & connected · model $m · \"${a.take(70)}\""
+                }.onFailure { e -> out.setTextColor(Ui.BAD); out.text = "Key saved, but: ${e.message}" }
+            }
         }.start()
     }
+
+    // ---------------------------------------------------------- backup
+
+    private fun renderFolder() {
+        val ok = Vault.ready(this)
+        folderStatus.setTextColor(if (ok) Ui.GOOD else Ui.WARN)
+        val last = if (st.lastBackupTs > 0) " · last backup " +
+            java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(java.util.Date(st.lastBackupTs)) else ""
+        folderStatus.text = if (ok) "📁 ${Vault.folderLabel(this)}$last" else "📁 Folder not chosen yet"
+    }
+
+    private fun backupNow() {
+        save(false)
+        if (st.backupPw.isBlank()) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = "Set a backup password first."; return }
+        if (!Vault.ready(this)) { FolderFlow.pick(this); return }
+        backupMsg.setTextColor(Ui.MUTED); backupMsg.text = "Saving…"
+        val app = applicationContext
+        Thread {
+            val r = try {
+                Vault.exportAll(app, forceBackup = true)
+                Result.success(Vault.backupNow(app))
+            } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                r.onSuccess { backupMsg.setTextColor(Ui.GOOD); backupMsg.text = "✓ $it" }
+                    .onFailure { backupMsg.setTextColor(Ui.BAD); backupMsg.text = it.message ?: "Failed" }
+                renderFolder()
+            }
+        }.start()
+    }
+
+    private fun exportFile() {
+        if (st.backupPw.isBlank()) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = "Set a backup password first."; return }
+        pendingBackup = Backup.build(this, st.backupPw)
+        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json")
+            .putExtra(Intent.EXTRA_TITLE, Backup.FILE)
+        startActivityForResult(i, REQ_EXPORT)
+    }
+
+    private fun importFile() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+        startActivityForResult(i, REQ_IMPORT)
+    }
+
+    private fun restoreFromText(text: String) {
+        val pw = Ui.input(this, "Backup password", multi = false).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        android.app.AlertDialog.Builder(this).setTitle("Restore settings?")
+            .setMessage("Settings, LibreLinkUp login and API keys will be replaced by the backup.")
+            .setView(Ui.col(this, 20).apply { addView(pw) })
+            .setPositiveButton("Restore") { _, _ ->
+                try {
+                    val msg = Backup.restore(this, text, pw.text.toString())
+                    MonitorService.stop(this); MonitorService.start(this)
+                    Ui.toast(this, msg); recreate()
+                } catch (e: Exception) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = e.message }
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+        super.onActivityResult(req, res, data)
+        if (FolderFlow.onResult(this, req, res, data) { recreate() }) return
+        val uri = data?.data ?: return
+        if (res != RESULT_OK) return
+        try {
+            when (req) {
+                REQ_EXPORT -> {
+                    contentResolver.openOutputStream(uri, "wt")!!.use { it.write((pendingBackup ?: "").toByteArray()) }
+                    backupMsg.setTextColor(Ui.GOOD); backupMsg.text = "✓ Backup file saved"
+                }
+                REQ_IMPORT -> {
+                    val text = contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
+                    if (!Backup.isBackup(text)) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = "This isn't a Nova Glucose backup file." }
+                    else restoreFromText(text)
+                }
+            }
+        } catch (e: Exception) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = e.message }
+    }
+
+    companion object { private const val REQ_EXPORT = 11; private const val REQ_IMPORT = 12 }
 
     private fun openNotifSettings() {
         try {

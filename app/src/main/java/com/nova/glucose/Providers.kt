@@ -28,7 +28,7 @@ object Providers {
     val all = listOf(
         Provider("gemini", "Gemini", Api.GEMINI, "https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash",
             "https://aistudio.google.com/app/apikey",
-            listOf("^gemini-[0-9.]+-flash$", "^gemini-[0-9.]+-pro$", "^gemini-[0-9.]+-flash-lite$", "^gemini-[0-9.]+-flash", "^gemini-")),
+            listOf("^gemini-[0-9.]+-flash$", "^gemini-[0-9.]+-flash-lite$", "^gemini-[0-9.]+-pro$", "^gemini-[0-9.]+-flash", "^gemini-")),
         Provider("chatgpt", "ChatGPT", Api.OPENAI, "https://api.openai.com/v1", "gpt-4o-mini",
             "https://platform.openai.com/api-keys",
             listOf("^gpt-5(\\.\\d+)?-mini$", "^gpt-4\\.1-mini$", "^gpt-4o-mini$", "^gpt-5(\\.\\d+)?$", "^gpt-4o$", "^gpt-")),
@@ -43,31 +43,69 @@ object Providers {
      * Sends a question (with optional JPEG photos) and returns the text answer.
      * Busy errors are retried; an unknown model is replaced by the best model the account offers.
      */
+    private val busy = setOf(429, 500, 502, 503, 504, 529)
+    private val quotaRe = Regex("quota|exhausted|billing|limit: ?0|insufficient|credit", RegexOption.IGNORE_CASE)
+
+    /**
+     * Sends a question (with optional JPEG photos) and returns the text answer.
+     * Busy errors are retried. When a model is missing, out of quota or unavailable, the other models of the
+     * same AI are tried (lighter ones too) and the first that answers is kept as the new model.
+     */
     fun ask(st: Store, p: Provider, system: String, user: String, images: List<ByteArray> = emptyList(),
             status: (String) -> Unit = {}): String {
         val key = st.key(p)
         if (key.isBlank()) throw AiException("Add your ${p.label} API key in Settings first.")
         var model = st.model(p)
-        var fixedModel = false
-        var attempt = 0
+        val tried = linkedSetOf<String>()
+        var candidates: List<String>? = null
+        var busyTries = 0; var netTries = 0
+        var firstError: AiException? = null
         while (true) {
             try {
-                return call(p, key, model, system, user, images).ifBlank { throw AiException("Empty answer from ${p.label}") }
+                val a = call(p, key, model, system, user, images).ifBlank { throw AiException("Empty answer from ${p.label}") }
+                if (model != st.model(p)) st.setModel(p, model)
+                return a
             } catch (e: java.io.IOException) {
-                if (++attempt > 2) throw AiException("No connection to ${p.label} — check the internet or VPN.")
+                if (++netTries > 2) throw AiException("No connection to ${p.label} — check the internet or VPN.")
                 status("No connection — retrying…"); Thread.sleep(3000)
             } catch (e: AiException) {
-                if (e.code == 404 && !fixedModel) {
-                    fixedModel = true
-                    status("Finding the right ${p.label} model…")
-                    model = pickModel(p, listModels(p, key)); st.setModel(p, model); continue
+                val quota = e.code == 429 && quotaRe.containsMatchIn(e.message ?: "")
+                if (e.code in busy && !quota && ++busyTries <= 2) {
+                    status("${p.label} is busy — retrying ($busyTries/2)…"); Thread.sleep(busyTries * 4000L); continue
                 }
-                if (e.code in setOf(429, 500, 502, 503, 504, 529) && ++attempt <= 3) {
-                    status("${p.label} is busy — retrying ($attempt/3)…"); Thread.sleep(attempt * 4000L); continue
-                }
-                throw e
+                val switchable = e.code == 404 || e.code in busy || (e.code == 400 && (e.message ?: "").contains("model", true))
+                if (!switchable) throw e
+                if (firstError == null) firstError = e
+                tried += model
+                if (candidates == null) candidates = try { ranked(p, listModels(p, key)) } catch (_: Exception) { emptyList() }
+                val next = candidates!!.firstOrNull { it !in tried }
+                if (next == null || tried.size >= 8) throw AiException(
+                    (firstError!!.message ?: "Error") + if (quota || firstError!!.code == 429)
+                        "\nTried: ${tried.joinToString()}. Free quota may be used up for today — wait, or add billing in Google AI Studio."
+                    else "", firstError!!.code)
+                status(if (quota) "$model: no quota left — trying $next…" else "$model unavailable — trying $next…")
+                model = next; busyTries = 0
             }
         }
+    }
+
+    /** Save & test: checks the key, finds a model that answers, keeps it. Returns (model, short answer). */
+    fun saveTest(st: Store, p: Provider, status: (String) -> Unit): Pair<String, String> {
+        val a = ask(st, p, "Answer in one short sentence.", "Say hello to a teenager managing diabetes.", status = status)
+        return st.model(p) to a
+    }
+
+    /** Usable models, best first (for Gemini: flash, then flash-lite, then pro …). */
+    fun ranked(p: Provider, ids: List<String>): List<String> {
+        val skip = Regex(p.skip, RegexOption.IGNORE_CASE)
+        val usable = ids.filter { !skip.containsMatchIn(it) }
+        val stable = usable.filter { !it.contains("preview") }
+        val out = LinkedHashSet<String>()
+        for (pool in listOf(stable, usable)) for (pat in p.prefer) {
+            val re = Regex(pat)
+            pool.filter { re.containsMatchIn(it) }.sortedDescending().forEach { out += it }
+        }
+        return out.toList()
     }
 
     private fun b64(b: ByteArray) = Base64.encodeToString(b, Base64.NO_WRAP)

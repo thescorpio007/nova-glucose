@@ -384,6 +384,8 @@ If the photo shows no food, return an empty items list and explain in notes.
         val mg = Db.get(this).near(now)?.mg ?: mgAtMeal
         Db.get(this).addMeal(Meal(0, now, title, arr.toString(), clean.sumOf { it.carbs },
             clean.sumOf { it.low }, clean.sumOf { it.high }, mg, photo, note.text.toString()))
+        val app = applicationContext
+        Thread { Vault.exportMeals(app) }.start()
         Ui.toast(this, "Saved to logbook")
         sessionDir().deleteRecursively()
         finish()

@@ -15,6 +15,7 @@ import java.util.Locale
 /** Saved meals with their carb estimate and how her glucose responded 2 hours later. */
 class LogbookActivity : BaseActivity() {
     private lateinit var list: LinearLayout
+    private lateinit var today: LinearLayout
     private val fmt = SimpleDateFormat("EEE d MMM · HH:mm", Locale.US)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,6 +28,8 @@ class LogbookActivity : BaseActivity() {
         root.addView(head)
         root.addView(Ui.text(this, "Each meal shows glucose at the meal and 2 hours later, to help judge future estimates. Long-press a meal to delete it.",
             13f, Ui.MUTED))
+        today = Ui.card(this)
+        root.addView(today, Ui.lp(top = Ui.dp(this, 10)))
         list = Ui.col(this)
         root.addView(list, Ui.lp(top = Ui.dp(this, 10)))
         root.addView(Ui.signature(this))
@@ -35,7 +38,24 @@ class LogbookActivity : BaseActivity() {
 
     override fun onResume() { super.onResume(); render() }
 
+    private fun renderToday() {
+        today.removeAllViews()
+        val st = Store(this)
+        val (a, b) = Vault.dayRange(java.util.Calendar.getInstance())
+        val s = Vault.stats(st, Db.get(this).readings(a, b))
+        today.addView(Ui.text(this, "Today's glucose assessment", 13f, Ui.MUTED, true))
+        if (s == null) { today.addView(Ui.text(this, "No readings yet today.", 14f, Ui.MUTED)); return }
+        today.addView(Ui.text(this, "${s.inRange}% in range (${st.low}–${st.high})", 20f,
+            if (s.inRange >= 70) Ui.GOOD else if (s.inRange >= 50) Ui.WARN else Ui.BAD, true))
+        today.addView(Ui.text(this, "Average ${s.avg} mg/dL · lowest ${s.min} · highest ${s.max}\n" +
+            "Below ${st.low}: ${s.below}% · above ${st.high}: ${s.above}% · low episodes: ${s.lowEpisodes}", 13f, Ui.TEXT))
+        today.addView(Ui.text(this, if (Vault.ready(this)) "Full daily report saved in ${Vault.folderLabel(this)}/assessment"
+            else "Choose the Download/NovaGlucose folder in Settings to save daily reports.", 12f, Ui.MUTED).apply {
+            setPadding(0, Ui.dp(context, 6), 0, 0) })
+    }
+
     private fun render() {
+        renderToday()
         list.removeAllViews()
         val db = Db.get(this)
         val meals = db.meals()
