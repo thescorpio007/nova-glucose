@@ -151,6 +151,12 @@ class Store(c: Context) {
     var lastExportReading: Long get() = sp.getLong("last_export_reading", 0); set(v) = sp.edit().putLong("last_export_reading", v).apply()
     var lastBackupTs: Long get() = sp.getLong("last_backup", 0); set(v) = sp.edit().putLong("last_backup", v).apply()
     var resumeAsked: Boolean get() = b("resume_asked", false); set(v) = putb("resume_asked", v)
+    // parental control
+    var pinOn: Boolean get() = b("pin_on", false); set(v) = putb("pin_on", v)
+    var pinHash: String get() = s("pin_hash"); set(v) = put("pin_hash", v)
+    var pinFails: Int get() = i("last_pin_fails", 0); set(v) = puti("last_pin_fails", v)
+    var pinBlockUntil: Long get() = sp.getLong("last_pin_block", 0); set(v) = sp.edit().putLong("last_pin_block", v).apply()
+
     var layout: Int get() = i("folder_layout", 1); set(v) = puti("folder_layout", v)
     var lastPdf: Long get() = sp.getLong("last_pdf", 0); set(v) = sp.edit().putLong("last_pdf", v).apply()
 

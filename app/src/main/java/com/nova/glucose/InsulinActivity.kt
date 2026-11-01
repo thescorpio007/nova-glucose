@@ -160,9 +160,11 @@ class InsulinActivity : BaseActivity() {
             row.addView(col, Ui.lp(0, weight = 1f))
             row.addView(Ui.text(this, "${fmt(d.units)} u", 17f, Ui.ACCENT, true))
             row.setOnLongClickListener {
-                AlertDialog.Builder(this).setMessage("Delete this dose?")
-                    .setPositiveButton("Delete") { _, _ -> Db.get(this).deleteDose(d.id); renderHistory(); exportLater() }
-                    .setNegativeButton("Cancel", null).show(); true
+                Parent.guard(this, "Enter the PIN to delete a dose.") {
+                    AlertDialog.Builder(this).setMessage("Delete this dose?")
+                        .setPositiveButton("Delete") { _, _ -> Db.get(this).deleteDose(d.id); renderHistory(); exportLater() }
+                        .setNegativeButton("Cancel", null).show()
+                }; true
             }
             history.addView(row, Ui.lp(top = Ui.dp(this, 6)))
         }

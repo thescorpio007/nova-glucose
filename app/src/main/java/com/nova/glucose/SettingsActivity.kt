@@ -32,6 +32,12 @@ class SettingsActivity : BaseActivity() {
     private lateinit var backupPw: EditText
     private lateinit var backupMsg: TextView
     private var pendingBackup: String? = null
+    private lateinit var lockBtn: TextView
+    private lateinit var lockBanner: TextView
+    private lateinit var pinSw: Switch
+    private lateinit var allViews: View
+    private var uiLocked = false
+    private val lockTick = android.os.Handler(android.os.Looper.getMainLooper())
     private lateinit var urgSw: Switch
     private lateinit var cbUL: android.widget.CheckBox
     private lateinit var cbL: android.widget.CheckBox
@@ -57,15 +63,60 @@ class SettingsActivity : BaseActivity() {
         build()
     }
 
-    override fun onPause() { save(false); super.onPause() }
+    override fun onPause() { save(false); lockTick.removeCallbacksAndMessages(null); super.onPause() }
+
+    override fun finish() { save(false); Parent.lock(); super.finish() }
+
+    private val watch = object : Runnable {
+        override fun run() {
+            // 5 minutes passed: save what was changed, then lock the screen.
+            if (!uiLocked && Parent.locked(st)) { save(false); renderLock() }
+            lockTick.postDelayed(this, 5_000)
+        }
+    }
+
+    private fun toggleLock() {
+        if (!Parent.enabled(st)) { Ui.toast(this, "Turn on the parent PIN in Parental control first"); return }
+        if (uiLocked) Parent.ask(this, "Enter the PIN to change settings.") { renderLock() }
+        else { save(false); Parent.lock(); renderLock() }
+    }
+
+    /** View-only when locked: every control is disabled except Unlock and Done. */
+    private fun renderLock() {
+        uiLocked = Parent.locked(st)
+        lockBanner.visibility = if (uiLocked) View.VISIBLE else View.GONE
+        lockBtn.visibility = if (Parent.enabled(st)) View.VISIBLE else View.GONE
+        lockBtn.text = if (uiLocked) "🔓 Unlock" else "🔒 Lock"
+        fun walk(v: View) {
+            if (v.tag == "free") return
+            if (v is EditText || v is android.widget.CompoundButton || v is android.widget.SeekBar || v.hasOnClickListeners()) {
+                v.isEnabled = !uiLocked; v.alpha = if (uiLocked) 0.7f else 1f
+            }
+            if (v is android.view.ViewGroup) for (k in 0 until v.childCount) walk(v.getChildAt(k))
+        }
+        walk(allViews)
+        pinSw.setOnCheckedChangeListener(null)
+        pinSw.isChecked = Parent.enabled(st)
+        pinSw.setOnCheckedChangeListener { b, on ->
+            if (on && st.pinHash.isBlank()) Parent.setPin(this) { ok -> if (!ok) b.isChecked = false; renderLock() }
+            else { st.pinOn = on; if (on) Parent.unlockFor5(); renderLock() }
+        }
+    }
 
     private fun build() {
         root = Ui.col(this, 16)
         val sv = ScrollView(this).apply { addView(root); setBackgroundColor(Ui.BG) }
         val head = Ui.row(this)
         head.addView(Ui.title(this, "Settings"), Ui.lp(0, weight = 1f))
-        head.addView(Ui.smallButton(this, "Done") { save(true); finish() })
+        lockBtn = Ui.smallButton(this, "") { toggleLock() }.apply { tag = "free" }
+        head.addView(lockBtn, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
+        head.addView(Ui.smallButton(this, "Done") { save(true); finish() }.apply { tag = "free" })
         root.addView(head)
+        lockBanner = Ui.text(this, "🔒 Locked by parent — view only. Ask a parent to change settings.", 14f, Ui.WARN).apply {
+            background = Ui.round(0x22FFB347, Ui.dp(context, 10).toFloat())
+            setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
+        }
+        root.addView(lockBanner, Ui.lp(top = Ui.dp(this, 8)))
 
         // ---------------------------------------------------------- LibreLinkUp
         root.addView(Ui.section(this, "LibreLinkUp connection"))
@@ -227,6 +278,22 @@ class SettingsActivity : BaseActivity() {
         Foods.PHOTO_TIPS.forEach { tc.addView(Ui.text(this, "•  $it", 13f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 3), 0, 0) }) }
         root.addView(tc)
 
+        // ---------------------------------------------------------- Parental control
+        root.addView(Ui.section(this, "Parental control"))
+        val lc2 = Ui.card(this)
+        pinSw = switch("Lock settings with a parent PIN", Parent.enabled(st)).apply {
+            setOnCheckedChangeListener { b, on ->
+                if (on && st.pinHash.isBlank()) Parent.setPin(this@SettingsActivity) { ok -> if (!ok) b.isChecked = false; renderLock() }
+                else { st.pinOn = on; if (on) Parent.unlockFor5(); renderLock() }
+            }
+        }
+        lc2.addView(pinSw)
+        lc2.addView(Ui.button(this, "Set / change PIN (4 digits)") { Parent.setPin(this) { renderLock() } }, Ui.lp(top = Ui.dp(this, 8)))
+        lc2.addView(Ui.text(this, "When on: everyone can see Settings, but changing anything, deleting meals or insulin doses, " +
+            "and changing the AI model need the PIN. Stays unlocked until you leave Settings (5 min at most). " +
+            "Forgot the PIN? Use the backup password.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        root.addView(lc2)
+
         // ---------------------------------------------------------- Backup & folder
         root.addView(Ui.section(this, "Backup & Download folder"))
         val bc = Ui.card(this)
@@ -271,6 +338,8 @@ class SettingsActivity : BaseActivity() {
 
         root.addView(Ui.signature(this))
         setContentView(sv)
+        allViews = root
+        renderLock()
     }
 
     private fun switch(label: String, on: Boolean) = Switch(this).apply {
@@ -301,6 +370,7 @@ class SettingsActivity : BaseActivity() {
     private fun num(id: String, d: Int) = nums[id]?.text?.toString()?.trim()?.toIntOrNull() ?: d
 
     private fun save(toast: Boolean) {
+        if (uiLocked) return
         val loginChanged = email.text.toString().trim() != st.email || pw.text.toString() != st.password
         st.email = email.text.toString()
         st.password = pw.text.toString()
@@ -494,7 +564,12 @@ class SettingsActivity : BaseActivity() {
         private const val REQ_AUDIO = 14; private const val REQ_PEN_CAM = 15; private const val REQ_PEN_GAL = 16
     }
 
-    override fun onResume() { super.onResume(); if (::permStatus.isInitialized) renderPerms() }
+    override fun onResume() {
+        super.onResume()
+        if (::permStatus.isInitialized) renderPerms()
+        if (::allViews.isInitialized) renderLock()
+        lockTick.post(watch)
+    }
 
     private fun check(label: String, on: Boolean) = android.widget.CheckBox(this).apply {
         text = label; isChecked = on; setTextColor(Ui.TEXT); textSize = 15f

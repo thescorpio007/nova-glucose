@@ -148,7 +148,9 @@ class CompareActivity : BaseActivity() {
                 gravity = Gravity.END }, Ui.lp(Ui.dp(this, 44), -2))
             row.setOnClickListener {
                 if (r.err != null) { Ui.toast(this, "This model didn't answer"); return@setOnClickListener }
-                st.setModel(p, r.model); st.aiProvider = p.id; Ui.toast(this, "Now using ${r.model}"); render()
+                Parent.guard(this, "Enter the PIN to change the AI model.") {
+                    st.setModel(p, r.model); st.aiProvider = p.id; Ui.toast(this, "Now using ${r.model}"); render()
+                }
             }
             table.addView(row)
         }

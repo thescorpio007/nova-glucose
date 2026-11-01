@@ -107,11 +107,11 @@ class LogbookActivity : BaseActivity() {
             if (m.note.isNotBlank()) card.addView(Ui.text(this, "Note: ${m.note}", 12f, Ui.MUTED))
 
             card.setOnLongClickListener {
-                AlertDialog.Builder(this).setMessage("Delete this meal?")
+                Parent.guard(this, "Enter the PIN to delete a meal.") { AlertDialog.Builder(this).setMessage("Delete this meal?")
                     .setPositiveButton("Delete") { _, _ ->
                         db.deleteMeal(m.id); if (m.photo.isNotBlank()) File(m.photo).delete(); render()
                     }
-                    .setNegativeButton("Cancel", null).show()
+                    .setNegativeButton("Cancel", null).show() }
                 true
             }
             list.addView(card, Ui.lp(top = Ui.dp(this, 8)))
