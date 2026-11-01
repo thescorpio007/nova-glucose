@@ -16,6 +16,7 @@ object SyncTest {
         var a: FamilySync.Session? = null; var b: FamilySync.Session? = null
         val gids = mutableListOf<String>()
         val done = mutableListOf<String>()
+        FamilySync.testing = true
         try {
             val code = FamilySync.newCode(); val pw = "Family#2026"
             val key = FamilySync.deriveKey(code, pw)
@@ -37,11 +38,15 @@ object SyncTest {
                 .put("units", 4.5).put("carbs", 45).put("wait", 15).put("mgAt", 140).put("note", "NovoRapid before lunch")
             val eatAt = now + 15 * 60_000L
             val eat = JSONObject().put("t", "eat").put("g", "eat").put("u", now).put("at", eatAt)
-            val rx = android.util.Base64.encodeToString(ByteArray(200_000) { (it % 251).toByte() }, android.util.Base64.NO_WRAP)
             val inc = JSONObject().put("t", "inc").put("g", ig).put("u", now).put("ts", now - 5 * 3600_000L).put("end", 0).put("kind", "Flu / cold")
-                .put("details", "Fever 38.4").put("meds", "Paracetamol 250 mg x3/day").put("by", "Phone A").put("photo", rx)
-            FamilySync.push(sa, fam, key, listOf(mg to meal, dg to dose, "eat" to eat, ig to inc))
-            done += "family created, 4 items sent (incl. incident + prescription photo) ✓"
+                .put("details", "Fever 38.4").put("meds", "Paracetamol 250 mg x3/day").put("by", "Phone A")
+            fun sv(t: String, v: Any) = JSONObject().put("t", t).put("v", v)
+            val set = JSONObject().put("t", "set").put("g", "settings").put("u", now).put("s", JSONObject()
+                .put("v", JSONObject().put("rapid_name", sv("s", "Fiasp")).put("carb_ratio", sv("i", 10)).put("email", sv("s", "family@example.com"))
+                    .put("low", sv("i", 90)).put("model_gemini", sv("s", "gemini-2.5-pro")))
+                .put("keys", JSONObject().put("gemini", "G-FAMILY-KEY")).put("pw", "LluFamily!1"))
+            FamilySync.push(sa, fam, key, listOf(mg to meal, dg to dose, "eat" to eat, ig to inc, "settings" to set))
+            done += "family created, 5 items sent (incl. incident and settings) ✓"
 
             // A stranger can't read, can't join with a wrong password, and a wrong code is refused
             val denied = try { FamilySync.pull(x, fam, key, ""); "allowed" } catch (e: FamilySync.SyncError) { if (e.code == 403) "refused" else "error ${e.code}" }
@@ -57,12 +62,13 @@ object SyncTest {
             // Phone B joins and receives everything, encrypted at rest
             FamilySync.joinFamily(sb, fam, key, "Phone B")
             val p = FamilySync.pull(sb, fam, key, "")
-            check(p.items.size == 4) { "phone B received ${p.items.size} of 4 items" }
+            check(p.items.size == 5) { "phone B received ${p.items.size} of 5 items" }
             val raw = FamilySync.rawItems(sb, fam)
-            check(!raw.contains("Couscous") && !raw.contains("NovoRapid") && !raw.contains("Paracetamol")) { "readable text stored in Firebase" }
-            done += "phone B joined, received 4/4 ✓ · stored encrypted ✓"
+            check(!raw.contains("Couscous") && !raw.contains("NovoRapid") && !raw.contains("Paracetamol") && !raw.contains("G-FAMILY-KEY") && !raw.contains("LluFamily")) { "readable text stored in Firebase" }
+            done += "phone B joined, received 5/5 ✓ · stored encrypted ✓"
 
             // Merge on this phone: no duplicates on repeat or twins
+            st.low = 77
             p.items.forEach { FamilySync.apply(c, it) }
             p.items.forEach { FamilySync.apply(c, it) }
             check(db.meals(10).size == 1 && db.doses().size == 1) { "after merge: ${db.meals(10).size} meals, ${db.doses().size} doses" }
@@ -71,10 +77,13 @@ object SyncTest {
             check(st.eatAt == eatAt) { "eat timer not started" }
             val gotInc = db.incidents().firstOrNull()
             check(gotInc != null && gotInc.meds.contains("Paracetamol") && gotInc.ongoing) { "incident not received" }
-            check(java.io.File(gotInc.photo).length() == 200_000L) { "prescription photo not received" }
+            check(gotInc.photo.isBlank()) { "a photo was synced" }
+            check(st.rapidName == "Fiasp" && st.carbRatio == 10 && st.email == "family@example.com" && st.password == "LluFamily!1") { "shared settings not applied" }
+            check(st.key(Providers.byId("gemini")!!) == "G-FAMILY-KEY" && st.model(Providers.byId("gemini")!!) == "gemini-2.5-pro") { "AI key/model not applied" }
+            check(st.low == 77) { "an alert setting was overwritten by the family" }
             FamilySync.apply(c, JSONObject(meal.toString()).put("g", "zz-twin"))
             check(db.meals(10).size == 1) { "same meal under another id was duplicated" }
-            done += "merged here, no duplicates ✓ · AI correction ✓ · eat timer ✓ · incident + photo ✓"
+            done += "merged here, no duplicates ✓ · AI correction ✓ · eat timer ✓ · incident ✓ · no photos ✓ · LibreLinkUp login + AI key + profile shared ✓ · alerts kept per phone ✓"
 
             // An edit and a deletion from B reach A
             FamilySync.push(sb, fam, key, listOf(dg to JSONObject(dose.toString()).put("u", now + 1000).put("units", 5.0),
@@ -106,6 +115,7 @@ object SyncTest {
         } catch (e: Throwable) {
             return "FAIL · ${e.message} (after: ${done.joinToString(" · ")})"
         } finally {
+            FamilySync.testing = false
             try { EatTimer.cancel(c, share = false) } catch (_: Exception) { }
             try { a?.let { FamilySync.deleteItems(it, fam, gids) } } catch (_: Exception) { }
             try { a?.let { FamilySync.leaveFamily(it, fam) }; b?.let { FamilySync.leaveFamily(it, fam) } } catch (_: Exception) { }

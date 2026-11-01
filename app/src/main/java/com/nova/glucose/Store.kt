@@ -203,12 +203,34 @@ class Store(c: Context) {
     var syncSeen: Long get() = sp.getLong("sync_seen", 0); set(v) = sp.edit().putLong("sync_seen", v).apply()
     /** Edit time of the eat timer last applied (family-wide). */
     var syncEatU: Long get() = sp.getLong("sync_eat_u", 0); set(v) = sp.edit().putLong("sync_eat_u", v).apply()
+    /** This phone keeps its own LibreLinkUp login (not shared with the family). */
+    var syncOwnLibre: Boolean get() = b("sync_own_llu", false); set(v) = putb("sync_own_llu", v)
+    /** Family-shared settings: time of the last change applied/sent, and a fingerprint to notice local changes. */
+    var syncSetU: Long get() = sp.getLong("sync_set_u", 0); set(v) = sp.edit().putLong("sync_set_u", v).apply()
+    var syncSetHash: String get() = s("sync_set_hash"); set(v) = put("sync_set_hash", v)
+
+    // ---------------------------------------------------------------- notifications & watch (this phone only)
+    var notifyEat: Boolean get() = b("notify_eat", true); set(v) = putb("notify_eat", v)
+    var watchAlerts: Boolean get() = b("watch_alerts", true); set(v) = putb("watch_alerts", v)
+    var watchUrgent: Boolean get() = b("watch_urgent", true); set(v) = putb("watch_urgent", v)
+    var watchStale: Boolean get() = b("watch_stale", true); set(v) = putb("watch_stale", v)
+    var watchEat: Boolean get() = b("watch_eat", true); set(v) = putb("watch_eat", v)
+    /** Glucose message for the watch every N minutes (0 = off). */
+    var watchGlucose: Int get() = i("watch_glucose", 0); set(v) = puti("watch_glucose", v)
+    var lastWatchPost: Long get() = sp.getLong("last_watch", 0); set(v) = sp.edit().putLong("last_watch", v).apply()
+
     var syncOwner: Boolean get() = b("sync_owner", false); set(v) = putb("sync_owner", v)
 
     var layout: Int get() = i("folder_layout", 1); set(v) = puti("folder_layout", v)
     var lastPdf: Long get() = sp.getLong("last_pdf", 0); set(v) = sp.edit().putLong("last_pdf", v).apply()
 
     companion object {
+        /** LibreLinkUp settings shared in the family (unless this phone keeps its own login). */
+        val LIBRE_KEYS = setOf("email", "api_base", "llu_version", "patient_id", "patient_name")
+        /** Plain settings shared in the family. Alerts, alarms, watch, folder, Drive and PIN stay on each phone. */
+        val SHARED_KEYS = setOf("ai", "age", "gender", "about_her", "long_name", "long_dose", "long_time", "rapid_name", "carb_ratio",
+            "target_mg", "corr_factor", "eat_wait", "low_treat", "meal_min", "meal_max", "snack_min", "snack_max", "food_notes")
+        fun shared(k: String) = k in SHARED_KEYS || k.startsWith("model_")
         private const val ALIAS = "nova_glucose_secret"
         const val PREFS = "nova_glucose"
         /** Never copied as plain settings (secrets, per-phone state). */

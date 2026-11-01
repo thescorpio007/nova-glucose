@@ -158,7 +158,17 @@ class MonitorService : Service() {
             else -> "Waiting for a reading…"
         }
         nm.notify(ID_STATUS, statusNote(text, title))
+        watchGlucose(r, nm)
         if (st.alertsOn) checkAlerts(shown, nm)
+    }
+
+    /** Watches don't show the permanent live notification, so post a quiet glucose message every N minutes. */
+    private fun watchGlucose(r: Reading?, nm: NotificationManager) {
+        val every = st.watchGlucose
+        if (every <= 0 || r == null || System.currentTimeMillis() - r.ts > 15 * 60_000L) return
+        if (System.currentTimeMillis() - st.lastWatchPost < every * 60_000L - 20_000L) return
+        st.lastWatchPost = System.currentTimeMillis()
+        Watch.glucose(this, r, st)
     }
 
     private fun minutesAgo(ts: Long): String {
@@ -209,6 +219,7 @@ class MonitorService : Service() {
             .setAutoCancel(true).setContentIntent(openApp())
             .apply { if (Build.VERSION.SDK_INT < 26) { @Suppress("DEPRECATION") setPriority(Notification.PRIORITY_MAX) } }
             .setCategory(if (low) Notification.CATEGORY_ALARM else Notification.CATEGORY_STATUS)
+            .setLocalOnly(!(if (kind == "stale") st.watchStale else st.watchAlerts))
             .build()
         nm.notify(ID_ALERT, n)
         Vault.logAlert(this, title, body)

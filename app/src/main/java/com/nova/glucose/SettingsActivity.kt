@@ -84,7 +84,7 @@ class SettingsActivity : BaseActivity() {
         build()
     }
 
-    override fun onPause() { save(false); lockTick.removeCallbacksAndMessages(null); super.onPause() }
+    override fun onPause() { save(false); FamilySync.kick(this); lockTick.removeCallbacksAndMessages(null); super.onPause() }
 
     override fun finish() { save(false); Parent.lock(); super.finish() }
 
@@ -322,6 +322,32 @@ class SettingsActivity : BaseActivity() {
             "Forgot the PIN? Use the backup password.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         root.addView(lc2)
 
+        // ---------------------------------------------------------- Notifications & watch
+        root.addView(Ui.section(this, "Notifications and watch (this phone only)"))
+        val wc = Ui.card(this)
+        wc.addView(Ui.text(this, "Smart watches (e.g. HUAWEI WATCH GT 3) show Nova Glucose notifications when Nova Glucose is switched on in " +
+            "the watch app (Huawei Health › your watch › Notifications). Choose what goes to the watch from this phone:", 13f, Ui.TEXT))
+        fun wcb(label: String, on: Boolean, set: (Boolean) -> Unit) = check(label, on).apply { setOnCheckedChangeListener { _, v -> set(v) } }
+        wc.addView(wcb("Urgent alarms (urgent low, low, very high…)", st.watchUrgent) { st.watchUrgent = it }, Ui.lp(top = Ui.dp(this, 6)))
+        wc.addView(wcb("Low / high alerts", st.watchAlerts) { st.watchAlerts = it })
+        wc.addView(wcb("No-signal alerts", st.watchStale) { st.watchStale = it })
+        wc.addView(wcb("Time-to-eat reminder", st.watchEat) { st.watchEat = it })
+        wc.addView(Ui.text(this, "Glucose on the watch (quiet message, no sound):", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
+        val wg = Ui.row(this)
+        fun renderWg() {
+            wg.removeAllViews()
+            listOf(0 to "Off", 5 to "Every 5 min", 10 to "10 min", 15 to "15 min").forEach { (m, l) ->
+                wg.addView(Ui.chip(this, l, st.watchGlucose == m) { st.watchGlucose = m; st.lastWatchPost = 0; renderWg() }, Ui.lp(-2, -2, end = Ui.dp(this, 6)))
+            }
+        }
+        renderWg(); wc.addView(wg)
+        wc.addView(check("Show the time-to-eat reminder on this phone", st.notifyEat).apply { setOnCheckedChangeListener { _, v -> st.notifyEat = v } },
+            Ui.lp(top = Ui.dp(this, 10)))
+        wc.addView(Ui.text(this, "Unticked items stay on this phone only. Some watch apps forward everything anyway — use the test to check. " +
+            "The urgent alarm's sound plays on the phone; the watch vibrates and shows it.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        wc.addView(Ui.button(this, "⌚ Send a test to the watch") { Watch.test(this); Ui.toast(this, "Test sent — look at the watch") }, Ui.lp(top = Ui.dp(this, 8)))
+        root.addView(wc)
+
         // ---------------------------------------------------------- Family sync
         root.addView(Ui.section(this, "Family sync (all phones)"))
         val fc = Ui.card(this)
@@ -330,9 +356,10 @@ class SettingsActivity : BaseActivity() {
         famMsg = Ui.text(this, "", 13f, Ui.MUTED)
         fc.addView(famMsg, Ui.lp(top = Ui.dp(this, 6)))
         fc.addView(Ui.button(this, "📤 Share family update file (WhatsApp…)") { shareFamilyFile() }, Ui.lp(top = Ui.dp(this, 10)))
-        fc.addView(Ui.text(this, "Shared between the phones: meals, insulin doses, earlier entries, deletions, the eat timer and AI corrections. " +
-            "Not shared: settings, alarms, the LibreLinkUp login and API keys — each phone keeps its own. Everything is encrypted with the " +
-            "family password before it leaves the phone. No internet? Send the update file and open it on the other phone: it adds what's missing.",
+        fc.addView(Ui.text(this, "Shared between the phones: meals, insulin doses, earlier entries, incidents, deletions, the eat timer, AI corrections, " +
+            "and the settings — LibreLinkUp login, AI keys and models, profile and insulin, carb plan, food notes. " +
+            "Not shared: photos and videos, alerts, urgent alarm, watch and notification choices, folder, Google Drive and the PIN — each phone keeps its own. " +
+            "Everything is encrypted with the family password before it leaves the phone. No internet? Send the update file and open it on the other phone: it adds what's missing.",
             12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         root.addView(fc)
         renderFamily()
@@ -745,6 +772,13 @@ class SettingsActivity : BaseActivity() {
                 } catch (e: Exception) { "Phones: couldn't load (${e.message})" }
                 runOnUiThread { if (!isFinishing) members.text = txt }
             }.start()
+            famBox.addView(Switch(this).apply {
+                text = "This phone uses its own LibreLinkUp login (don't share it)"; isChecked = st.syncOwnLibre
+                setTextColor(Ui.TEXT); textSize = 14f; setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 4))
+                setOnCheckedChangeListener { _, on -> st.syncOwnLibre = on }
+            })
+            famBox.addView(Ui.text(this, "Tip: one LibreLinkUp login on several phones can be signed out or locked by Abbott. If that happens, " +
+                "turn this on and use a separate follower invitation from her LibreLink app for this phone.", 12f, Ui.MUTED))
             val sr = Ui.row(this)
             sr.addView(Ui.button(this, "🔄 Sync now", true) { famWork("Syncing…") { FamilySync.run(it) } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
             sr.addView(Ui.button(this, "Leave") {
@@ -923,6 +957,9 @@ class SettingsActivity : BaseActivity() {
             t.startsWith("CARB") -> "Meals ${st.mealMin}–${st.mealMax} g · snacks ${st.snackMin}–${st.snackMax} g · low ${st.lowTreatG} g"
             t.startsWith("AI") -> st.current().label + " · " + st.model(st.current())
             t.startsWith("PARENTAL") -> if (Parent.enabled(st)) "PIN on" else "Off"
+            t.startsWith("NOTIFICATIONS") -> listOfNotNull("urgent".takeIf { st.watchUrgent }, "alerts".takeIf { st.watchAlerts },
+                "no signal".takeIf { st.watchStale }, "eat".takeIf { st.watchEat }).let { if (it.isEmpty()) "Watch: nothing" else "Watch: " + it.joinToString(", ") } +
+                if (st.watchGlucose > 0) " · glucose every ${st.watchGlucose} min" else ""
             t.startsWith("FAMILY") -> if (st.syncFam.isBlank()) "Not set up" else "${st.syncName.ifBlank { "This phone" }} · " +
                 (if (st.syncLast > 0) "synced ${f.format(java.util.Date(st.syncLast))}" else "waiting to sync")
             t.startsWith("BACKUP") -> if (st.lastBackupTs > 0) "Last backup ${f.format(java.util.Date(st.lastBackupTs))}" else "No backup yet"

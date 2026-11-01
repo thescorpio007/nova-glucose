@@ -42,6 +42,9 @@ object FamilySync {
 
     class SyncError(val code: Int, msg: String) : Exception(msg)
 
+    /** Self-test: don't start the monitor with test logins. */
+    @Volatile var testing = false
+
     /** One anonymous Firebase identity. */
     class Session(var uid: String, var idToken: String, var refresh: String, var exp: Long)
 
@@ -286,9 +289,73 @@ object FamilySync {
             .put("mgAt", d.mgAt).put("note", d.note).put("by", db.who("insulin", id).ifBlank { Store(c).syncName })
     }
 
+    // ================================================================ shared settings (LibreLinkUp login, AI keys, profile…)
+    /** The settings this phone shares with the family (secrets included: the whole item is end-to-end encrypted). */
+    fun settingsPayload(c: Context): JSONObject {
+        val st = Store(c)
+        val v = JSONObject()
+        for ((k, x) in st.raw.all.toSortedMap()) {
+            if (!(Store.shared(k) || (!st.syncOwnLibre && k in Store.LIBRE_KEYS))) continue
+            when (x) {
+                is Boolean -> v.put(k, JSONObject().put("t", "b").put("v", x))
+                is Int -> v.put(k, JSONObject().put("t", "i").put("v", x))
+                is Long -> v.put(k, JSONObject().put("t", "l").put("v", x))
+                is String -> v.put(k, JSONObject().put("t", "s").put("v", x))
+            }
+        }
+        val keys = JSONObject()
+        Providers.all.forEach { p -> st.key(p).takeIf { it.isNotBlank() }?.let { keys.put(p.id, it) } }
+        val o = JSONObject().put("v", v).put("keys", keys)
+        if (!st.syncOwnLibre && st.password.isNotBlank()) o.put("pw", st.password)
+        return o
+    }
+
+    private fun hash(o: JSONObject) = MessageDigest.getInstance("SHA-256").digest(o.toString().toByteArray()).joinToString("") { "%02x".format(it) }
+
+    /** Notices a local change of the shared settings and queues it for the family. */
+    private fun checkSettings(c: Context) {
+        val st = Store(c)
+        val h = hash(settingsPayload(c))
+        if (st.syncSetHash.isBlank()) {             // first time on this build: the family's creator shares, the others receive
+            st.syncSetHash = h
+            if (st.syncOwner) { st.syncSetU = System.currentTimeMillis(); Db.get(c).queue("settings", "set", kick = false) }
+            return
+        }
+        if (h != st.syncSetHash) { st.syncSetHash = h; st.syncSetU = System.currentTimeMillis(); Db.get(c).queue("settings", "set", kick = false) }
+    }
+
+    private fun applySettings(c: Context, item: JSONObject): String {
+        val st = Store(c)
+        val u = item.optLong("u")
+        if (u <= st.syncSetU) return ""
+        val o = item.optJSONObject("s") ?: return ""
+        val oldLogin = st.email + "|" + st.password + "|" + st.patientId
+        val e = st.raw.edit()
+        val v = o.optJSONObject("v") ?: JSONObject()
+        for (k in v.keys()) {
+            if (!(Store.shared(k) || (!st.syncOwnLibre && k in Store.LIBRE_KEYS))) continue
+            val x = v.getJSONObject(k)
+            when (x.optString("t")) {
+                "b" -> e.putBoolean(k, x.optBoolean("v")); "i" -> e.putInt(k, x.optInt("v"))
+                "l" -> e.putLong(k, x.optLong("v")); "s" -> e.putString(k, x.optString("v"))
+            }
+        }
+        e.commit()
+        o.optJSONObject("keys")?.let { keys -> Providers.all.forEach { p -> keys.optString(p.id).takeIf { it.isNotBlank() }?.let { st.setKey(p, it) } } }
+        if (!st.syncOwnLibre && o.optString("pw").isNotBlank()) st.password = o.optString("pw")
+        st.syncSetU = u
+        st.syncSetHash = hash(settingsPayload(c))
+        if (oldLogin != st.email + "|" + st.password + "|" + st.patientId) {
+            st.token = ""
+            if (st.loggedIn && st.monitorOn && !testing) try { MonitorService.start(c) } catch (_: Exception) { }
+        }
+        return "set"
+    }
+
     /** Current state of a pending item (null = nothing to send). */
     fun itemFor(c: Context, gid: String, kind: String): JSONObject? {
         val db = Db.get(c)
+        if (kind == "set") return JSONObject().put("t", "set").put("g", "settings").put("u", Store(c).syncSetU).put("s", settingsPayload(c))
         if (kind == "eat") { val st = Store(c); return JSONObject().put("t", "eat").put("g", "eat").put("u", st.syncEatU).put("at", st.eatAt) }
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
@@ -343,6 +410,7 @@ object FamilySync {
                 db.updateDose(r.first, d, u); return "upd"
             }
             "inc" -> return Incidents.apply(c, item)
+            "set" -> return applySettings(c, item)
             "del" -> {
                 db.byGid("meals", g)?.let { (id, _) -> db.meal(id)?.photo?.takeIf { p -> p.isNotBlank() }?.let { p -> java.io.File(p).delete() } }
                 return if (db.applyDelete(g, if (u > 0) u else System.currentTimeMillis())) "del" else ""
@@ -392,7 +460,8 @@ object FamilySync {
         val s = session(c)
         createFamily(s, famId(code), key, name)
         saveFamily(st, code, password, key, name, true)
-        Db.get(c).queueAll(); queueEat(c)
+        st.syncSetHash = hash(settingsPayload(c)); st.syncSetU = System.currentTimeMillis()
+        Db.get(c).queueAll(); queueEat(c); Db.get(c).queue("settings", "set", kick = false)
         try { run(c) } catch (_: Exception) { }
         return pretty(code)
     }
@@ -406,6 +475,7 @@ object FamilySync {
         val s = session(c)
         joinFamily(s, famId(code), key, name)
         saveFamily(st, code, password, key, name, false)
+        st.syncSetHash = hash(settingsPayload(c)); st.syncSetU = 0        // receive the family's settings
         Db.get(c).queueAll()
         return try { run(c).replace("✓", "✓ Joined ·") } catch (e: Exception) { "✓ Joined · first sync will retry (${e.message})" }
     }
@@ -414,6 +484,7 @@ object FamilySync {
         val st = Store(c)
         if (st.syncFam.isNotBlank()) try { leaveFamily(session(c), st.syncFam) } catch (_: Exception) { }
         st.syncFam = ""; st.syncCode = ""; st.syncPw = ""; st.syncKey = ""; st.syncSince = ""; st.syncInfo = ""; st.syncOwner = false
+        st.syncSetHash = ""; st.syncSetU = 0
         Db.get(c).clearOutbox()
     }
 
@@ -466,6 +537,7 @@ object FamilySync {
             else if (e.code == 403) { s = session(c, force = true); writeMember(s, fam, key, st.syncName.ifBlank { "Phone" }); block(s) }
             else throw e
         }
+        checkSettings(c)
         // 1. send
         var sent = 0
         while (true) {

@@ -73,10 +73,7 @@ If the photo is not a prescription, answer exactly: Not a prescription.
         val o = JSONObject().put("t", "inc").put("g", db.gid("incidents", id)).put("u", db.upd("incidents", id))
             .put("ts", i.ts).put("end", i.end).put("kind", i.kind).put("details", i.details).put("meds", i.meds)
             .put("by", db.who("incidents", id).ifBlank { Store(c).syncName })
-        if (i.photo.isNotBlank()) File(i.photo).takeIf { it.exists() && it.length() < 600_000 }?.let {
-            o.put("photo", Base64.encodeToString(it.readBytes(), Base64.NO_WRAP))
-        }
-        return o
+        return o          // photos stay on the phone that took them
     }
 
     /** Applies an incident from another phone: "inc+", "upd" or "". */

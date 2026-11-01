@@ -166,6 +166,7 @@ object AlarmPlayer {
             .setContentTitle(title).setContentText(body).setStyle(Notification.BigTextStyle().bigText(body))
             .setCategory(Notification.CATEGORY_ALARM).setVisibility(Notification.VISIBILITY_PUBLIC)
             .setFullScreenIntent(full, true).setContentIntent(full).setOngoing(false).setAutoCancel(true)
+            .setLocalOnly(!Store(c).watchUrgent)
             .addAction(Notification.Action.Builder(null, "Stop", pi(c, AlarmReceiver.STOP, 32)).build())
             .addAction(Notification.Action.Builder(null, "Snooze 15 min", pi(c, AlarmReceiver.SNOOZE, 33)).build())
             .apply { if (Build.VERSION.SDK_INT < 26) { @Suppress("DEPRECATION") setPriority(Notification.PRIORITY_MAX) } }
@@ -260,6 +261,7 @@ object EatTimer {
         val st = Store(c)
         if (st.eatAt == 0L) return
         st.eatAt = 0
+        if (!st.notifyEat) return                  // this phone chose no eat-timer reminder
         val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
             NotificationChannel(CH_EAT, "Time to eat (after rapid insulin)", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -272,7 +274,7 @@ object EatTimer {
         nm.notify(ID_EAT, b.setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle("🍽 Time to eat$mg")
             .setContentText("The wait after rapid insulin is over — start eating now.")
-            .setAutoCancel(true).setContentIntent(open).setCategory(Notification.CATEGORY_REMINDER)
+            .setAutoCancel(true).setContentIntent(open).setCategory(Notification.CATEGORY_REMINDER).setLocalOnly(!st.watchEat)
             .apply { if (Build.VERSION.SDK_INT < 26) { @Suppress("DEPRECATION") setPriority(Notification.PRIORITY_MAX); setDefaults(Notification.DEFAULT_ALL) } }
             .build())
     }

@@ -151,6 +151,8 @@ jobs:
           adb shell input keyevent 4; adb shell am start -W -n $P/.LogbookActivity; sleep 2; shot 17-logbook-incidents
           adb shell am start -W -n $P/.IncidentActivity; sleep 2; tapText "Fever"; shot 18-add-incident
           adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Notifications and watch"; sleep 2; shot 19-watch; half; shot 19b-watch-2
+          adb shell input keyevent 4
           adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demotap true; sleep 4; shot 14-mark-history; half; shot 14b-mark-history-list
           adb shell input keyevent 4
           sleep 2
