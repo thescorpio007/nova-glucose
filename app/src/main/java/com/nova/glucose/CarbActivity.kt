@@ -235,7 +235,7 @@ class CarbActivity : BaseActivity() {
                 background = Ui.round(Ui.CARD2, Ui.dp(context, 10).toFloat())
                 clipToOutline = true
                 setOnClickListener {
-                    AlertDialog.Builder(context).setMessage("Remove this photo?")
+                    Tr.Builder(context).setMessage("Remove this photo?")
                         .setPositiveButton("Remove") { _, _ -> images.removeAt(idx); persist(); renderThumbs() }
                         .setNegativeButton("Keep", null).show()
                 }
@@ -275,7 +275,7 @@ If the photo shows no food, return an empty items list and explain in notes.
         }
         Thread {
             try {
-                val ans = Providers.ask(st, p, system, user, images.toList()) { s -> runOnUiThread { status.text = s } }
+                val ans = Providers.ask(st, p, system + if (L.lang != "en") "\nWrite the food names, portions and notes in ${L.name(L.lang)}; keep the JSON keys in English." else "", user, images.toList()) { s -> runOnUiThread { status.text = s } }
                 val o = parseJson(ans)
                 runOnUiThread { load(o); estimateBtn.isEnabled = true; status.text = "" }
             } catch (e: Exception) {
@@ -398,7 +398,7 @@ If the photo shows no food, return an empty items list and explain in notes.
         Thread { Vault.exportMeals(app) }.start()
         Ui.toast(this, "Saved to logbook")
         sessionDir().deleteRecursively()
-        android.app.AlertDialog.Builder(this).setTitle("Saved · ${clean.sumOf { it.carbs }} g carbs")
+        Tr.Builder(this).setTitle("Saved · ${clean.sumOf { it.carbs }} g carbs")
             .setMessage("Log rapid insulin and start the eat timer now?")
             .setPositiveButton("💉 Rapid insulin") { _, _ ->
                 startActivity(android.content.Intent(this, InsulinActivity::class.java)); finish() }

@@ -163,6 +163,16 @@ jobs:
           adb shell am start -W -n $P/.AskActivity; sleep 2; tapText "The AI sees"; shot 22-ask-ai-sees
           adb shell am start -W -n $P/.AiReviewActivity; sleep 2; shot 23-ai-review
           adb shell input keyevent 4
+          for LG in fr ar; do
+            adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --es lang $LG; sleep 3; shot 30-$LG-home; half; shot 30b-$LG-chart; scroll; shot 30c-$LG-buttons
+            adb shell am start -W -n $P/.MainActivity; sleep 1; tapText "▾"; sleep 1; shot 30d-$LG-language-menu; adb shell input keyevent 4
+            adb shell am start -W -n $P/.InsulinActivity; sleep 2; shot 31-$LG-insulin
+            adb shell am start -W -n $P/.SettingsActivity; sleep 2; shot 32-$LG-settings
+            adb shell am start -W -n $P/.AiReviewActivity; sleep 2; shot 33-$LG-ai-review
+            adb shell am start -W -n $P/.IncidentActivity; sleep 2; shot 34-$LG-incident
+            adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demotap true; sleep 4; shot 35-$LG-history
+          done
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --es lang en; sleep 2
           sleep 2
           adb logcat -d > logcat.txt
           if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A 25 "FATAL EXCEPTION" logcat.txt | sed 's/^/::error::/'; exit 1; fi

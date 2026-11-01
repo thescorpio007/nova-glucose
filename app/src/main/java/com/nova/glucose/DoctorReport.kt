@@ -30,7 +30,7 @@ object DoctorReport {
 
     fun pick(a: Activity) {
         val opts = arrayOf("Last 14 days", "Last 30 days", "Last 90 days")
-        AlertDialog.Builder(a).setTitle("📤 Share with doctor").setItems(opts) { _, w ->
+        Tr.Builder(a).setTitle("📤 Share with doctor").setItems(opts) { _, w ->
             val days = intArrayOf(14, 30, 90)[w]
             Ui.toast(a, "Preparing the report…")
             val app = a.applicationContext

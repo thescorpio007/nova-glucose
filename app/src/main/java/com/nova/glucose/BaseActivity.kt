@@ -11,8 +11,13 @@ import kotlin.math.max
  * This keeps each screen inside the safe area and above the keyboard.
  */
 open class BaseActivity : Activity() {
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(L.wrap(newBase)) }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) { L.init(this); super.onCreate(savedInstanceState) }
+
     override fun setContentView(view: View) {
         super.setContentView(view)
+        L.watch(window.decorView)
         if (Build.VERSION.SDK_INT < 35) return
         val l = view.paddingLeft; val t = view.paddingTop; val r = view.paddingRight; val b = view.paddingBottom
         view.setOnApplyWindowInsetsListener { v, insets ->

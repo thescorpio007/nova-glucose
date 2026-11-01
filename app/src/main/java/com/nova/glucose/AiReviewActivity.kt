@@ -37,6 +37,14 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         val sv = ScrollView(this).apply { addView(root); setBackgroundColor(Ui.BG) }
         val head = Ui.row(this)
         head.addView(Ui.title(this, "📊 AI review"), Ui.lp(0, weight = 1f))
+        lateinit var lb: TextView
+        lb = Ui.smallButton(this, "🌐 ${L.short(revLang())} ▾") {
+            Lang.pick(this, lb, revLang()) { code ->
+                st.aiReviewLang = code; lb.text = "🌐 ${L.short(code)} ▾"
+                if (st.aiReview.isNotBlank() && code != st.aiReviewDoneLang) { days = st.aiReviewDays; renderChips(); review() }
+            }
+        }.apply { tag = "free" }
+        head.addView(lb, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
         head.addView(Ui.smallButton(this, "Close") { finish() })
         root.addView(head)
         root.addView(Ui.text(this, "AI: ${st.current().label} · looks at readings, meals, insulin times and incidents", 13f, Ui.MUTED))
@@ -60,6 +68,9 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         renderChips(); showSaved()
     }
 
+    /** The review's own language (defaults to the app language). */
+    private fun revLang() = st.aiReviewLang.ifBlank { L.lang }
+
     private fun renderChips() {
         chips.removeAllViews()
         listOf(1 to "Today", 7 to "7 days", 14 to "14 days").forEach { (d, l) ->
@@ -80,12 +91,12 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         if (st.key(p).isBlank()) { status.setTextColor(Ui.BAD); status.text = "Add your ${p.label} API key in Settings first."; return }
         busy = true
         status.setTextColor(Ui.MUTED); status.text = "${p.label} is reviewing ${if (days == 1) "today" else "the last $days days"}…"
-        val app = applicationContext; val d = days
+        val app = applicationContext; val d = days; val lg = revLang()
         Thread {
             try {
-                val a = Providers.ask(st, p, system, AiData.period(app, d)) { s -> runOnUiThread { status.text = s } }
+                val a = Providers.ask(st, p, system + (if (lg != "en") "\nWrite the whole review in ${L.name(lg)}, including the two headings." else ""), AiData.period(app, d)) { s -> runOnUiThread { status.text = s } }
                 val txt = a.replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").replace(Regex("(?m)^#{1,6}\\s*"), "").replace(Regex("(?m)^\\s*[*-]\\s+"), "• ").trim()
-                st.aiReview = txt; st.aiReviewTs = System.currentTimeMillis(); st.aiReviewDays = d
+                st.aiReview = txt; st.aiReviewTs = System.currentTimeMillis(); st.aiReviewDays = d; st.aiReviewDoneLang = lg
                 runOnUiThread { status.setTextColor(Ui.MUTED); showSaved() }
             } catch (e: Exception) {
                 runOnUiThread { status.setTextColor(Ui.BAD); status.text = e.message ?: "Failed" }

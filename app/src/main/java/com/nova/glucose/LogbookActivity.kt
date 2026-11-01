@@ -136,7 +136,7 @@ class LogbookActivity : BaseActivity() {
 
             card.setOnClickListener { EditEntry.meal(this, m.id) { render() } }
             card.setOnLongClickListener {
-                Parent.guard(this, "Enter the PIN to delete a meal.") { AlertDialog.Builder(this).setMessage("Delete this meal?")
+                Parent.guard(this, "Enter the PIN to delete a meal.") { Tr.Builder(this).setMessage("Delete this meal?")
                     .setPositiveButton("Delete") { _, _ ->
                         db.deleteMeal(m.id); if (m.photo.isNotBlank()) File(m.photo).delete(); render()
                     }

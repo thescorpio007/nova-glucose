@@ -45,7 +45,7 @@ object Parent {
             Ui.toast(a, "Too many wrong PINs — try again in ${(st.pinBlockUntil - now) / 1000 + 1} s"); return
         }
         val box = pinBox(a, "••••")
-        val d = AlertDialog.Builder(a)
+        val d = Tr.Builder(a)
             .setTitle("🔒 Parent PIN")
             .setMessage(what)
             .setView(Ui.col(a, 20).apply { addView(box) })
@@ -74,7 +74,7 @@ object Parent {
     fun setPin(a: Activity, done: (Boolean) -> Unit) {
         val p1 = pinBox(a, "New PIN"); val p2 = pinBox(a, "Repeat PIN")
         val box = Ui.col(a, 20).apply { addView(p1); addView(p2, Ui.lp(top = Ui.dp(a, 8))) }
-        val d = AlertDialog.Builder(a).setTitle("Set the parent PIN (4 digits)").setView(box)
+        val d = Tr.Builder(a).setTitle("Set the parent PIN (4 digits)").setView(box)
             .setPositiveButton("Save", null).setNegativeButton("Cancel") { _, _ -> done(false) }.create()
         d.setOnShowListener {
             d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -96,7 +96,7 @@ object Parent {
     private fun forgot(a: Activity) {
         val st = Store(a)
         if (st.backupPw.isBlank()) {
-            AlertDialog.Builder(a).setTitle("Forgot PIN")
+            Tr.Builder(a).setTitle("Forgot PIN")
                 .setMessage("No backup password is set on this phone, so the PIN can't be reset here. " +
                     "Reinstalling the app removes the lock (resume your data from the Download/NovaGlucose folder).")
                 .setPositiveButton("OK", null).show(); return
@@ -104,7 +104,7 @@ object Parent {
         val pw = EditText(a).apply {
             hint = "Backup password"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        AlertDialog.Builder(a).setTitle("Reset the parent PIN")
+        Tr.Builder(a).setTitle("Reset the parent PIN")
             .setMessage("Enter the backup password to remove the PIN. Then set a new one in Settings › Parental control.")
             .setView(Ui.col(a, 20).apply { addView(pw) })
             .setPositiveButton("Reset") { _, _ ->

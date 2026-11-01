@@ -39,7 +39,7 @@ class SettingsActivity : BaseActivity() {
 
     private fun reopen(msg: String?) {
         restored = true
-        if (msg != null) android.app.AlertDialog.Builder(this).setTitle("✓ Restored").setMessage(msg.replace(" · ", "\n"))
+        if (msg != null) Tr.Builder(this).setTitle("✓ Restored").setMessage(msg.replace(" · ", "\n"))
             .setPositiveButton("OK") { _, _ -> finish(); startActivity(Intent(this, SettingsActivity::class.java)) }
             .setCancelable(false).show()
         else { finish(); startActivity(Intent(this, SettingsActivity::class.java)) }
@@ -429,6 +429,13 @@ class SettingsActivity : BaseActivity() {
         val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "" }
         ab.addView(Ui.text(this, "Nova Glucose $ver", 15f, Ui.TEXT, true))
         ab.addView(Ui.text(this, Foods.CARE_NOTE, 13f, Ui.MUTED))
+        ab.addView(Ui.text(this, "Language", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 4)) })
+        val lr = Ui.row(this)
+        L.LANGS.forEach { (code, nm) ->
+            lr.addView(Ui.chip(this, nm, L.lang == code) { if (code != L.lang) { save(false); st.lang = code; L.set(this, code); recreate() } }.apply { tag = "free" },
+                Ui.lp(-2, -2, end = Ui.dp(this, 8)))
+        }
+        ab.addView(lr)
         ab.addView(Ui.text(this, "LibreLinkUp app version sent to Abbott (updates itself when Abbott asks):", 12f, Ui.MUTED).apply {
             setPadding(0, Ui.dp(context, 10), 0, 0) })
         lluVersion = Ui.input(this, Libre.DEFAULT_VERSION, multi = false).apply { setText(st.appVersion) }
@@ -645,7 +652,7 @@ class SettingsActivity : BaseActivity() {
         val pw = Ui.input(this, "Backup password", multi = false).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        android.app.AlertDialog.Builder(this).setTitle("Restore everything?")
+        Tr.Builder(this).setTitle("Restore everything?")
             .setMessage("All settings, the LibreLinkUp login, API keys, readings, meals and insulin doses from the backup will be restored on this phone.")
             .setView(Ui.col(this, 20).apply { addView(pw) })
             .setPositiveButton("Restore") { _, _ ->
@@ -790,7 +797,7 @@ class SettingsActivity : BaseActivity() {
             val sr = Ui.row(this)
             sr.addView(Ui.button(this, "🔄 Sync now", true) { famWork("Syncing…") { FamilySync.run(it) } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
             sr.addView(Ui.button(this, "Leave") {
-                android.app.AlertDialog.Builder(this).setTitle("Leave the family?")
+                Tr.Builder(this).setTitle("Leave the family?")
                     .setMessage("This phone stops syncing. Everything already on it stays here, and the other phones keep their data.")
                     .setPositiveButton("Leave") { _, _ -> famWork("Leaving…") { FamilySync.leave(it); "Left the family" } }
                     .setNegativeButton("Cancel", null).show()
@@ -813,7 +820,7 @@ class SettingsActivity : BaseActivity() {
                     if (!showCode) famNote(msg, if (msg.startsWith("⚠")) Ui.WARN else Ui.GOOD)
                     else {
                         famNote("✓ Family created", Ui.GOOD)
-                        android.app.AlertDialog.Builder(this).setTitle("👨‍👩‍👧 Family created")
+                        Tr.Builder(this).setTitle("👨‍👩‍👧 Family created")
                             .setMessage("Family code:\n\n$msg\n\nOn each other phone: Settings › Family sync › type a phone name, this code and the same family password › Join.")
                             .setPositiveButton("Copy code") { _, _ -> Ui.copy(this, msg) }.setNegativeButton("OK", null).show()
                     }
@@ -886,7 +893,7 @@ class SettingsActivity : BaseActivity() {
     private fun driveRestore() {
         if (!st.driveOn) { driveMsg("Connect Google Drive first", Ui.WARN); return }
         if (!Vault.ready(this)) { FolderFlow.pick(this); return }
-        android.app.AlertDialog.Builder(this).setTitle("Restore from Google Drive?")
+        Tr.Builder(this).setTitle("Restore from Google Drive?")
             .setMessage("Files from My Drive › NovaGlucose are copied into Download/NovaGlucose, then you can resume settings, readings, meals and doses with the backup password.")
             .setPositiveButton("Download") { _, _ ->
                 val app = applicationContext
@@ -917,7 +924,7 @@ class SettingsActivity : BaseActivity() {
         for (k in 0 until kids.size - 1) {
             val v = kids[k]
             if (v !is TextView || v.tag != "section") continue
-            val f = Fold(v, kids[k + 1], v.text.toString())
+            val f = Fold(v, kids[k + 1], (v.contentDescription ?: v.text).toString().uppercase())
             folds += f
             v.tag = "free"
             v.background = Ui.round(Ui.CARD, Ui.dp(this, 14).toFloat())
@@ -939,9 +946,9 @@ class SettingsActivity : BaseActivity() {
     private fun renderFold(f: Fold) {
         val open = f.body.visibility == View.VISIBLE
         val sb = android.text.SpannableStringBuilder()
-        sb.append(f.title).append(if (open) "   ▴" else "   ▾")
+        sb.append(L.s((f.head.contentDescription ?: f.title).toString()).uppercase()).append(if (open) "   ▴" else "   ▾")
         sb.setSpan(android.text.style.ForegroundColorSpan(Ui.TEXT), 0, sb.length, 0)
-        val sum = summary(f.title)
+        val sum = L.s(summary(f.title))
         if (sum.isNotBlank()) {
             sb.append("\n"); val s0 = sb.length; sb.append(sum)
             sb.setSpan(android.text.style.ForegroundColorSpan(Ui.MUTED), s0, sb.length, 0)
@@ -1089,7 +1096,7 @@ class SettingsActivity : BaseActivity() {
     /** Photo of the insulin pen / box: the AI reads the name. */
     private fun penPhoto(target: String) {
         penTarget = target
-        android.app.AlertDialog.Builder(this).setTitle("Insulin name from a photo")
+        Tr.Builder(this).setTitle("Insulin name from a photo")
             .setItems(arrayOf("Take photo", "Choose from gallery")) { _, w ->
                 if (w == 0) {
                     val dir = java.io.File(cacheDir, "capture").apply { mkdirs() }

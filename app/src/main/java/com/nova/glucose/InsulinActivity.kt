@@ -140,7 +140,7 @@ class InsulinActivity : BaseActivity() {
                 timer.visibility = View.VISIBLE
                 timer.text = "⏱ Eat in %d:%02d — you'll get a notification".format(left / 60_000, (left / 1000) % 60)
                 timer.setOnClickListener {
-                    AlertDialog.Builder(this@InsulinActivity).setMessage("Cancel the eat timer?")
+                    Tr.Builder(this@InsulinActivity).setMessage("Cancel the eat timer?")
                         .setPositiveButton("Cancel timer") { _, _ -> EatTimer.cancel(this@InsulinActivity) }
                         .setNegativeButton("Keep", null).show()
                 }
@@ -218,7 +218,7 @@ class InsulinActivity : BaseActivity() {
         Db.get(this).addDose(Dose(0, now, "rapid", u, c, w, mgNow(), note))
         calcNote = ""; units.setText(""); renderRef()
         if (st.eatWait == 0 || st.eatWait != w) {
-            AlertDialog.Builder(this).setMessage("Use $w minutes as the usual wait before eating?")
+            Tr.Builder(this).setMessage("Use $w minutes as the usual wait before eating?")
                 .setPositiveButton("Yes, remember") { _, _ -> st.eatWait = w }
                 .setNegativeButton("Only this time", null).show()
         }
@@ -252,7 +252,7 @@ class InsulinActivity : BaseActivity() {
             row.setOnClickListener { EditEntry.dose(this, d.id) { renderHistory(); exportLater() } }
             row.setOnLongClickListener {
                 Parent.guard(this, "Enter the PIN to delete a dose.") {
-                    AlertDialog.Builder(this).setMessage("Delete this dose?")
+                    Tr.Builder(this).setMessage("Delete this dose?")
                         .setPositiveButton("Delete") { _, _ -> Db.get(this).deleteDose(d.id); renderHistory(); exportLater() }
                         .setNegativeButton("Cancel", null).show()
                 }; true

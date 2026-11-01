@@ -62,8 +62,8 @@ object Ui {
         setPadding(0, 0, 0, dp(c, 4))
     }
 
-    fun section(c: Context, s: String): TextView = text(c, s.uppercase(), 11f, MUTED, true).apply {
-        letterSpacing = 0.08f; tag = "section"
+    fun section(c: Context, s: String): TextView = text(c, L.s(s).uppercase(), 11f, MUTED, true).apply {
+        letterSpacing = 0.08f; tag = "section"; contentDescription = s      // English name kept for the fold logic
         setPadding(0, dp(c, 12), 0, dp(c, 6))
     }
 
@@ -175,5 +175,5 @@ object Ui {
         toast(c, "Copied")
     }
 
-    fun toast(c: Context, s: String) = Toast.makeText(c, s, Toast.LENGTH_SHORT).show()
+    fun toast(c: Context, s: String) = Toast.makeText(c, L.s(s), Toast.LENGTH_SHORT).show()
 }

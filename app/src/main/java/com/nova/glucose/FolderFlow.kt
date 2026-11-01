@@ -11,7 +11,7 @@ object FolderFlow {
     const val REQ = 7701
 
     fun pick(a: Activity) {
-        AlertDialog.Builder(a)
+        Tr.Builder(a)
             .setTitle("Download/NovaGlucose folder")
             .setMessage("Readings, meals, alerts, daily assessments and the backup are saved there, so nothing is lost if the app is reinstalled.\n\n" +
                 "On the next screen:\n1. Open Download → NovaGlucose\n   (if it's missing: ⋮ or the folder icon → New folder → NovaGlucose)\n" +
@@ -46,7 +46,7 @@ object FolderFlow {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         val box = Ui.col(a, 20).apply { addView(pw) }
-        AlertDialog.Builder(a)
+        Tr.Builder(a)
             .setTitle("Resume from backup?")
             .setMessage("A Nova Glucose backup was found in this folder. Restore settings, LibreLinkUp login, API keys, readings and meals?")
             .setView(box)
@@ -63,7 +63,7 @@ object FolderFlow {
             a.runOnUiThread {
                 r.onSuccess { msg ->
                     MonitorService.stop(app); MonitorService.start(app)
-                    AlertDialog.Builder(a).setTitle("✓ Resumed").setMessage(msg.replace(" · ", "\n")).setPositiveButton("OK") { _, _ -> done() }
+                    Tr.Builder(a).setTitle("✓ Resumed").setMessage(msg.replace(" · ", "\n")).setPositiveButton("OK") { _, _ -> done() }
                         .setCancelable(false).show()
                 }.onFailure { e ->
                     Ui.toast(a, e.message ?: "Restore failed")

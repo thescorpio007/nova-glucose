@@ -221,6 +221,11 @@ class Store(c: Context) {
     var watchEat: Boolean get() = b("watch_eat", true); set(v) = putb("watch_eat", v)
     /** Glucose message for the watch every N minutes (0 = off). */
     var watchGlucose: Int get() = i("watch_glucose", 0); set(v) = puti("watch_glucose", v)
+    /** App language on this phone: "en", "fr" or "ar". */
+    var lang: String get() = s("app_lang", "en"); set(v) = put("app_lang", v)
+    /** Language of the AI review (its own ▾ button). */
+    var aiReviewDoneLang: String get() = s("ai_review_done_lang", "en"); set(v) = put("ai_review_done_lang", v)
+    var aiReviewLang: String get() = s("ai_review_lang", ""); set(v) = put("ai_review_lang", v)
     /** Short AI food tip a few seconds after a high/low alert (this phone). */
     var aiTips: Boolean get() = b("ai_tips", true); set(v) = putb("ai_tips", v)
     var aiReview: String get() = s("ai_review"); set(v) = put("ai_review", v)

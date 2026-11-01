@@ -125,7 +125,7 @@ class IncidentActivity : BaseActivity() {
         root.addView(Ui.button(this, "💾 Save incident", true) { save() }, Ui.lp(top = Ui.dp(this, 12)))
         if (ex != null) root.addView(Ui.button(this, "🗑 Delete incident") {
             Parent.guard(this, "Enter the parent PIN to delete an incident.") {
-                AlertDialog.Builder(this).setTitle("Delete this incident?").setMessage("It's removed on all family phones too.")
+                Tr.Builder(this).setTitle("Delete this incident?").setMessage("It's removed on all family phones too.")
                     .setPositiveButton("Delete") { _, _ -> Db.get(this).deleteIncident(id); finish() }
                     .setNegativeButton("Cancel", null).show()
             }
@@ -220,7 +220,7 @@ class IncidentActivity : BaseActivity() {
     private fun showPhoto() {
         val b = currentPhoto() ?: return
         val iv = ImageView(this).apply { setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)); adjustViewBounds = true }
-        AlertDialog.Builder(this).setView(ScrollView(this).apply { addView(iv) }).setPositiveButton("Close", null).show()
+        Tr.Builder(this).setView(ScrollView(this).apply { addView(iv) }).setPositiveButton("Close", null).show()
     }
 
     private fun readRx() {
@@ -234,7 +234,7 @@ class IncidentActivity : BaseActivity() {
                 val txt = Incidents.readPrescription(app, b) { s -> runOnUiThread { rxStatus.text = s } }
                 runOnUiThread {
                     if (meds.text.isNotBlank() && meds.text.toString().trim() != txt) {
-                        AlertDialog.Builder(this).setTitle("Replace the medicines text?").setMessage(txt)
+                        Tr.Builder(this).setTitle("Replace the medicines text?").setMessage(txt)
                             .setPositiveButton("Replace") { _, _ -> meds.setText(txt) }.setNegativeButton("Keep mine", null).show()
                     } else meds.setText(txt)
                     rxStatus.setTextColor(Ui.GOOD); rxStatus.text = "✓ Read by ${p.label} — please check it"

@@ -58,7 +58,7 @@ class MainActivity : BaseActivity() {
             Thread {
                 val r = SelfTest.run(app)
                 android.util.Log.i("NOVA_SELFTEST", r)
-                runOnUiThread { android.app.AlertDialog.Builder(this).setTitle("Backup self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
+                runOnUiThread { Tr.Builder(this).setTitle("Backup self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
             }.start()
         }
         if (intent?.getBooleanExtra("synctest", false) == true && SelfTest.canRun(this)) {
@@ -66,8 +66,11 @@ class MainActivity : BaseActivity() {
             Thread {
                 val r = SyncTest.run(app)
                 android.util.Log.i("NOVA_SYNCTEST", r)
-                runOnUiThread { android.app.AlertDialog.Builder(this).setTitle("Family sync self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
+                runOnUiThread { Tr.Builder(this).setTitle("Family sync self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
             }.start()
+        }
+        intent?.getStringExtra("lang")?.let { lg ->                    // used by the automatic screenshots
+            if (lg != st.lang) { st.lang = lg; L.set(this, lg); startActivity(Intent(this, MainActivity::class.java)); finish(); return }
         }
         if (intent?.getBooleanExtra("demo", false) == true && SelfTest.canRun(this)) Demo.fill(this)
         build()
@@ -121,7 +124,10 @@ class MainActivity : BaseActivity() {
         titles.addView(name)
         head.addView(titles, Ui.lp(0, weight = 1f))
         head.addView(Ui.smallButton(this, "↻") { refresh(true) }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 36), end = Ui.dp(this, 8)))
-        head.addView(Ui.smallButton(this, "⚙ Settings") { startActivity(Intent(this, SettingsActivity::class.java)) })
+        lateinit var langBtn: android.widget.TextView
+        langBtn = Ui.smallButton(this, "🌐 ${L.short()} ▾") { Lang.pick(this, langBtn) }
+        head.addView(langBtn, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
+        head.addView(Ui.smallButton(this, "⚙") { startActivity(Intent(this, SettingsActivity::class.java)) }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 36)))
         root.addView(head)
 
         folderCard = Ui.card(this).apply {

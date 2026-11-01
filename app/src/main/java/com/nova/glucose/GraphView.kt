@@ -137,7 +137,7 @@ class GraphView(c: Context) : View(c) {
             cv.drawRect(xa, top, xb, bottom, incBand)
             cv.drawLine(xa, top, xa, bottom, incEdge)
             val name = inc.kind.let { if (incLabel.measureText(it) > xb - xa - 6 * d && xb - xa < 60 * d) "" else it }
-            if (name.isNotEmpty()) cv.drawText(name, xa + 4 * d, top + 24 * d, incLabel)
+            if (name.isNotEmpty()) cv.drawText(L.s(name), xa + 4 * d, top + 24 * d, incLabel)
             cv.drawText("!", xa - 2 * d, bottom - 4 * d, incMark)
         }
         var v = 50
@@ -179,7 +179,7 @@ class GraphView(c: Context) : View(c) {
                 for (k in 0 until 7) {
                     val xs = x(c0.timeInMillis)
                     cv.drawLine(xs, top, xs, bottom, vgrid)
-                    val s = names[c0.get(Calendar.DAY_OF_WEEK) - 1]
+                    val s = L.s(names[c0.get(Calendar.DAY_OF_WEEK) - 1])
                     val mid = xs + (right - left) / 14
                     cv.drawText(s, mid - label.measureText(s) / 2, height - 6 * d, label)
                     c0.add(Calendar.DAY_OF_YEAR, 1)
@@ -201,7 +201,7 @@ class GraphView(c: Context) : View(c) {
 
         val pts = readings.filter { it.ts in t0..t1 }
         if (pts.isEmpty()) {
-            val s = "No readings for this period"
+            val s = L.s("No readings for this period")
             cv.drawText(s, (width - label.measureText(s)) / 2f, height / 2f, label); return
         }
 
@@ -253,8 +253,8 @@ class GraphView(c: Context) : View(c) {
         val ago = ((now - r.ts) / 60_000).let { m -> if (m < 1) "now" else if (m < 60) "$m min ago" else if (m < 48 * 60) "${m / 60} h ${m % 60} min ago" else "${m / 1440} days ago" }
         if (mode == "12" || live) { dot.color = colorFor(r.mg); cv.drawCircle(x(r.ts), y(r.mg), 6 * d, dot) }
         cross(cv, x(r.ts), y(r.mg), r.mg, live,
-            (if (live) "LIVE · " else "$hm · ") + "${r.mg} mg/dL $arrow".trim(),
-            (if (live) "Now" else ago) + " · " + zone(r.mg), if (live) "Now" else hm, left, right, top, bottom)
+            (if (live) L.s("LIVE") + " · " else "$hm · ") + "${r.mg} mg/dL $arrow".trim(),
+            L.s(if (live) "Now" else ago) + " · " + L.s(zone(r.mg)), if (live) L.s("Now") else hm, left, right, top, bottom)
     }
 
     private fun dayOf(t: Long) = cal(t).let { it.get(Calendar.YEAR) * 400 + it.get(Calendar.DAY_OF_YEAR) }

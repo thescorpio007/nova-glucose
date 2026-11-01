@@ -107,7 +107,7 @@ Rules:
         val user = context() + "\nQuestion: " + question
         Thread {
             try {
-                val a = Providers.ask(st, p, system, user) { s -> runOnUiThread { status.text = s } }
+                val a = Providers.ask(st, p, system + "\n" + L.aiLine(), user) { s -> runOnUiThread { status.text = s } }
                 runOnUiThread { answer.text = clean(a); status.text = "" }
             } catch (e: Exception) {
                 runOnUiThread { status.setTextColor(Ui.BAD); status.text = e.message ?: "Failed" }

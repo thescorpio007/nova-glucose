@@ -53,7 +53,7 @@ object EditEntry {
         val note = Ui.input(a, "Note", multi = false).apply { setText(d.note) }
         root.addView(note)
         val name = if (d.kind == "rapid") st.rapidName.ifBlank { "rapid insulin" } else st.longName.ifBlank { "long-acting insulin" }
-        val dlg = AlertDialog.Builder(a).setTitle("✏️ Edit $name").setView(ScrollView(a).apply { addView(root) })
+        val dlg = Tr.Builder(a).setTitle("✏️ Edit $name").setView(ScrollView(a).apply { addView(root) })
             .setPositiveButton("Save", null).setNegativeButton("Cancel", null).create()
         dlg.setOnShowListener {
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -83,7 +83,7 @@ object EditEntry {
         root.addView(carbs)
         db.ai(id)?.let { (_, ai) -> root.addView(Ui.text(a, "AI said $ai g — your number is kept as the family's count.", 12f, Ui.MUTED)
             .apply { setPadding(0, Ui.dp(a, 6), 0, 0) }) }
-        val dlg = AlertDialog.Builder(a).setTitle("✏️ Edit meal").setView(ScrollView(a).apply { addView(root) })
+        val dlg = Tr.Builder(a).setTitle("✏️ Edit meal").setView(ScrollView(a).apply { addView(root) })
             .setPositiveButton("Save", null).setNegativeButton("Cancel", null).create()
         dlg.setOnShowListener {
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {

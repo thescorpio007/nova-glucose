@@ -34,7 +34,7 @@ object Watch {
         val lv = Foods.level(st, r)
         val word = when (lv) { Level.URGENT_LOW -> "URGENT LOW"; Level.LOW -> "Low"; Level.HIGH -> "High"; Level.VERY_HIGH -> "Very high"; else -> "In range" }
         val n = builder(c, CH_WATCH).setSmallIcon(android.R.drawable.ic_menu_info_details)
-            .setContentTitle("${r.mg} ${Libre.trendArrow(r.trend)} mg/dL · $word")
+            .setContentTitle("${r.mg} ${Libre.trendArrow(r.trend)} mg/dL · ${L.s(word)}")
             .setContentText("${st.patientName.ifBlank { "Glucose" }} · ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(r.ts))}")
             .setAutoCancel(true).setContentIntent(open(c)).setCategory(Notification.CATEGORY_STATUS)
             .apply { if (Build.VERSION.SDK_INT >= 26) setTimeoutAfter(st.watchGlucose * 60_000L + 60_000L) }
@@ -47,9 +47,9 @@ object Watch {
         channel(c); MonitorService.channels(c)
         val st = Store(c)
         val n = builder(c, MonitorService.CH_ALERT).setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle("Nova Glucose test ⌚")
-            .setContentText(if (st.lastTs > 0) "Last glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)} mg/dL — if you see this on the watch, it works."
-                else "If you see this on the watch, notifications reach it.")
+            .setContentTitle(L.s("Nova Glucose test ⌚"))
+            .setContentText(L.s(if (st.lastTs > 0) "Last glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)} mg/dL — if you see this on the watch, it works."
+                else "If you see this on the watch, notifications reach it."))
             .setAutoCancel(true).setContentIntent(open(c)).build()
         (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(ID_TEST, n)
     }

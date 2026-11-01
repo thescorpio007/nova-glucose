@@ -74,7 +74,7 @@ object MarkHistory {
         }
         select(t)
 
-        dlg = AlertDialog.Builder(a).setView(sv)
+        dlg = Tr.Builder(a).setView(sv)
             .setPositiveButton("Close", null)
             .setNeutralButton("Open logbook") { _, _ -> a.startActivity(Intent(a, LogbookActivity::class.java)) }
             .show()

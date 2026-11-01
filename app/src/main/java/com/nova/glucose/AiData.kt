@@ -118,7 +118,7 @@ Plain text, no title, no emoji at the start.
         if (st.key(p).isBlank()) return null
         val what = when (kind) { "urgent_low" -> "URGENT LOW"; "low" -> "LOW"; "high" -> "HIGH"; "very_high" -> "VERY HIGH"; else -> return null }
         return try {
-            Providers.ask(st, p, TIP_SYSTEM, "Alert: $what.\n" + picture(c, 6) + "Food notes: ${st.foodNotes}\nAbout her: ${st.aboutLine()}")
+            Providers.ask(st, p, TIP_SYSTEM + "\n" + L.aiLine(), "Alert: $what.\n" + picture(c, 6) + "Food notes: ${st.foodNotes}\nAbout her: ${st.aboutLine()}")
                 .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").trim().take(300)
         } catch (_: Exception) { null }
     }

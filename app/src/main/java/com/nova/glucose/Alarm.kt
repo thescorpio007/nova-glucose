@@ -197,7 +197,7 @@ class AlarmReceiver : BroadcastReceiver() {
 }
 
 /** Full-screen alarm shown over the lock screen. */
-class AlarmActivity : Activity() {
+class AlarmActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
@@ -258,6 +258,7 @@ object EatTimer {
     }
 
     fun fire(c: Context) {
+        L.init(c)
         val st = Store(c)
         if (st.eatAt == 0L) return
         st.eatAt = 0
@@ -272,8 +273,8 @@ object EatTimer {
         val mg = if (System.currentTimeMillis() - st.lastTs < 15 * 60_000) " · glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)}" else ""
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, CH_EAT) else @Suppress("DEPRECATION") Notification.Builder(c)
         nm.notify(ID_EAT, b.setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle("🍽 Time to eat$mg")
-            .setContentText("The wait after rapid insulin is over — start eating now.")
+            .setContentTitle(L.s("🍽 Time to eat$mg"))
+            .setContentText(L.s("The wait after rapid insulin is over — start eating now."))
             .setAutoCancel(true).setContentIntent(open).setCategory(Notification.CATEGORY_REMINDER).setLocalOnly(!st.watchEat)
             .apply { if (Build.VERSION.SDK_INT < 26) { @Suppress("DEPRECATION") setPriority(Notification.PRIORITY_MAX); setDefaults(Notification.DEFAULT_ALL) } }
             .build())

@@ -73,7 +73,7 @@ object PastEntry {
         }
         renderChips()
 
-        val d = AlertDialog.Builder(a).setTitle("🕘 Add earlier injection or meal")
+        val d = Tr.Builder(a).setTitle("🕘 Add earlier injection or meal")
             .setView(ScrollView(a).apply { addView(root) })
             .setPositiveButton("Save to logbook", null).setNegativeButton("Cancel", null).create()
         d.setOnShowListener {

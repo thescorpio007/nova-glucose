@@ -81,7 +81,7 @@ object Calc {
         root.addView(grid, Ui.lp(top = Ui.dp(a, 8)))
         root.addView(Ui.text(a, "Plain calculator: you type every number. Nothing is pre-filled or suggested.", 11f, Ui.MUTED).apply {
             setPadding(0, Ui.dp(a, 8), 0, 0) })
-        val d = AlertDialog.Builder(a).setTitle("🧮 Calculator").setView(android.widget.ScrollView(a).apply { addView(root) })
+        val d = Tr.Builder(a).setTitle("🧮 Calculator").setView(android.widget.ScrollView(a).apply { addView(root) })
             .setPositiveButton("Put in Units injected", null).setNegativeButton("Close", null).create()
         d.setOnShowListener {
             d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {

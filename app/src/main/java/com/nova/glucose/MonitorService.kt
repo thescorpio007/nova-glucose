@@ -96,6 +96,7 @@ class MonitorService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             wake?.acquire(2 * POLL_MS)
+            L.init(this@MonitorService)
             var next = POLL_MS
             try {
                 val snap = Libre(st).fetch()
@@ -158,7 +159,7 @@ class MonitorService : Service() {
             shown != null -> "${st.patientName.ifBlank { "Glucose" }} · $ago"
             else -> "Waiting for a reading…"
         }
-        nm.notify(ID_STATUS, statusNote(text, title))
+        nm.notify(ID_STATUS, statusNote(L.s(text), title))
         watchGlucose(r, nm)
         if (st.alertsOn) checkAlerts(shown, nm)
     }
@@ -172,8 +173,8 @@ class MonitorService : Service() {
             if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CH_TIP, "AI food tips after alerts", NotificationManager.IMPORTANCE_DEFAULT))
             val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(app, CH_TIP) else @Suppress("DEPRECATION") Notification.Builder(app)
             nm.notify(ID_TIP, b.setSmallIcon(android.R.drawable.ic_menu_info_details)
-                .setContentTitle("✦ AI tip · ${r.mg} ${Libre.trendArrow(r.trend)} mg/dL")
-                .setContentText(tip).setStyle(Notification.BigTextStyle().bigText(tip + "\nAI tip — food only, not medical advice."))
+                .setContentTitle(L.s("✦ AI tip · ${r.mg} ${Libre.trendArrow(r.trend)} mg/dL"))
+                .setContentText(tip).setStyle(Notification.BigTextStyle().bigText(tip + L.s("\nAI tip — food only, not medical advice.")))
                 .setAutoCancel(true).setContentIntent(openApp()).setLocalOnly(!st.watchAlerts).build())
         }.start()
     }
@@ -225,14 +226,14 @@ class MonitorService : Service() {
         if (kind != "stale" && st.aiTips) aiTip(kind, r!!)
         if (urgent) {
             // Rings through silent / Do Not Disturb at the chosen volume, full screen, Stop / Snooze.
-            AlarmPlayer.start(this, kind, title, body)
+            AlarmPlayer.start(this, kind, L.s(title), L.s(body))
             Vault.logAlert(this, "URGENT ALARM · $title", body)
             return
         }
         val n = builder(if (low) CH_ALERT_LOW else CH_ALERT)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(title).setContentText(body)
-            .setStyle(Notification.BigTextStyle().bigText(body))
+            .setContentTitle(L.s(title)).setContentText(L.s(body))
+            .setStyle(Notification.BigTextStyle().bigText(L.s(body)))
             .setAutoCancel(true).setContentIntent(openApp())
             .apply { if (Build.VERSION.SDK_INT < 26) { @Suppress("DEPRECATION") setPriority(Notification.PRIORITY_MAX) } }
             .setCategory(if (low) Notification.CATEGORY_ALARM else Notification.CATEGORY_STATUS)

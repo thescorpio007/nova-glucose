@@ -49,7 +49,7 @@ class ImportActivity : BaseActivity() {
     }
 
     private fun fail(msg: String) {
-        AlertDialog.Builder(this).setTitle("Nova Glucose").setMessage(msg).setPositiveButton("OK") { _, _ -> finish() }
+        Tr.Builder(this).setTitle("Nova Glucose").setMessage(msg).setPositiveButton("OK") { _, _ -> finish() }
             .setOnCancelListener { finish() }.show()
     }
 
@@ -67,7 +67,7 @@ class ImportActivity : BaseActivity() {
             if (k != null) append("${k.optInt("settings")} settings · ${k.optInt("readings")} readings · ${k.optInt("meals")} meals · ${k.optInt("doses")} doses\n")
             append(if (Backup.isEncrypted(bytes!!)) "🔒 Encrypted with the backup password" else "Older backup format (not fully encrypted)")
         }
-        AlertDialog.Builder(this).setTitle("Restore this backup?")
+        Tr.Builder(this).setTitle("Restore this backup?")
             .setMessage("$details\n\nAll settings, the LibreLinkUp login, API keys, readings, meals and doses on this phone will be replaced by the backup.")
             .setPositiveButton("Replace all") { _, _ ->
                 merge = false
@@ -93,7 +93,7 @@ class ImportActivity : BaseActivity() {
             if (k != null) append("${k.optInt("meals")} meals · ${k.optInt("doses")} insulin doses · ${k.optInt("deletions")} deletions\n")
             append("🔒 Encrypted")
         }
-        AlertDialog.Builder(this).setTitle("👨‍👩‍👧 Family update")
+        Tr.Builder(this).setTitle("👨‍👩‍👧 Family update")
             .setMessage("$details\n\nAdds what this phone is missing (meals, insulin, earlier entries, AI corrections) and applies deletions. " +
                 "Settings, alarms and logins on this phone stay as they are.")
             .setPositiveButton("Add to this phone") { _, _ ->
@@ -119,7 +119,7 @@ class ImportActivity : BaseActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             if (error != null) this.error = error
         }
-        AlertDialog.Builder(this).setTitle("🔒 Password").setView(Ui.col(this, 20).apply { addView(pw) })
+        Tr.Builder(this).setTitle("🔒 Password").setView(Ui.col(this, 20).apply { addView(pw) })
             .setPositiveButton(if (merge) "Add" else "Restore") { _, _ -> restore(pw.text.toString()) }
             .setNegativeButton("Cancel") { _, _ -> finish() }
             .setOnCancelListener { finish() }.show()
@@ -137,7 +137,7 @@ class ImportActivity : BaseActivity() {
             runOnUiThread {
                 r.onSuccess { msg ->
                     if (!m) { MonitorService.stop(app); MonitorService.start(app) }
-                    AlertDialog.Builder(this).setTitle(if (m) "✓ Added" else "✓ Restored").setMessage(msg.replace(" · ", "\n"))
+                    Tr.Builder(this).setTitle(if (m) "✓ Added" else "✓ Restored").setMessage(msg.replace(" · ", "\n"))
                         .setPositiveButton("OK") { _, _ ->
                             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
                             finish()
