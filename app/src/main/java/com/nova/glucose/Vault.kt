@@ -283,7 +283,7 @@ object Vault {
         d.listFiles().firstOrNull { it.name?.startsWith(name) == true && it.name != name }?.renameTo(name)
         // Read it back: the backup must open before older copies are removed.
         val check = d.findFile(name) ?: throw IllegalStateException("Backup file not found after saving")
-        st.lastBackupInfo = try { Backup.verify(read(c, check)) } catch (e: Exception) {
+        st.lastBackupInfo = try { Backup.verify(read(c, check), c, st.backupPw) } catch (e: Exception) {
             throw IllegalStateException("Backup check failed: ${e.message}")
         }
         d.listFiles().filter { (it.name ?: "").endsWith(EXT) }.sortedByDescending { it.name }.drop(KEEP_BACKUPS).forEach { it.delete() }

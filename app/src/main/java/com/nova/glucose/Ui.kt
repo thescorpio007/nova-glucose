@@ -63,7 +63,7 @@ object Ui {
     }
 
     fun section(c: Context, s: String): TextView = text(c, s.uppercase(), 11f, MUTED, true).apply {
-        letterSpacing = 0.08f
+        letterSpacing = 0.08f; tag = "section"
         setPadding(0, dp(c, 12), 0, dp(c, 6))
     }
 

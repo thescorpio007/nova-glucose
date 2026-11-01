@@ -77,15 +77,48 @@ object Backup {
     private fun gunzip(s: String): String =
         java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(Base64.decode(s, Base64.NO_WRAP))).use { it.readBytes().toString(Charsets.UTF_8) }
 
-    /** Checks that a just-written backup opens and its data unpacks. Returns the contents line, or throws. */
-    fun verify(text: String): String {
+    /**
+     * Full round-trip check of a backup against this phone: every setting value, the LibreLinkUp login, every API key,
+     * and the number of readings, meals and doses. Returns a summary line, or throws with what is wrong.
+     */
+    fun verify(text: String, c: Context, password: String): String {
         val root = JSONObject(text)
         require(root.optString("app") == "Nova Glucose") { "not a Nova Glucose backup" }
+        val st = Store(c)
+        val settings = root.getJSONObject("settings")
+        var nSet = 0
+        for ((k, v) in st.raw.all) {
+            if (Store.privateKey(k)) continue
+            val o = settings.optJSONObject(k) ?: throw IllegalStateException("setting '$k' missing")
+            val same = when (v) {
+                is Boolean -> o.optBoolean("v") == v
+                is Int -> o.optInt("v") == v
+                is Long -> o.optLong("v") == v
+                is String -> o.optString("v") == v
+                else -> true
+            }
+            require(same) { "setting '$k' differs" }
+            nSet++
+        }
+        var secretsNote = "no backup password: login and keys NOT included"
+        if (password.isNotBlank()) {
+            val enc = root.optJSONObject("secrets") ?: throw IllegalStateException("login and keys missing")
+            val s = JSONObject(decrypt(enc, password))
+            require(s.optString("password") == st.password) { "LibreLinkUp password differs" }
+            var nk = 0
+            Providers.all.forEach { p ->
+                val k = st.key(p)
+                if (k.isNotBlank()) { require(s.optString("key_${p.id}") == k) { "${p.label} key differs" }; nk++ }
+            }
+            secretsNote = "login ${if (st.password.isNotBlank()) "✓" else "(none)"} · $nk API key(s) ✓"
+        }
         val d = JSONObject(gunzip(root.getString("data")))
-        val k = root.getJSONObject("contents")
-        require(d.getJSONArray("readings").length() == k.getInt("readings")) { "readings don't match" }
-        return "${k.getInt("settings")} settings · ${k.getInt("readings")} readings · ${k.getInt("meals")} meals · ${k.getInt("doses")} doses" +
-            if (root.has("secrets")) " · login and keys locked" else " · no password set (login and keys NOT included)"
+        val db = Db.get(c)
+        val nr = d.getJSONArray("readings").length(); val nm = d.getJSONArray("meals").length(); val nd = d.getJSONArray("doses").length()
+        require(nr == db.readings(0).size) { "readings count differs" }
+        require(nm == db.meals(1_000_000).size) { "meals count differs" }
+        require(nd == db.doses().size) { "doses count differs" }
+        return "✓ $nSet settings · $secretsNote · $nr readings · $nm meals · $nd doses"
     }
 
     fun isBackup(text: String) = try { JSONObject(text).optString("app") == "Nova Glucose" } catch (_: Exception) { false }

@@ -120,6 +120,9 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         } finally { db.endTransaction() }
     }
 
+    /** Self-test only (blank install). */
+    fun clearAll() { writableDatabase.apply { delete("readings", null, null); delete("meals", null, null); delete("insulin", null, null); delete("unexported", null, null) } }
+
     fun resetExport() { writableDatabase.execSQL("INSERT OR IGNORE INTO unexported SELECT ts FROM readings") }
 
     fun readings(from: Long, to: Long = Long.MAX_VALUE): List<Reading> {

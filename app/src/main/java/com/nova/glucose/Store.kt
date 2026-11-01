@@ -111,6 +111,14 @@ class Store(c: Context) {
 
     // ---------------------------------------------------------------- profile & insulin (reference only, as prescribed)
     var age: Int get() = i("age", 14); set(v) = puti("age", v)
+    /** "girl", "boy" or "" */
+    var gender: String get() = s("gender"); set(v) = put("gender", v)
+    /** Brief free text about her, sent to the AI (never used for doses). */
+    var aboutHer: String get() = s("about_her"); set(v) = put("about_her", v.trim())
+    var settingsOpen: String get() = s("settings_open"); set(v) = put("settings_open", v)
+    /** Short line for AI prompts. */
+    fun aboutLine(): String = listOfNotNull(
+        "age $age", gender.takeIf { it.isNotBlank() }, aboutHer.takeIf { it.isNotBlank() }).joinToString(", ")
     var longName: String get() = s("long_name"); set(v) = put("long_name", v.trim())
     /** Numbers only (an autofilled email or text is ignored). */
     var longDose: String get() = s("long_dose").takeIf { it.replace(',', '.').toDoubleOrNull() != null } ?: ""

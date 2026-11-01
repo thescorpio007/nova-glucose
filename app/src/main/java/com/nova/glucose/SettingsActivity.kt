@@ -32,6 +32,8 @@ class SettingsActivity : BaseActivity() {
     private lateinit var backupPw: EditText
     private lateinit var backupMsg: TextView
     private var pendingBackup: String? = null
+    private lateinit var genderRow: LinearLayout
+    private lateinit var aboutE: EditText
     /** After a restore the screen must close WITHOUT saving its old fields over the restored values. */
     private var restored = false
 
@@ -227,6 +229,11 @@ class SettingsActivity : BaseActivity() {
         root.addView(Ui.section(this, "Profile and insulin (as prescribed — reference only)"))
         val pc = Ui.card(this)
         pc.addView(numRow("age", "Age", st.age))
+        pc.addView(Ui.text(this, "Gender", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
+        genderRow = Ui.row(this); pc.addView(genderRow); renderGender()
+        pc.addView(Ui.text(this, "About her (brief, used by the AI — never for doses)", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
+        aboutE = Ui.input(this, "e.g. type 1 since 2019, swims Mon/Wed 5 pm, school lunch 12:30, loves couscous, no nuts", minLines = 3).apply { setText(st.aboutHer) }
+        pc.addView(aboutE)
         pc.addView(Ui.text(this, "Long-acting insulin", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
         longNameE = Ui.input(this, "Name, e.g. Tresiba", multi = false).apply { setText(st.longName) }
         pc.addView(nameRow(longNameE, "long"), Ui.lp(top = Ui.dp(this, 6)))
@@ -386,6 +393,7 @@ class SettingsActivity : BaseActivity() {
         root.addView(Ui.signature(this))
         setContentView(sv)
         allViews = root
+        setupFolds()
         renderLock()
     }
 
@@ -450,12 +458,14 @@ class SettingsActivity : BaseActivity() {
         st.carbRatio = num("carb_ratio", 0).coerceIn(0, 100)
         st.eatWait = num("eat_wait", 0).coerceIn(0, 90)
         st.targetMg = num("target_mg", 100).coerceIn(70, 180)
+        st.aboutHer = aboutE.text.toString()
         st.corrFactor = num("corr_factor", 0).coerceIn(0, 400)
         if (::driveAutoSw.isInitialized) { st.driveAuto = driveAutoSw.isChecked; st.driveWifi = driveWifiCb.isChecked; st.drivePhotos = drivePhotoCb.isChecked }
         val wasOn = st.monitorOn
         st.monitorOn = monitor.isChecked
         if (!st.monitorOn && wasOn) MonitorService.stop(this)
         if (st.monitorOn && st.loggedIn) MonitorService.start(this)
+        if (::root.isInitialized && folds.isNotEmpty()) renderFolds()
         if (toast) {
             Ui.toast(this, "Saved")
             if (Vault.ready(this)) { val app = applicationContext; Thread { try { Vault.backupNow(app) } catch (_: Exception) { } }.start() }
@@ -681,6 +691,79 @@ class SettingsActivity : BaseActivity() {
                     }
                 }.start()
             }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun renderGender() {
+        genderRow.removeAllViews()
+        listOf("girl" to "Girl", "boy" to "Boy").forEach { (id, l) ->
+            genderRow.addView(Ui.chip(this, l, st.gender == id) { st.gender = if (st.gender == id) "" else id; renderGender(); if (uiLocked) renderLock() },
+                Ui.lp(-2, -2, end = Ui.dp(this, 8)))
+        }
+    }
+
+    // ---------------------------------------------------------- folding sections
+    private class Fold(val head: TextView, val body: View, val title: String)
+    private val folds = mutableListOf<Fold>()
+
+    private fun setupFolds() {
+        val kids = (0 until root.childCount).map { root.getChildAt(it) }
+        for (k in 0 until kids.size - 1) {
+            val v = kids[k]
+            if (v !is TextView || v.tag != "section") continue
+            val f = Fold(v, kids[k + 1], v.text.toString())
+            folds += f
+            v.tag = "free"
+            v.background = Ui.round(Ui.CARD, Ui.dp(this, 14).toFloat())
+            v.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12))
+            (v.layoutParams as? LinearLayout.LayoutParams)?.topMargin = Ui.dp(this, 8)
+            v.setOnClickListener {
+                val open = f.body.visibility != View.VISIBLE
+                f.body.visibility = if (open) View.VISIBLE else View.GONE
+                if (open) st.settingsOpen = f.title
+                renderFold(f)
+            }
+            f.body.visibility = if (f.title == st.settingsOpen) View.VISIBLE else View.GONE
+            renderFold(f)
+        }
+    }
+
+    private fun renderFolds() = folds.forEach { renderFold(it) }
+
+    private fun renderFold(f: Fold) {
+        val open = f.body.visibility == View.VISIBLE
+        val sb = android.text.SpannableStringBuilder()
+        sb.append(f.title).append(if (open) "   ▴" else "   ▾")
+        sb.setSpan(android.text.style.ForegroundColorSpan(Ui.TEXT), 0, sb.length, 0)
+        val sum = summary(f.title)
+        if (sum.isNotBlank()) {
+            sb.append("\n"); val s0 = sb.length; sb.append(sum)
+            sb.setSpan(android.text.style.ForegroundColorSpan(Ui.MUTED), s0, sb.length, 0)
+            sb.setSpan(android.text.style.RelativeSizeSpan(1.12f), s0, sb.length, 0)
+            sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.NORMAL), s0, sb.length, 0)
+        }
+        f.head.text = sb
+        f.head.letterSpacing = 0.04f
+    }
+
+    private fun summary(t: String): String {
+        val f = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US)
+        return when {
+            t.startsWith("LIBRELINKUP") -> if (st.patientName.isNotBlank()) "Connected · following ${st.patientName}" else "Not connected"
+            t.startsWith("ALERTS") -> "${st.urgentLow} / ${st.low} / ${st.high} / ${st.veryHigh} mg/dL · " + if (st.alertsOn) "on" else "off"
+            t.startsWith("URGENT") -> if (!st.urgentOn) "Off" else "On · " + listOfNotNull(
+                "urgent low".takeIf { st.urgUrgentLow }, "low".takeIf { st.urgLow }, "high".takeIf { st.urgHigh },
+                "very high".takeIf { st.urgVeryHigh }, "no signal".takeIf { st.urgNoSignal }).joinToString(", ")
+            t.startsWith("PROFILE") -> listOfNotNull("Age ${st.age}", st.gender.ifBlank { null },
+                st.rapidName.ifBlank { null }, st.longName.ifBlank { null }).joinToString(" · ")
+            t.startsWith("CARB") -> "Meals ${st.mealMin}–${st.mealMax} g · snacks ${st.snackMin}–${st.snackMax} g · low ${st.lowTreatG} g"
+            t.startsWith("AI") -> st.current().label + " · " + st.model(st.current())
+            t.startsWith("PARENTAL") -> if (Parent.enabled(st)) "PIN on" else "Off"
+            t.startsWith("BACKUP") -> if (st.lastBackupTs > 0) "Last backup ${f.format(java.util.Date(st.lastBackupTs))}" else "No backup yet"
+            t.startsWith("GOOGLE") -> if (!st.driveOn) "Not connected" else (when (st.driveFreq) { "3" -> "Every 3 days"; "w" -> "Every week"; else -> "Every day" } +
+                if (st.driveLast > 0) " · last ${f.format(java.util.Date(st.driveLast))}" else "")
+            t.startsWith("ABOUT") -> "Nova Glucose ${Ui.version(this)}"
+            else -> ""
+        }
     }
 
     private fun check(label: String, on: Boolean) = android.widget.CheckBox(this).apply {

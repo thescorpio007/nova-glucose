@@ -270,6 +270,7 @@ If the photo shows no food, return an empty items list and explain in notes.
             append("Estimate the carbohydrates in this meal (${images.size} image(s)).")
             if (note.text.isNotBlank()) append("\nNote from the family: ${note.text}")
             if (st.foodNotes.isNotBlank()) append("\nFamily food notes: ${st.foodNotes}")
+            append("\nAbout her: ${st.aboutLine()}")
             append(Training.context(this@CarbActivity))
         }
         Thread {

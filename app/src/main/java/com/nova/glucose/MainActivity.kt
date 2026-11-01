@@ -53,6 +53,14 @@ class MainActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         st = Store(this)
         MonitorService.channels(this)
+        if (intent?.getBooleanExtra("selftest", false) == true && SelfTest.canRun(this)) {
+            val app = applicationContext
+            Thread {
+                val r = SelfTest.run(app)
+                android.util.Log.i("NOVA_SELFTEST", r)
+                runOnUiThread { android.app.AlertDialog.Builder(this).setTitle("Backup self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
+            }.start()
+        }
         build()
         askPermissions()
     }
@@ -172,6 +180,8 @@ class MainActivity : BaseActivity() {
         root.addView(Ui.button(this, "💉  Rapid insulin before meal", true) {
             startActivity(Intent(this, InsulinActivity::class.java))
         }, Ui.lp(top = Ui.dp(this, 12)))
+        root.addView(Ui.button(this, "🕘  Add earlier injection or meal") { PastEntry.show(this) { render(null) } },
+            Ui.lp(top = Ui.dp(this, 8)))
         root.addView(Ui.button(this, "📷  Carbs from photo / video", true) {
             startActivity(Intent(this, CarbActivity::class.java))
         }, Ui.lp(top = Ui.dp(this, 8)))

@@ -81,6 +81,7 @@ class AskActivity : BaseActivity() {
             append("Her ranges: low below ${st.low}, high above ${st.high} mg/dL. ")
             append("Carb plan: meals ${st.mealMin}–${st.mealMax} g, snacks ${st.snackMin}–${st.snackMax} g, low treatment ${st.lowTreatG} g fast sugar.\n")
             if (st.foodNotes.isNotBlank()) append("Family food notes: ${st.foodNotes}\n")
+            append("About her: ${st.aboutLine()}\n")
             val insulin = listOfNotNull(
                 st.longName.takeIf { it.isNotBlank() }?.let { "long-acting $it" + (st.longTime.takeIf { t -> t.isNotBlank() }?.let { t -> " (given around $t)" } ?: "") },
                 st.rapidName.takeIf { it.isNotBlank() }?.let { "rapid $it" })
