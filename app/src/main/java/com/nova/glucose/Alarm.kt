@@ -52,12 +52,12 @@ object AlarmPlayer {
     }
 
     /** Starts ringing (from any thread). */
-    fun start(c: Context, kind: String, title: String, body: String) {
+    fun start(c: Context, kind: String, title: String, body: String, notify: Boolean = true) {
         val app = c.applicationContext
         this.kind = kind; this.title = title; this.body = body
         main.post {
             stopSound(app)
-            notifyFullScreen(app)
+            if (notify) notifyFullScreen(app)
             ring(app)
         }
     }
@@ -190,7 +190,7 @@ class AlarmActivity : Activity() {
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (intent.getBooleanExtra("test", false) && !AlarmPlayer.playing)
-            AlarmPlayer.start(this, "test", "Test alarm: 64 ↘ mg/dL", "This is how an urgent alarm looks and sounds.")
+            AlarmPlayer.start(this, "test", "Test alarm: 64 ↘ mg/dL", "This is how an urgent alarm looks and sounds.", notify = false)
         val low = AlarmPlayer.kind == "urgent_low" || AlarmPlayer.kind == "low" || AlarmPlayer.kind == "test"
         val root = Ui.col(this, 28).apply {
             gravity = Gravity.CENTER

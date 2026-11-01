@@ -94,7 +94,8 @@ jobs:
           set -x
           P=com.nova.glucose
           shot() { sleep 4; adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png "shots/$1.png"; }
-          scroll() { adb shell input swipe 540 1600 540 450 400; }
+          S=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); W=${S%x*}; H=${S#*x}
+          scroll() { adb shell input swipe $((W/2)) $((H*8/10)) $((W/2)) $((H*25/100)) 500; }
           adb install -r apk/*.apk
           adb shell pm grant $P android.permission.POST_NOTIFICATIONS || true
           adb logcat -c
@@ -121,6 +122,7 @@ jobs:
           api-level: 30
           arch: x86_64
           target: google_apis
+          profile: pixel_5
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: bash shots.sh

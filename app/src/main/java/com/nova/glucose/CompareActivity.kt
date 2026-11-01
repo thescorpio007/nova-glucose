@@ -44,8 +44,9 @@ class CompareActivity : BaseActivity() {
         root.addView(head)
         root.addView(Ui.text(this, "Each model gets the same test: a fixed meal (known ≈ 93 g carbs) and, if saved, her last meal photo " +
             "scored against your count. Score 10 = exact. ★ = best balance of accuracy and speed. Tap a model to use it.", 13f, Ui.MUTED))
-        chips = Ui.row(this)
-        root.addView(chips, Ui.lp(top = Ui.dp(this, 10)))
+        val (csv, row) = Ui.chipRow(this)
+        chips = row
+        root.addView(csv, Ui.lp(top = Ui.dp(this, 10)))
         root.addView(Ui.button(this, "▶ Test all models", true) { run() }, Ui.lp(top = Ui.dp(this, 10)))
         status = Ui.text(this, "", 13f, Ui.MUTED)
         root.addView(status, Ui.lp(top = Ui.dp(this, 8)))
@@ -61,7 +62,7 @@ class CompareActivity : BaseActivity() {
         chips.removeAllViews()
         Providers.all.forEach { p ->
             val has = st.key(p).isNotBlank()
-            chips.addView(Ui.chip(this, p.label + if (has) "" else " (no key)", provider == p) {
+            chips.addView(Ui.chip(this, p.label + if (has) "" else " · no key", provider == p) {
                 if (!has) { Ui.toast(this, "Add the ${p.label} key in Settings first"); return@chip }
                 if (running) return@chip
                 provider = p; results.clear(); renderChips(); render()
