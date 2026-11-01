@@ -166,6 +166,7 @@ class Store(c: Context) {
     var backupPw: String get() = dec(s("backup_pw")); set(v) = put("backup_pw", enc(v))
     var lastExport: Long get() = sp.getLong("last_export", 0); set(v) = sp.edit().putLong("last_export", v).apply()
     var lastExportReading: Long get() = sp.getLong("last_export_reading", 0); set(v) = sp.edit().putLong("last_export_reading", v).apply()
+    var lastBackupInfo: String get() = s("last_backup_info"); set(v) = put("last_backup_info", v)
     var lastBackupTs: Long get() = sp.getLong("last_backup", 0); set(v) = sp.edit().putLong("last_backup", v).apply()
     var resumeAsked: Boolean get() = b("resume_asked", false); set(v) = putb("resume_asked", v)
     // parental control

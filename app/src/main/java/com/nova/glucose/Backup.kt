@@ -13,7 +13,8 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * One backup file with all settings. The LibreLinkUp password and the API keys are locked with the
  * user's backup password (AES-256-GCM, key from PBKDF2). Without the password everything else still restores.
- * Readings, meals and alerts are restored from the Download/NovaGlucose folder files (see [Vault]).
+ * Format 2 also carries ALL readings, meals (without photos), insulin doses and AI corrections, compressed,
+ * so one file is enough to move everything to a new phone.
  */
 object Backup {
     const val FILE = "NovaGlucose-backup.json"
@@ -33,11 +34,58 @@ object Backup {
         }
         val secrets = JSONObject().put("password", st.password)
         Providers.all.forEach { p -> st.key(p).takeIf { it.isNotBlank() }?.let { secrets.put("key_${p.id}", it) } }
+        val data = dataJson(c)
         val root = JSONObject()
-            .put("app", "Nova Glucose").put("format", 1).put("created", System.currentTimeMillis())
+            .put("app", "Nova Glucose").put("format", 2).put("created", System.currentTimeMillis())
+            .put("version", Ui.version(c))
+            .put("contents", JSONObject().put("settings", settings.length())
+                .put("readings", data.getJSONArray("readings").length())
+                .put("meals", data.getJSONArray("meals").length())
+                .put("doses", data.getJSONArray("doses").length()))
             .put("settings", settings)
+            .put("data", gzip(data.toString()))
         if (password.isNotBlank()) root.put("secrets", encrypt(secrets.toString(), password))
-        return root.toString(1)
+        return root.toString()
+    }
+
+    private fun dataJson(c: Context): JSONObject {
+        val db = Db.get(c)
+        val rs = org.json.JSONArray()
+        db.readings(0).forEach { rs.put(org.json.JSONArray().put(it.ts).put(it.mg).put(it.trend)) }
+        val ms = org.json.JSONArray()
+        db.meals(1_000_000).forEach { m ->
+            val ai = db.ai(m.id)
+            ms.put(JSONObject().put("ts", m.ts).put("title", m.title).put("items", m.itemsJson).put("carbs", m.carbs)
+                .put("low", m.low).put("high", m.high).put("mgAt", m.mgAt).put("note", m.note)
+                .put("photo", if (m.photo.isNotBlank()) java.io.File(m.photo).name else "")
+                .apply { if (ai != null) { put("aiItems", ai.first); put("aiCarbs", ai.second) } })
+        }
+        val ds = org.json.JSONArray()
+        db.doses().forEach { d ->
+            ds.put(JSONObject().put("ts", d.ts).put("kind", d.kind).put("units", d.units).put("carbs", d.carbs)
+                .put("wait", d.waitMin).put("mgAt", d.mgAt).put("note", d.note))
+        }
+        return JSONObject().put("readings", rs).put("meals", ms).put("doses", ds)
+    }
+
+    private fun gzip(s: String): String {
+        val bo = java.io.ByteArrayOutputStream()
+        java.util.zip.GZIPOutputStream(bo).use { it.write(s.toByteArray(Charsets.UTF_8)) }
+        return Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP)
+    }
+
+    private fun gunzip(s: String): String =
+        java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(Base64.decode(s, Base64.NO_WRAP))).use { it.readBytes().toString(Charsets.UTF_8) }
+
+    /** Checks that a just-written backup opens and its data unpacks. Returns the contents line, or throws. */
+    fun verify(text: String): String {
+        val root = JSONObject(text)
+        require(root.optString("app") == "Nova Glucose") { "not a Nova Glucose backup" }
+        val d = JSONObject(gunzip(root.getString("data")))
+        val k = root.getJSONObject("contents")
+        require(d.getJSONArray("readings").length() == k.getInt("readings")) { "readings don't match" }
+        return "${k.getInt("settings")} settings · ${k.getInt("readings")} readings · ${k.getInt("meals")} meals · ${k.getInt("doses")} doses" +
+            if (root.has("secrets")) " · login and keys locked" else " · no password set (login and keys NOT included)"
     }
 
     fun isBackup(text: String) = try { JSONObject(text).optString("app") == "Nova Glucose" } catch (_: Exception) { false }
@@ -59,6 +107,8 @@ object Backup {
                 "s" -> e.putString(k, o.optString("v"))
             }
         }
+        // Per-phone: Google Drive must be connected again on this phone.
+        e.putBoolean("drive_on", false)
         e.commit()
         var note = "no passwords or API keys in the file"
         root.optJSONObject("secrets")?.let { enc ->
@@ -68,13 +118,45 @@ object Backup {
                 var n = 0
                 Providers.all.forEach { p -> s.optString("key_${p.id}").takeIf { it.isNotBlank() }?.let { st.setKey(p, it); n++ } }
                 st.backupPw = password
-                "LibreLinkUp login and $n API key(s) restored"
+                "LibreLinkUp login ${if (st.password.isNotBlank()) "✓" else "–"} · $n API key(s) ✓"
             } catch (_: Exception) {
                 throw IllegalArgumentException("Wrong backup password.")
             }
         }
         st.token = ""
-        return "Settings restored · $note"
+        // Data: readings, meals, doses (format 2)
+        var dataNote = ""
+        root.optString("data").takeIf { it.isNotBlank() }?.let { packed ->
+            val d = JSONObject(gunzip(packed))
+            val db = Db.get(c)
+            val ra = d.getJSONArray("readings")
+            val list = ArrayList<Reading>(ra.length())
+            for (i in 0 until ra.length()) ra.getJSONArray(i).let { list += Reading(it.getLong(0), it.getInt(1), it.optInt(2)) }
+            list.chunked(5000).forEach { db.addReadings(it) }
+            var nm = 0
+            val ma = d.getJSONArray("meals")
+            val local = java.io.File(c.filesDir, "meals")
+            for (i in 0 until ma.length()) {
+                val o = ma.getJSONObject(i); val ts = o.getLong("ts")
+                if (db.hasMealAt(ts)) continue
+                val pn = o.optString("photo")
+                val path = if (pn.isNotBlank() && java.io.File(local, pn).exists()) java.io.File(local, pn).absolutePath else ""
+                val id = db.addMeal(Meal(0, ts, o.optString("title"), o.optString("items", "[]"), o.optInt("carbs"), o.optInt("low"),
+                    o.optInt("high"), o.optInt("mgAt"), path, o.optString("note")))
+                if (o.has("aiItems")) db.setAi(id, o.optString("aiItems"), o.optInt("aiCarbs"))
+                nm++
+            }
+            var nd = 0
+            val da = d.getJSONArray("doses")
+            for (i in 0 until da.length()) {
+                val o = da.getJSONObject(i); val ts = o.getLong("ts")
+                if (db.hasDoseAt(ts)) continue
+                db.addDose(Dose(0, ts, o.optString("kind", "rapid"), o.optDouble("units"), o.optInt("carbs"), o.optInt("wait"),
+                    o.optInt("mgAt"), o.optString("note"))); nd++
+            }
+            dataNote = " · ${ra.length()} readings · $nm meals · $nd doses"
+        }
+        return "Settings ${settings.length()} ✓ · $note$dataNote"
     }
 
     private fun keyFrom(password: String, salt: ByteArray): SecretKeySpec {

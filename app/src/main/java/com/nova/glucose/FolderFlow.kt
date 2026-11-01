@@ -63,7 +63,8 @@ object FolderFlow {
             a.runOnUiThread {
                 r.onSuccess { msg ->
                     MonitorService.stop(app); MonitorService.start(app)
-                    AlertDialog.Builder(a).setTitle("Resumed").setMessage(msg).setPositiveButton("OK") { _, _ -> done() }.show()
+                    AlertDialog.Builder(a).setTitle("✓ Resumed").setMessage(msg.replace(" · ", "\n")).setPositiveButton("OK") { _, _ -> done() }
+                        .setCancelable(false).show()
                 }.onFailure { e ->
                     Ui.toast(a, e.message ?: "Restore failed")
                     if ((e.message ?: "").contains("password", true)) askResume(a, done) else done()

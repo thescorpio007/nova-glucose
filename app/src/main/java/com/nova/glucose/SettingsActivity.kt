@@ -32,6 +32,16 @@ class SettingsActivity : BaseActivity() {
     private lateinit var backupPw: EditText
     private lateinit var backupMsg: TextView
     private var pendingBackup: String? = null
+    /** After a restore the screen must close WITHOUT saving its old fields over the restored values. */
+    private var restored = false
+
+    private fun reopen(msg: String?) {
+        restored = true
+        if (msg != null) android.app.AlertDialog.Builder(this).setTitle("✓ Restored").setMessage(msg.replace(" · ", "\n"))
+            .setPositiveButton("OK") { _, _ -> finish(); startActivity(Intent(this, SettingsActivity::class.java)) }
+            .setCancelable(false).show()
+        else { finish(); startActivity(Intent(this, SettingsActivity::class.java)) }
+    }
     private lateinit var driveStatus: TextView
     private lateinit var driveConnBtn: TextView
     private lateinit var driveAutoSw: Switch
@@ -323,7 +333,7 @@ class SettingsActivity : BaseActivity() {
         br.addView(Ui.button(this, "♻ Restore file…") { importFile() }, Ui.lp(0, weight = 1f))
         bc.addView(br, Ui.lp(top = Ui.dp(this, 8)))
         bc.addView(Ui.button(this, "♻ Resume everything from folder") {
-            if (!Vault.ready(this)) FolderFlow.pick(this) else FolderFlow.askResume(this) { recreate() }
+            if (!Vault.ready(this)) FolderFlow.pick(this) else FolderFlow.askResume(this) { reopen(null) }
         }, Ui.lp(top = Ui.dp(this, 8)))
         bc.addView(backupMsg, Ui.lp(top = Ui.dp(this, 6)))
         root.addView(bc)
@@ -407,7 +417,7 @@ class SettingsActivity : BaseActivity() {
     private fun num(id: String, d: Int) = nums[id]?.text?.toString()?.trim()?.toIntOrNull() ?: d
 
     private fun save(toast: Boolean) {
-        if (uiLocked) return
+        if (uiLocked || restored) return
         val loginChanged = email.text.toString().trim() != st.email || pw.text.toString() != st.password
         st.email = email.text.toString()
         st.password = pw.text.toString()
@@ -550,15 +560,20 @@ class SettingsActivity : BaseActivity() {
         val pw = Ui.input(this, "Backup password", multi = false).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        android.app.AlertDialog.Builder(this).setTitle("Restore settings?")
-            .setMessage("Settings, LibreLinkUp login and API keys will be replaced by the backup.")
+        android.app.AlertDialog.Builder(this).setTitle("Restore everything?")
+            .setMessage("All settings, the LibreLinkUp login, API keys, readings, meals and insulin doses from the backup will be restored on this phone.")
             .setView(Ui.col(this, 20).apply { addView(pw) })
             .setPositiveButton("Restore") { _, _ ->
-                try {
-                    val msg = Backup.restore(this, text, pw.text.toString())
-                    MonitorService.stop(this); MonitorService.start(this)
-                    Ui.toast(this, msg); recreate()
-                } catch (e: Exception) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = e.message }
+                restored = true      // from now on this screen never saves its old fields
+                backupMsg.setTextColor(Ui.MUTED); backupMsg.text = "Restoring…"
+                val app = applicationContext; val p = pw.text.toString()
+                Thread {
+                    val r = try { Result.success(Backup.restore(app, text, p)) } catch (e: Exception) { Result.failure(e) }
+                    runOnUiThread {
+                        r.onSuccess { msg -> MonitorService.stop(app); MonitorService.start(app); reopen(msg) }
+                            .onFailure { e -> restored = false; backupMsg.setTextColor(Ui.BAD); backupMsg.text = e.message }
+                    }
+                }.start()
             }
             .setNegativeButton("Cancel", null).show()
     }
@@ -566,7 +581,7 @@ class SettingsActivity : BaseActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
-        if (FolderFlow.onResult(this, req, res, data) { recreate() }) return
+        if (FolderFlow.onResult(this, req, res, data) { reopen(null) }) return
         if (req == DriveSync.REQ_CONNECT) {
             if (res != RESULT_OK) { driveMsg("Google access not given", Ui.WARN); return }
             DriveSync.onResult(this, req, data) { err -> if (err != null) driveMsg(err, Ui.BAD) else driveMsg("✓ Google Drive connected", Ui.GOOD); renderDrive() }
@@ -661,7 +676,7 @@ class SettingsActivity : BaseActivity() {
                 Thread {
                     val r = try { Result.success(DriveSync.download(app) { s -> runOnUiThread { driveMsg(s, Ui.MUTED) } }) } catch (e: Exception) { Result.failure(e) }
                     runOnUiThread {
-                        r.onSuccess { driveMsg("✓ $it", Ui.GOOD); FolderFlow.askResume(this) { recreate() } }
+                        r.onSuccess { driveMsg("✓ $it", Ui.GOOD); FolderFlow.askResume(this) { reopen(null) } }
                             .onFailure { driveMsg(it.message ?: "Failed", Ui.BAD) }
                     }
                 }.start()

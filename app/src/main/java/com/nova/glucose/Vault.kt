@@ -270,17 +270,22 @@ object Vault {
 
     fun backupNow(c: Context): String = synchronized(lock) {
         val r = root(c) ?: throw IllegalStateException("Choose the Download/NovaGlucose folder first.")
-        "Backup saved: ${folderLabel(c)}/Backup/${backupTo(c, r)}"
+        "Backup saved and checked: ${folderLabel(c)}/Backup/${backupTo(c, r)}\n${Store(c).lastBackupInfo}"
     }
 
     private fun backupTo(c: Context, r: DocumentFile): String {
         val st = Store(c)
         val d = dir(r, "Backup")
         val name = backupFileName(c)
-        writeBytes(c, d.createFile("application/octet-stream", name) ?: file(d, name, "application/octet-stream"),
-            Backup.build(c, st.backupPw).toByteArray(Charsets.UTF_8))
+        val f = d.createFile("application/octet-stream", name) ?: file(d, name, "application/octet-stream")
+        writeBytes(c, f, Backup.build(c, st.backupPw).toByteArray(Charsets.UTF_8))
         // Android may add an extension: make sure the file keeps the exact name.
         d.listFiles().firstOrNull { it.name?.startsWith(name) == true && it.name != name }?.renameTo(name)
+        // Read it back: the backup must open before older copies are removed.
+        val check = d.findFile(name) ?: throw IllegalStateException("Backup file not found after saving")
+        st.lastBackupInfo = try { Backup.verify(read(c, check)) } catch (e: Exception) {
+            throw IllegalStateException("Backup check failed: ${e.message}")
+        }
         d.listFiles().filter { (it.name ?: "").endsWith(EXT) }.sortedByDescending { it.name }.drop(KEEP_BACKUPS).forEach { it.delete() }
         r.findFile("NovaGlucose-backup.json")?.delete()
         st.lastBackupTs = System.currentTimeMillis()
