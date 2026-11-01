@@ -112,11 +112,28 @@ class Store(c: Context) {
     // ---------------------------------------------------------------- profile & insulin (reference only, as prescribed)
     var age: Int get() = i("age", 14); set(v) = puti("age", v)
     var longName: String get() = s("long_name"); set(v) = put("long_name", v.trim())
-    var longDose: String get() = s("long_dose"); set(v) = put("long_dose", v.trim())
+    /** Numbers only (an autofilled email or text is ignored). */
+    var longDose: String get() = s("long_dose").takeIf { it.replace(',', '.').toDoubleOrNull() != null } ?: ""
+        set(v) = put("long_dose", v.trim().replace(',', '.').takeIf { it.toDoubleOrNull() != null } ?: "")
     var longTime: String get() = s("long_time"); set(v) = put("long_time", v.trim())
     var rapidName: String get() = s("rapid_name"); set(v) = put("rapid_name", v.trim())
     /** Prescribed carb ratio: grams of carbs per 1 unit of rapid insulin (0 = not set). */
     var carbRatio: Int get() = i("carb_ratio", 0); set(v) = puti("carb_ratio", v)
+    /** Target glucose (mg/dL) and prescribed correction factor (mg/dL lowered by 1 unit, 0 = not set): reference only. */
+    var targetMg: Int get() = i("target_mg", 100); set(v) = puti("target_mg", v)
+    var corrFactor: Int get() = i("corr_factor", 0); set(v) = puti("corr_factor", v)
+
+    // ---------------------------------------------------------------- Google Drive backup
+    var driveOn: Boolean get() = b("drive_on", false); set(v) = putb("drive_on", v)
+    var driveAuto: Boolean get() = b("drive_auto", true); set(v) = putb("drive_auto", v)
+    /** "d" every day, "3" every 3 days, "w" every week. */
+    var driveFreq: String get() = s("drive_freq", "d"); set(v) = put("drive_freq", v)
+    var driveWifi: Boolean get() = b("drive_wifi", true); set(v) = putb("drive_wifi", v)
+    var drivePhotos: Boolean get() = b("drive_photos", false); set(v) = putb("drive_photos", v)
+    var driveEmail: String get() = s("drive_email"); set(v) = put("drive_email", v)
+    var driveLast: Long get() = sp.getLong("last_drive", 0); set(v) = sp.edit().putLong("last_drive", v).apply()
+    var driveLastInfo: String get() = s("last_drive_info"); set(v) = put("last_drive_info", v)
+    var driveMap: String get() = s("last_drive_map", "{}"); set(v) = put("last_drive_map", v)
     /** Minutes to wait between rapid insulin and eating (0 = not set yet: ask). */
     var eatWait: Int get() = i("eat_wait", 0); set(v) = puti("eat_wait", v)
     var eatAt: Long get() = sp.getLong("last_eat_at", 0); set(v) = sp.edit().putLong("last_eat_at", v).apply()

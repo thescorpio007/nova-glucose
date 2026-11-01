@@ -107,6 +107,7 @@ class MonitorService : Service() {
                 notifyListeners(snap, null)
                 update(snap.latest)
                 if (System.currentTimeMillis() - st.lastExport >= 15 * 60_000L) Vault.exportAll(this@MonitorService)
+                try { DriveSync.maybeRun(this@MonitorService) } catch (_: Exception) { }
             } catch (e: LibreException) {
                 st.lastError = e.message ?: "error"
                 notifyListeners(null, st.lastError)

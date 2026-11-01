@@ -32,6 +32,13 @@ class SettingsActivity : BaseActivity() {
     private lateinit var backupPw: EditText
     private lateinit var backupMsg: TextView
     private var pendingBackup: String? = null
+    private lateinit var driveStatus: TextView
+    private lateinit var driveConnBtn: TextView
+    private lateinit var driveAutoSw: Switch
+    private lateinit var driveFreqRow: LinearLayout
+    private lateinit var driveWifiCb: android.widget.CheckBox
+    private lateinit var drivePhotoCb: android.widget.CheckBox
+    private lateinit var driveMsgV: TextView
     private lateinit var lockBtn: TextView
     private lateinit var lockBanner: TextView
     private lateinit var pinSw: Switch
@@ -223,6 +230,8 @@ class SettingsActivity : BaseActivity() {
         pc.addView(nameRow(rapidNameE, "rapid"), Ui.lp(top = Ui.dp(this, 6)))
         pc.addView(numRow("carb_ratio", "Prescribed ratio: 1 unit per … g carbs", st.carbRatio))
         pc.addView(numRow("eat_wait", "Wait before eating after rapid (min)", st.eatWait))
+        pc.addView(numRow("target_mg", "Target glucose (mg/dL)", st.targetMg))
+        pc.addView(numRow("corr_factor", "Prescribed correction: 1 unit lowers … mg/dL", st.corrFactor))
         pc.addView(Ui.text(this, "Kept as reference in the logbook and daily report, and as background for the AI. " +
             "The app never calculates or suggests a dose.", 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         penStatus = Ui.text(this, "", 12f, Ui.MUTED)
@@ -320,6 +329,34 @@ class SettingsActivity : BaseActivity() {
         root.addView(bc)
         renderFolder()
 
+        // ---------------------------------------------------------- Google Drive
+        root.addView(Ui.section(this, "Google Drive backup"))
+        val gd = Ui.card(this)
+        driveStatus = Ui.text(this, "", 14f, Ui.TEXT)
+        gd.addView(driveStatus)
+        val gr = Ui.row(this)
+        driveConnBtn = Ui.button(this, "") {
+            if (st.driveOn) { DriveSync.disconnect(this); renderDrive() }
+            else { save(false); driveMsg("Opening Google…", Ui.MUTED); DriveSync.connect(this) { err -> if (err != null) driveMsg(err, Ui.BAD); renderDrive() } }
+        }
+        gr.addView(driveConnBtn, Ui.lp(0, weight = 1f))
+        gd.addView(gr, Ui.lp(top = Ui.dp(this, 8)))
+        driveAutoSw = switch("Automatic backup", st.driveAuto)
+        gd.addView(driveAutoSw, Ui.lp(top = Ui.dp(this, 8)))
+        driveFreqRow = Ui.row(this); gd.addView(driveFreqRow); renderFreq()
+        gd.addView(Ui.text(this, "Runs around 02:00. Uploads only what changed since last time.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        driveWifiCb = check("Only on Wi-Fi", st.driveWifi)
+        drivePhotoCb = check("Include meal photos (bigger upload)", st.drivePhotos)
+        gd.addView(driveWifiCb); gd.addView(drivePhotoCb)
+        gd.addView(Ui.text(this, "Uploads readings, daily PDFs, meals, insulin, alerts, AI-Training and the settings backup " +
+            "from Download/NovaGlucose to My Drive › NovaGlucose › ${st.fileName}.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        gd.addView(Ui.button(this, "☁ Back up to Drive now", true) { driveNow() }, Ui.lp(top = Ui.dp(this, 10)))
+        gd.addView(Ui.button(this, "♻ Restore from Drive") { driveRestore() }, Ui.lp(top = Ui.dp(this, 8)))
+        driveMsgV = Ui.text(this, "", 13f, Ui.MUTED)
+        gd.addView(driveMsgV, Ui.lp(top = Ui.dp(this, 6)))
+        root.addView(gd)
+        renderDrive()
+
         // ---------------------------------------------------------- About
         root.addView(Ui.section(this, "About"))
         val ab = Ui.card(this)
@@ -402,6 +439,9 @@ class SettingsActivity : BaseActivity() {
         st.longTime = longTimeE.text.toString(); st.rapidName = rapidNameE.text.toString()
         st.carbRatio = num("carb_ratio", 0).coerceIn(0, 100)
         st.eatWait = num("eat_wait", 0).coerceIn(0, 90)
+        st.targetMg = num("target_mg", 100).coerceIn(70, 180)
+        st.corrFactor = num("corr_factor", 0).coerceIn(0, 400)
+        if (::driveAutoSw.isInitialized) { st.driveAuto = driveAutoSw.isChecked; st.driveWifi = driveWifiCb.isChecked; st.drivePhotos = drivePhotoCb.isChecked }
         val wasOn = st.monitorOn
         st.monitorOn = monitor.isChecked
         if (!st.monitorOn && wasOn) MonitorService.stop(this)
@@ -527,6 +567,11 @@ class SettingsActivity : BaseActivity() {
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
         if (FolderFlow.onResult(this, req, res, data) { recreate() }) return
+        if (req == DriveSync.REQ_CONNECT) {
+            if (res != RESULT_OK) { driveMsg("Google access not given", Ui.WARN); return }
+            DriveSync.onResult(this, req, data) { err -> if (err != null) driveMsg(err, Ui.BAD) else driveMsg("✓ Google Drive connected", Ui.GOOD); renderDrive() }
+            return
+        }
         if (res != RESULT_OK) return
         if (req == REQ_RINGTONE) {
             @Suppress("DEPRECATION")
@@ -569,6 +614,58 @@ class SettingsActivity : BaseActivity() {
         if (::permStatus.isInitialized) renderPerms()
         if (::allViews.isInitialized) renderLock()
         lockTick.post(watch)
+    }
+
+    private fun driveMsg(s: String, col: Int) { driveMsgV.setTextColor(col); driveMsgV.text = s }
+
+    private fun renderFreq() {
+        driveFreqRow.removeAllViews()
+        listOf("d" to "Every day", "3" to "Every 3 days", "w" to "Every week").forEach { (id, l) ->
+            driveFreqRow.addView(Ui.chip(this, l, st.driveFreq == id) { st.driveFreq = id; renderFreq(); renderDrive() },
+                Ui.lp(-2, -2, end = Ui.dp(this, 8)))
+        }
+        if (::allViews.isInitialized && uiLocked) renderLock()
+    }
+
+    private fun renderDrive() {
+        val f = java.text.SimpleDateFormat("EEE d MMM HH:mm", java.util.Locale.US)
+        driveStatus.setTextColor(if (st.driveOn) Ui.GOOD else Ui.MUTED)
+        driveStatus.text = if (!st.driveOn) "☁ Not connected" else
+            "☁ Connected: ${st.driveEmail.ifBlank { "Google account" }}" +
+                (if (st.driveLast > 0) "\nLast upload: ${f.format(java.util.Date(st.driveLast))} · ${st.driveLastInfo}" else "\nNo upload yet") +
+                (if (st.driveAuto) "\nNext: ${f.format(java.util.Date(DriveSync.nextRun(st)))}" else "")
+        driveConnBtn.text = if (st.driveOn) "Disconnect Google Drive" else "Connect Google Drive"
+    }
+
+    private fun driveNow() {
+        save(false)
+        if (!st.driveOn) { driveMsg("Connect Google Drive first", Ui.WARN); return }
+        driveMsg("Starting…", Ui.MUTED)
+        val app = applicationContext
+        Thread {
+            val r = try { Result.success(DriveSync.backup(app) { s -> runOnUiThread { driveMsg(s, Ui.MUTED) } }) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                r.onSuccess { driveMsg("✓ $it", Ui.GOOD) }.onFailure { driveMsg(it.message ?: "Failed", Ui.BAD) }
+                renderDrive()
+            }
+        }.start()
+    }
+
+    private fun driveRestore() {
+        if (!st.driveOn) { driveMsg("Connect Google Drive first", Ui.WARN); return }
+        if (!Vault.ready(this)) { FolderFlow.pick(this); return }
+        android.app.AlertDialog.Builder(this).setTitle("Restore from Google Drive?")
+            .setMessage("Files from My Drive › NovaGlucose are copied into Download/NovaGlucose, then you can resume settings, readings, meals and doses with the backup password.")
+            .setPositiveButton("Download") { _, _ ->
+                val app = applicationContext
+                Thread {
+                    val r = try { Result.success(DriveSync.download(app) { s -> runOnUiThread { driveMsg(s, Ui.MUTED) } }) } catch (e: Exception) { Result.failure(e) }
+                    runOnUiThread {
+                        r.onSuccess { driveMsg("✓ $it", Ui.GOOD); FolderFlow.askResume(this) { recreate() } }
+                            .onFailure { driveMsg(it.message ?: "Failed", Ui.BAD) }
+                    }
+                }.start()
+            }.setNegativeButton("Cancel", null).show()
     }
 
     private fun check(label: String, on: Boolean) = android.widget.CheckBox(this).apply {

@@ -110,9 +110,11 @@ jobs:
           tapText "Week"; tapText "Month"; shot 02d-chart-month
           tapText "Month"; tapText "Last 12 hours"; scroll; shot 02e-home-food
           adb shell am start -W -n $P/.InsulinActivity; shot 03-insulin
+          tapText "🧮"; shot 03b-calculator; adb shell input keyevent 4
           adb shell am start -W -n $P/.CarbActivity; shot 04-carbs-photo
           adb shell am start -W -n $P/.AskActivity; shot 05-ask-ai
           adb shell am start -W -n $P/.LogbookActivity; shot 06-logbook
+          tapText "Share with doctor"; shot 06b-share-doctor; adb shell input keyevent 4
           adb shell am start -W -n $P/.SettingsActivity; shot 07-settings-1
           for k in 2 3 4 5 6 7 8 9 10 11 12; do scroll; shot "08-settings-$k"; done
           adb shell am start -W -n $P/.CompareActivity; shot 09-compare-models

@@ -28,6 +28,7 @@ class LogbookActivity : BaseActivity() {
         root.addView(head)
         root.addView(Ui.text(this, "Each meal shows glucose at the meal and 2 hours later, to help judge future estimates. Long-press a meal to delete it.",
             13f, Ui.MUTED))
+        root.addView(Ui.button(this, "📤 Share with doctor", true) { DoctorReport.pick(this) }, Ui.lp(top = Ui.dp(this, 10)))
         today = Ui.card(this)
         root.addView(today, Ui.lp(top = Ui.dp(this, 10)))
         list = Ui.col(this)

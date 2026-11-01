@@ -263,6 +263,11 @@ object Vault {
 
     fun backupFileName(c: Context) = "${Store(c).fileName}-Glucose-Backup-${stampF.format(Date())}$EXT"
 
+    /** Keeps a copy of each doctor report in Reports/. */
+    fun saveReport(c: Context, f: File) = synchronized(lock) {
+        try { root(c)?.let { r -> writeBytes(c, file(dir(r, "Reports"), f.name, "application/pdf"), f.readBytes()) } } catch (_: Exception) { }
+    }
+
     fun backupNow(c: Context): String = synchronized(lock) {
         val r = root(c) ?: throw IllegalStateException("Choose the Download/NovaGlucose folder first.")
         "Backup saved: ${folderLabel(c)}/Backup/${backupTo(c, r)}"

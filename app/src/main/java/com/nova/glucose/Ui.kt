@@ -127,6 +127,8 @@ object Ui {
                 inputType = InputType.TYPE_CLASS_TEXT
                 isSingleLine = true
             }
+            // No autofill: Android must never put a saved email or password into a dose or settings box.
+            if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
 
     /** Always-visible vertical scroll bar inside a text box, and scrolling the box (not the page) when touched. */

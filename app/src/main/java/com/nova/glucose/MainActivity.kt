@@ -181,6 +181,7 @@ class MainActivity : BaseActivity() {
         ar.addView(Ui.button(this, "📒 Logbook") { startActivity(Intent(this, LogbookActivity::class.java)) },
             Ui.lp(0, weight = 0.7f))
         root.addView(ar, Ui.lp(top = Ui.dp(this, 8)))
+        root.addView(Ui.button(this, "📤 Share with doctor") { DoctorReport.pick(this) }, Ui.lp(top = Ui.dp(this, 8)))
 
         advice = Ui.card(this)
         root.addView(advice, Ui.lp(top = Ui.dp(this, 12)))
