@@ -209,6 +209,8 @@ class Store(c: Context) {
     var syncEatU: Long get() = sp.getLong("sync_eat_u", 0); set(v) = sp.edit().putLong("sync_eat_u", v).apply()
     /** This phone keeps its own LibreLinkUp login (not shared with the family). */
     var syncOwnLibre: Boolean get() = b("sync_own_llu", false); set(v) = putb("sync_own_llu", v)
+    /** This phone keeps its own AI keys, AI choice and models (not shared with the family). */
+    var syncOwnAi: Boolean get() = b("sync_own_ai", false); set(v) = putb("sync_own_ai", v)
     /** Family-shared settings: time of the last change applied/sent, and a fingerprint to notice local changes. */
     var syncSetU: Long get() = sp.getLong("sync_set_u", 0); set(v) = sp.edit().putLong("sync_set_u", v).apply()
     var syncSetHash: String get() = s("sync_set_hash"); set(v) = put("sync_set_hash", v)
@@ -245,6 +247,7 @@ class Store(c: Context) {
         val SHARED_KEYS = setOf("ai", "age", "gender", "about_her", "long_name", "long_dose", "long_time", "rapid_name", "carb_ratio",
             "target_mg", "corr_factor", "eat_wait", "low_treat", "meal_min", "meal_max", "snack_min", "snack_max", "food_notes")
         fun shared(k: String) = k in SHARED_KEYS || k.startsWith("model_")
+        fun aiKey(k: String) = k == "ai" || k.startsWith("model_")
         private const val ALIAS = "nova_glucose_secret"
         const val PREFS = "nova_glucose"
         /** Never copied as plain settings (secrets, per-phone state). */

@@ -81,9 +81,14 @@ object SyncTest {
             check(st.rapidName == "Fiasp" && st.carbRatio == 10 && st.email == "family@example.com" && st.password == "LluFamily!1") { "shared settings not applied" }
             check(st.key(Providers.byId("gemini")!!) == "G-FAMILY-KEY" && st.model(Providers.byId("gemini")!!) == "gemini-2.5-pro") { "AI key/model not applied" }
             check(st.low == 77) { "an alert setting was overwritten by the family" }
+            st.syncOwnAi = true; st.setKey(Providers.byId("gemini")!!, "MY-OWN-KEY")
+            FamilySync.apply(c, JSONObject(set.toString()).put("u", now + 5000))
+            check(st.key(Providers.byId("gemini")!!) == "MY-OWN-KEY") { "own AI key was replaced by the family's" }
+            check(st.rapidName == "Fiasp") { "other shared settings stopped applying" }
+            st.syncOwnAi = false
             FamilySync.apply(c, JSONObject(meal.toString()).put("g", "zz-twin"))
             check(db.meals(10).size == 1) { "same meal under another id was duplicated" }
-            done += "merged here, no duplicates ✓ · AI correction ✓ · eat timer ✓ · incident ✓ · no photos ✓ · LibreLinkUp login + AI key + profile shared ✓ · alerts kept per phone ✓"
+            done += "merged here, no duplicates ✓ · AI correction ✓ · eat timer ✓ · incident ✓ · no photos ✓ · LibreLinkUp login + AI key + profile shared ✓ · alerts kept per phone ✓ · own AI key kept ✓"
 
             // An edit and a deletion from B reach A
             FamilySync.push(sb, fam, key, listOf(dg to JSONObject(dose.toString()).put("u", now + 1000).put("units", 5.0),

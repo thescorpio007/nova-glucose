@@ -296,6 +296,7 @@ object FamilySync {
         val v = JSONObject()
         for ((k, x) in st.raw.all.toSortedMap()) {
             if (!(Store.shared(k) || (!st.syncOwnLibre && k in Store.LIBRE_KEYS))) continue
+            if (st.syncOwnAi && Store.aiKey(k)) continue
             when (x) {
                 is Boolean -> v.put(k, JSONObject().put("t", "b").put("v", x))
                 is Int -> v.put(k, JSONObject().put("t", "i").put("v", x))
@@ -304,7 +305,7 @@ object FamilySync {
             }
         }
         val keys = JSONObject()
-        Providers.all.forEach { p -> st.key(p).takeIf { it.isNotBlank() }?.let { keys.put(p.id, it) } }
+        if (!st.syncOwnAi) Providers.all.forEach { p -> st.key(p).takeIf { it.isNotBlank() }?.let { keys.put(p.id, it) } }
         val o = JSONObject().put("v", v).put("keys", keys)
         if (!st.syncOwnLibre && st.password.isNotBlank()) o.put("pw", st.password)
         return o
@@ -334,6 +335,7 @@ object FamilySync {
         val v = o.optJSONObject("v") ?: JSONObject()
         for (k in v.keys()) {
             if (!(Store.shared(k) || (!st.syncOwnLibre && k in Store.LIBRE_KEYS))) continue
+            if (st.syncOwnAi && Store.aiKey(k)) continue
             val x = v.getJSONObject(k)
             when (x.optString("t")) {
                 "b" -> e.putBoolean(k, x.optBoolean("v")); "i" -> e.putInt(k, x.optInt("v"))
@@ -341,7 +343,7 @@ object FamilySync {
             }
         }
         e.commit()
-        o.optJSONObject("keys")?.let { keys -> Providers.all.forEach { p -> keys.optString(p.id).takeIf { it.isNotBlank() }?.let { st.setKey(p, it) } } }
+        if (!st.syncOwnAi) o.optJSONObject("keys")?.let { keys -> Providers.all.forEach { p -> keys.optString(p.id).takeIf { it.isNotBlank() }?.let { st.setKey(p, it) } } }
         if (!st.syncOwnLibre && o.optString("pw").isNotBlank()) st.password = o.optString("pw")
         st.syncSetU = u
         st.syncSetHash = hash(settingsPayload(c))

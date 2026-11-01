@@ -793,6 +793,11 @@ class SettingsActivity : BaseActivity() {
                 setTextColor(Ui.TEXT); textSize = 14f; setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 4))
                 setOnCheckedChangeListener { _, on -> st.syncOwnLibre = on }
             })
+            famBox.addView(Switch(this).apply {
+                text = "This phone uses its own AI key and model (don't share)"; isChecked = st.syncOwnAi
+                setTextColor(Ui.TEXT); textSize = 14f; setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 4))
+                setOnCheckedChangeListener { _, on -> st.syncOwnAi = on }
+            })
             famBox.addView(Ui.text(this, "Tip: one LibreLinkUp login on several phones can be signed out or locked by Abbott. If that happens, " +
                 "turn this on and use a separate follower invitation from her LibreLink app for this phone.", 12f, Ui.MUTED))
             val sr = Ui.row(this)
