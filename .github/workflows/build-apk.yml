@@ -143,6 +143,11 @@ jobs:
           adb shell am start -W -n $P/.SettingsActivity; sleep 2; tapText "Unlock" && { adb shell input text 1234; tapExact "OK"; sleep 1; }
           findTap "Family sync"; sleep 2; shot 12-family-sync; half; shot 12b-family-sync-2
           adb shell input keyevent 4
+          adb shell pm clear $P; adb shell pm grant $P android.permission.POST_NOTIFICATIONS || true
+          adb shell am start -W -n $P/.MainActivity --ez demo true; sleep 3; adb shell input keyevent 4
+          adb shell am start -W -n $P/.MainActivity; sleep 2; half; shot 13-chart-red-marks
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demotap true; sleep 4; shot 14-mark-history; half; shot 14b-mark-history-list
+          adb shell input keyevent 4
           sleep 2
           adb logcat -d > logcat.txt
           if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A 25 "FATAL EXCEPTION" logcat.txt | sed 's/^/::error::/'; exit 1; fi

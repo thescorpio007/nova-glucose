@@ -268,7 +268,7 @@ object FamilySync {
         val ai = db.ai(id)
         return JSONObject().put("t", "meal").put("g", db.gid("meals", id)).put("u", db.upd("meals", id))
             .put("ts", m.ts).put("title", m.title).put("items", m.itemsJson).put("carbs", m.carbs).put("low", m.low).put("high", m.high)
-            .put("mgAt", m.mgAt).put("note", m.note).put("by", Store(c).syncName)
+            .put("mgAt", m.mgAt).put("note", m.note).put("by", db.who("meals", id).ifBlank { Store(c).syncName })
             .apply { if (ai != null) { put("ai", ai.first); put("aiC", ai.second) } }
     }
 
@@ -276,7 +276,7 @@ object FamilySync {
         val db = Db.get(c); val d = db.dose(id) ?: return null
         return JSONObject().put("t", "dose").put("g", db.gid("insulin", id)).put("u", db.upd("insulin", id))
             .put("ts", d.ts).put("kind", d.kind).put("units", d.units).put("carbs", d.carbs).put("wait", d.waitMin)
-            .put("mgAt", d.mgAt).put("note", d.note).put("by", Store(c).syncName)
+            .put("mgAt", d.mgAt).put("note", d.note).put("by", db.who("insulin", id).ifBlank { Store(c).syncName })
     }
 
     /** Current state of a pending item (null = nothing to send). */
@@ -313,7 +313,7 @@ object FamilySync {
                 if (row == null) db.findMeal(m.ts, m.title)?.let { same -> if (!resolveTwin(db, "meals", "meal", same, g)) return ""; row = db.byGid("meals", g) }
                 val r = row
                 if (r == null) {
-                    val id = db.addMeal(m, g, u, share = false)
+                    val id = db.addMeal(m, g, u, share = false, who = item.optString("by"))
                     if (item.has("ai")) db.setAi(id, item.optString("ai"), item.optInt("aiC"), share = false, upd = u)
                     return "meal+"
                 }
@@ -329,7 +329,7 @@ object FamilySync {
                 var row = db.byGid("insulin", g)
                 if (row == null) db.findDose(d.ts, d.kind, d.units)?.let { same -> if (!resolveTwin(db, "insulin", "dose", same, g)) return ""; row = db.byGid("insulin", g) }
                 val r = row
-                if (r == null) { db.addDose(d, g, u, share = false); return "dose+" }
+                if (r == null) { db.addDose(d, g, u, share = false, who = item.optString("by")); return "dose+" }
                 if (u <= r.second) return ""
                 db.updateDose(r.first, d, u); return "upd"
             }

@@ -69,7 +69,10 @@ class MainActivity : BaseActivity() {
                 runOnUiThread { android.app.AlertDialog.Builder(this).setTitle("Family sync self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
             }.start()
         }
+        if (intent?.getBooleanExtra("demo", false) == true && SelfTest.canRun(this)) Demo.fill(this)
         build()
+        if (intent?.getBooleanExtra("demotap", false) == true)
+            Db.get(this).meals(1).firstOrNull()?.let { m -> window.decorView.postDelayed({ MarkHistory.show(this, m.ts) }, 1500) }
         askPermissions()
     }
 
@@ -165,7 +168,7 @@ class MainActivity : BaseActivity() {
         navRow.addView(navLabel, Ui.lp(0, weight = 1f))
         navRow.addView(Ui.smallButton(this, "›") { if (offset < 0) { offset++; renderChart() } }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 32)))
         gc.addView(navRow)
-        graph = GraphView(this)
+        graph = GraphView(this).apply { onMark = { t -> MarkHistory.show(this@MainActivity, t) } }
         gc.addView(graph, Ui.lp(top = Ui.dp(this, 6)))
         chartLegend = Ui.text(this, "", 11f, Ui.MUTED)
         gc.addView(chartLegend)
@@ -293,9 +296,9 @@ class MainActivity : BaseActivity() {
         graph.doses = db.doses(a, b).filter { it.kind == "rapid" }.map { it.ts }
         graph.set(mode, a, b, pts)
         chartLegend.text = when (mode) {
-            "12" -> "Every hour labelled · M = meal · I = rapid insulin"
-            "24" -> "Full day · ‹ › other days · M = meal · I = rapid insulin"
-            "w" -> "All readings of the 7 days · ‹ › other weeks"
+            "12" -> MarkHistory.legend("Every hour labelled · tap a mark · ")
+            "24" -> MarkHistory.legend("Full day · ‹ › other days · tap a mark · ")
+            "w" -> MarkHistory.legend("All readings of the 7 days · ‹ › other weeks · tap a mark · ")
             else -> "Line = daily average · band = lowest to highest · ‹ › other months"
         }
         val s = Vault.stats(st, pts)

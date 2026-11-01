@@ -19,6 +19,23 @@ class GraphView(c: Context) : View(c) {
     var low = 70; var high = 180; var lowLine = 70; var highLine = 180
     var meals: List<Long> = emptyList()
     var doses: List<Long> = emptyList()
+    /** Tap on an M or I mark: time of the meal/dose. */
+    var onMark: ((Long) -> Unit)? = null
+    private var gx0 = 0f; private var gx1 = 0f; private var markBottom = 0f
+
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        if (onMark == null || mode == "m" || t1 <= t0) return false
+        if (e.y > markBottom + 10 * d) return false
+        if (e.action == android.view.MotionEvent.ACTION_DOWN) return true
+        if (e.action == android.view.MotionEvent.ACTION_UP) {
+            fun x(t: Long) = gx0 + (t - t0).toFloat() / (t1 - t0) * (gx1 - gx0)
+            val hit = (meals + doses).filter { it in t0..t1 }.minByOrNull { kotlin.math.abs(x(it) - e.x) }
+            if (hit != null && kotlin.math.abs(x(hit) - e.x) < 22 * d) { performClick(); onMark?.invoke(hit); return true }
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean { super.performClick(); return true }
 
     fun set(mode: String, t0: Long, t1: Long, rs: List<Reading>) {
         this.mode = mode; this.t0 = t0; this.t1 = t1; readings = rs; invalidate()
@@ -37,7 +54,7 @@ class GraphView(c: Context) : View(c) {
         strokeWidth = 1.5f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(6 * d, 5 * d), 0f)
     }
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 10 * d; isFakeBoldText = true }
+    private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12 * d; isFakeBoldText = true; color = MARK }
 
     override fun onMeasure(w: Int, h: Int) {
         setMeasuredDimension(View.MeasureSpec.getSize(w), (230 * d).toInt())
@@ -47,7 +64,8 @@ class GraphView(c: Context) : View(c) {
 
     override fun onDraw(cv: Canvas) {
         if (t1 <= t0) return
-        val left = 34 * d; val right = width - 10 * d; val top = 14 * d; val bottom = height - 22 * d
+        val left = 34 * d; val right = width - 10 * d; val top = 18 * d; val bottom = height - 22 * d
+        gx0 = left; gx1 = right; markBottom = top + 12 * d
         val maxV = maxOf(300, (readings.maxOfOrNull { it.mg } ?: 0) + 20)
         val minV = 40
         fun y(v: Int) = bottom - (v - minV).toFloat() / (maxV - minV) * (bottom - top)
@@ -128,10 +146,8 @@ class GraphView(c: Context) : View(c) {
         }
 
         // Meal (M) and rapid insulin (I) marks
-        mark.color = Ui.ACCENT
-        meals.filter { it in t0..t1 }.forEach { cv.drawText("M", x(it) - 4 * d, top - 2 * d, mark) }
-        mark.color = 0xFF8FA8FF.toInt()
-        doses.filter { it in t0..t1 }.forEach { cv.drawText("I", x(it) - 2 * d, top + 9 * d, mark) }
+        meals.filter { it in t0..t1 }.forEach { cv.drawText("M", x(it) - 5 * d, top - 4 * d, mark) }
+        doses.filter { it in t0..t1 }.forEach { cv.drawText("I", x(it) - 2 * d, top + 10 * d, mark) }
 
         val path = Path()
         var prev: Reading? = null
@@ -148,6 +164,8 @@ class GraphView(c: Context) : View(c) {
             cv.drawCircle(x(last.ts), y(last.mg), 6 * d, dot)
         }
     }
+
+    companion object { const val MARK = 0xFFFF5A5F.toInt() }
 
     private fun colorFor(mg: Int) = when {
         mg < lowLine -> Ui.BAD

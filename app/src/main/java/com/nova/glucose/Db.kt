@@ -25,7 +25,7 @@ data class Dose(
 )
 
 /** Readings history (kept 400 days) and the meal logbook, stored only on this phone. */
-class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 4) {
+class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 5) {
     private val app: Context = c.applicationContext
 
     companion object {
@@ -39,8 +39,16 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         db.execSQL("CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, title TEXT, items TEXT, carbs INTEGER, " +
             "low INTEGER, high INTEGER, mg_at INTEGER, photo TEXT, note TEXT)")
         db.execSQL("CREATE TABLE unexported(ts INTEGER PRIMARY KEY)")
-        v3(db); v4(db)
+        v3(db); v4(db); v5(db)
     }
+
+    /** Which phone added the entry (family sync). */
+    private fun v5(db: SQLiteDatabase) {
+        for (t in listOf("meals", "insulin")) try { db.execSQL("ALTER TABLE $t ADD COLUMN who TEXT") } catch (_: Exception) { }
+    }
+
+    fun who(t: String, id: Long): String = readableDatabase.rawQuery("SELECT who FROM $t WHERE id = ?", arrayOf(id.toString()))
+        .use { if (it.moveToFirst()) it.getString(0) ?: "" else "" }
 
     /** Family sync: every meal/dose gets a global id (gid) and an edit time (upd); deletions are remembered. */
     private fun v4(db: SQLiteDatabase) {
@@ -119,9 +127,10 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         try { db.execSQL("ALTER TABLE meals ADD COLUMN ai_carbs INTEGER") } catch (_: Exception) { }
     }
 
-    fun addDose(d: Dose, gid: String? = null, upd: Long? = null, share: Boolean = true): Long {
+    fun addDose(d: Dose, gid: String? = null, upd: Long? = null, share: Boolean = true, who: String? = null): Long {
         val g = gid ?: newGid()
-        val id = writableDatabase.insert("insulin", null, doseValues(d).apply { put("gid", g); put("upd", upd ?: System.currentTimeMillis()) })
+        val id = writableDatabase.insert("insulin", null, doseValues(d).apply { put("gid", g); put("upd", upd ?: System.currentTimeMillis())
+            put("who", who ?: Store(app).syncName) })
         if (share) queue(g, "dose")
         return id
     }
@@ -201,6 +210,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         }
         if (o < 3) v3(db)
         if (o < 4) v4(db)
+        if (o < 5) v5(db)
     }
 
     /** New readings not yet written to the Download folder (also catches late, back-filled ones). */
@@ -254,9 +264,10 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
     /** The reading closest to [t] (within 20 minutes), or null. */
     fun near(t: Long): Reading? = readings(t - 20 * 60_000, t + 20 * 60_000).minByOrNull { kotlin.math.abs(it.ts - t) }
 
-    fun addMeal(m: Meal, gid: String? = null, upd: Long? = null, share: Boolean = true): Long {
+    fun addMeal(m: Meal, gid: String? = null, upd: Long? = null, share: Boolean = true, who: String? = null): Long {
         val g = gid ?: newGid()
-        val id = writableDatabase.insert("meals", null, mealValues(m).apply { put("photo", m.photo); put("gid", g); put("upd", upd ?: System.currentTimeMillis()) })
+        val id = writableDatabase.insert("meals", null, mealValues(m).apply { put("photo", m.photo); put("gid", g); put("upd", upd ?: System.currentTimeMillis())
+            put("who", who ?: Store(app).syncName) })
         if (share) queue(g, "meal")
         return id
     }
