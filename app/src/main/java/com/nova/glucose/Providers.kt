@@ -52,9 +52,22 @@ object Providers {
      * same AI are tried (lighter ones too) and the first that answers is kept as the new model.
      */
     fun ask(st: Store, p: Provider, system: String, user: String, images: List<ByteArray> = emptyList(),
-            status: (String) -> Unit = {}): String {
+            status: (String) -> Unit = {}, only: String? = null): String {
         val key = st.key(p)
         if (key.isBlank()) throw AiException("Add your ${p.label} API key in Settings first.")
+        if (only != null) {
+            // One specific model (Compare models): no switching, nothing saved.
+            var tries = 0
+            while (true) {
+                try { return call(p, key, only, system, user, images).ifBlank { throw AiException("Empty answer") } }
+                catch (e: java.io.IOException) { if (++tries > 1) throw AiException("No connection") }
+                catch (e: AiException) {
+                    val quota = e.code == 429 && quotaRe.containsMatchIn(e.message ?: "")
+                    if (e.code in busy && !quota && ++tries <= 1) { Thread.sleep(3000); continue }
+                    throw AiException(if (quota) "No quota left" else (e.message ?: "Error").take(120), e.code)
+                }
+            }
+        }
         var model = st.model(p)
         val tried = linkedSetOf<String>()
         var candidates: List<String>? = null

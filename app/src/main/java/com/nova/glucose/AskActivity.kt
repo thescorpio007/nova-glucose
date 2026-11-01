@@ -81,11 +81,19 @@ class AskActivity : BaseActivity() {
             append("Her ranges: low below ${st.low}, high above ${st.high} mg/dL. ")
             append("Carb plan: meals ${st.mealMin}–${st.mealMax} g, snacks ${st.snackMin}–${st.snackMax} g, low treatment ${st.lowTreatG} g fast sugar.\n")
             if (st.foodNotes.isNotBlank()) append("Family food notes: ${st.foodNotes}\n")
+            val insulin = listOfNotNull(
+                st.longName.takeIf { it.isNotBlank() }?.let { "long-acting $it" + (st.longTime.takeIf { t -> t.isNotBlank() }?.let { t -> " (given around $t)" } ?: "") },
+                st.rapidName.takeIf { it.isNotBlank() }?.let { "rapid $it" })
+            if (insulin.isNotEmpty()) append("Her insulins: ${insulin.joinToString(", ")}.\n")
+            val recent = Db.get(this@AskActivity).doses(now - 4 * 3600_000L).filter { it.kind == "rapid" }
+            if (recent.isNotEmpty()) append("Rapid insulin given in the last 4 hours at: ${recent.joinToString { tf.format(Date(it.ts)) }}" +
+                " (so it is still active — take that into account for food timing; never comment on the dose).\n")
+            if (st.eatAt > now) append("An eat timer is running: she should start eating at ${tf.format(Date(st.eatAt))}.\n")
         }
     }
 
-    private val system = """
-You help a family choose food for their teenage daughter (13–17) who has diabetes and uses rapid insulin.
+    private val system get() = """
+You help a family choose food for their daughter (age ${st.age}) who has diabetes and uses rapid insulin.
 Suggest practical food ideas from a mix of Tunisian, Gulf/Middle Eastern and international cuisine, each with a portion and an
 approximate carb count in grams. Keep answers short, friendly and easy to scan on a phone (short lines, simple bullets, no tables).
 Rules:

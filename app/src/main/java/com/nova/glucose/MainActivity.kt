@@ -30,6 +30,7 @@ class MainActivity : BaseActivity() {
     private lateinit var advice: LinearLayout
     private lateinit var connectCard: LinearLayout
     private lateinit var folderCard: LinearLayout
+    private lateinit var eatLine: TextView
     private lateinit var folderText: TextView
     private var snap: Snapshot? = null
     private val ui = Handler(Looper.getMainLooper())
@@ -63,7 +64,7 @@ class MainActivity : BaseActivity() {
     }
 
     private val clock = object : Runnable {
-        override fun run() { renderAgo(); ui.postDelayed(this, 30_000) }
+        override fun run() { renderAgo(); renderEat(); ui.postDelayed(this, 1_000) }
     }
 
     private fun c() = this
@@ -134,9 +135,18 @@ class MainActivity : BaseActivity() {
         root.addView(gc, Ui.lp(top = Ui.dp(this, 12)))
 
         // actions
+        eatLine = Ui.text(this, "", 16f, Ui.GOOD, true).apply {
+            background = Ui.round(0x223DDC97, Ui.dp(c(), 12).toFloat())
+            setPadding(Ui.dp(c(), 14), Ui.dp(c(), 10), Ui.dp(c(), 14), Ui.dp(c(), 10)); visibility = View.GONE
+            setOnClickListener { startActivity(Intent(c(), InsulinActivity::class.java)) }
+        }
+        root.addView(eatLine, Ui.lp(top = Ui.dp(this, 12)))
+        root.addView(Ui.button(this, "💉  Rapid insulin before meal", true) {
+            startActivity(Intent(this, InsulinActivity::class.java))
+        }, Ui.lp(top = Ui.dp(this, 12)))
         root.addView(Ui.button(this, "📷  Carbs from photo / video", true) {
             startActivity(Intent(this, CarbActivity::class.java))
-        }, Ui.lp(top = Ui.dp(this, 12)))
+        }, Ui.lp(top = Ui.dp(this, 8)))
         val ar = Ui.row(this)
         ar.addView(Ui.button(this, "✦ Ask AI for food ideas") { startActivity(Intent(this, AskActivity::class.java)) },
             Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
@@ -187,6 +197,13 @@ class MainActivity : BaseActivity() {
         graph.readings = pts
 
         renderAdvice(r)
+    }
+
+    private fun renderEat() {
+        val left = st.eatAt - System.currentTimeMillis()
+        if (st.eatAt == 0L || left <= 0) { eatLine.visibility = View.GONE; return }
+        eatLine.visibility = View.VISIBLE
+        eatLine.text = "⏱ Eat in %d:%02d — notification when it's time".format(left / 60_000, (left / 1000) % 60)
     }
 
     private fun renderAgo() {

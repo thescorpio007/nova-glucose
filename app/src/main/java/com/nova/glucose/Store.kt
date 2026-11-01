@@ -104,6 +104,41 @@ class Store(c: Context) {
         } catch (_: Exception) { "" }
     }
 
+    // ---------------------------------------------------------------- profile & insulin (reference only, as prescribed)
+    var age: Int get() = i("age", 14); set(v) = puti("age", v)
+    var longName: String get() = s("long_name"); set(v) = put("long_name", v.trim())
+    var longDose: String get() = s("long_dose"); set(v) = put("long_dose", v.trim())
+    var longTime: String get() = s("long_time"); set(v) = put("long_time", v.trim())
+    var rapidName: String get() = s("rapid_name"); set(v) = put("rapid_name", v.trim())
+    /** Prescribed carb ratio: grams of carbs per 1 unit of rapid insulin (0 = not set). */
+    var carbRatio: Int get() = i("carb_ratio", 0); set(v) = puti("carb_ratio", v)
+    /** Minutes to wait between rapid insulin and eating (0 = not set yet: ask). */
+    var eatWait: Int get() = i("eat_wait", 0); set(v) = puti("eat_wait", v)
+    var eatAt: Long get() = sp.getLong("last_eat_at", 0); set(v) = sp.edit().putLong("last_eat_at", v).apply()
+
+    // ---------------------------------------------------------------- urgent alarm
+    var urgentOn: Boolean get() = b("urg_on", true); set(v) = putb("urg_on", v)
+    var urgUrgentLow: Boolean get() = b("urg_ul", true); set(v) = putb("urg_ul", v)
+    var urgLow: Boolean get() = b("urg_l", true); set(v) = putb("urg_l", v)
+    var urgHigh: Boolean get() = b("urg_h", false); set(v) = putb("urg_h", v)
+    var urgVeryHigh: Boolean get() = b("urg_vh", true); set(v) = putb("urg_vh", v)
+    var alarmSound: String get() = s("alarm_sound"); set(v) = put("alarm_sound", v)
+    var alarmSoundName: String get() = s("alarm_sound_name", "Default alarm"); set(v) = put("alarm_sound_name", v)
+    /** "off", "normal", "strong". */
+    var alarmVibrate: String get() = s("alarm_vib", "strong"); set(v) = put("alarm_vib", v)
+    var ringSec: Int get() = i("ring_sec", 60); set(v) = puti("ring_sec", v)
+    var urgentRepeat: Int get() = i("urg_repeat", 5); set(v) = puti("urg_repeat", v)
+    var alarmVolume: Int get() = i("alarm_vol", 80); set(v) = puti("alarm_vol", v)
+    fun urgentFor(kind: String) = urgentOn && when (kind) {
+        "urgent_low" -> urgUrgentLow; "low" -> urgLow; "high" -> urgHigh; "very_high" -> urgVeryHigh; else -> false
+    }
+    fun snoozedUntil(kind: String): Long = sp.getLong("last_snooze_$kind", 0)
+    fun snooze(kind: String, until: Long) = sp.edit().putLong("last_snooze_$kind", until).apply()
+
+    /** First name of the person followed, safe for file names. */
+    val fileName: String get() = patientName.trim().split(" ").firstOrNull().orEmpty()
+        .replace(Regex("[^A-Za-z0-9\\u00C0-\\u024F\\u0600-\\u06FF]"), "").ifBlank { "Nova" }
+
     // ---------------------------------------------------------------- Download/NovaGlucose folder & backup
     var folderUri: String get() = s("folder_uri"); set(v) = put("folder_uri", v)
     var backupPw: String get() = dec(s("backup_pw")); set(v) = put("backup_pw", enc(v))
@@ -111,12 +146,14 @@ class Store(c: Context) {
     var lastExportReading: Long get() = sp.getLong("last_export_reading", 0); set(v) = sp.edit().putLong("last_export_reading", v).apply()
     var lastBackupTs: Long get() = sp.getLong("last_backup", 0); set(v) = sp.edit().putLong("last_backup", v).apply()
     var resumeAsked: Boolean get() = b("resume_asked", false); set(v) = putb("resume_asked", v)
+    var layout: Int get() = i("folder_layout", 1); set(v) = puti("folder_layout", v)
+    var lastPdf: Long get() = sp.getLong("last_pdf", 0); set(v) = sp.edit().putLong("last_pdf", v).apply()
 
     companion object {
         private const val ALIAS = "nova_glucose_secret"
         const val PREFS = "nova_glucose"
         /** Never copied as plain settings (secrets, per-phone state). */
-        fun privateKey(k: String) = k in setOf("pw", "token", "token_exp", "account_id", "backup_pw", "folder_uri", "resume_asked") ||
+        fun privateKey(k: String) = k in setOf("pw", "token", "token_exp", "account_id", "backup_pw", "folder_uri", "resume_asked", "folder_layout") ||
             k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_")
     }
 }

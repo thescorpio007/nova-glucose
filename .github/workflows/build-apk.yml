@@ -87,7 +87,35 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Short test on an emulator
+      - name: Screenshot script
+        run: |
+          mkdir -p shots
+          cat > shots.sh <<'SH'
+          set -x
+          P=com.nova.glucose
+          shot() { sleep 4; adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png "shots/$1.png"; }
+          scroll() { adb shell input swipe 540 1600 540 450 400; }
+          adb install -r apk/*.apk
+          adb shell pm grant $P android.permission.POST_NOTIFICATIONS || true
+          adb logcat -c
+          adb shell am start -W -n $P/.MainActivity; sleep 3; adb shell input keyevent 4; adb shell am start -W -n $P/.MainActivity
+          shot 01-home; scroll; shot 02-home-food
+          adb shell am start -W -n $P/.InsulinActivity; shot 03-insulin
+          adb shell am start -W -n $P/.CarbActivity; shot 04-carbs-photo
+          adb shell am start -W -n $P/.AskActivity; shot 05-ask-ai
+          adb shell am start -W -n $P/.LogbookActivity; shot 06-logbook
+          adb shell am start -W -n $P/.SettingsActivity; shot 07-settings-1
+          for k in 2 3 4 5 6 7 8 9 10 11 12; do scroll; shot "08-settings-$k"; done
+          adb shell am start -W -n $P/.CompareActivity; shot 09-compare-models
+          adb shell am start -W -n $P/.AlarmActivity --ez test true; shot 10-urgent-alarm
+          adb shell input keyevent 4
+          sleep 2
+          adb logcat -d > logcat.txt
+          if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A 25 "FATAL EXCEPTION" logcat.txt | sed 's/^/::error::/'; exit 1; fi
+          echo "SHORT TEST OK"
+          SH
+
+      - name: Short test on an emulator (with screenshots)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -95,26 +123,16 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: |
-            adb install -r apk/*.apk
-            adb logcat -c
-            adb shell am start -W -n com.nova.glucose/.MainActivity
-            sleep 6
-            adb shell screencap -p /sdcard/main.png
-            adb shell am start -W -n com.nova.glucose/.SettingsActivity || echo '::error::Settings did not open'
-            sleep 4
-            adb shell am start -W -n com.nova.glucose/.CarbActivity
-            sleep 4
-            adb shell am start -W -n com.nova.glucose/.LogbookActivity
-            sleep 4
-            adb shell am start -W -n com.nova.glucose/.AskActivity
-            sleep 4
-            adb shell input keyevent 4
-            sleep 2
-            adb pull /sdcard/main.png main.png
-            adb logcat -d > logcat.txt
-            if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A 25 "FATAL EXCEPTION" logcat.txt | sed 's/^/::error::/' ; exit 1; fi
-            adb shell pidof com.nova.glucose && echo "SHORT TEST OK"
+          script: bash shots.sh
+
+      - name: Attach screenshots to the release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOVA_BUILD: ${{ github.run_number }}
+        run: |
+          n=$(printf '%02d' "$NOVA_BUILD")
+          ls shots/*.png >/dev/null 2>&1 && gh release upload "build-$n" shots/*.png --clobber --repo "$GITHUB_REPOSITORY" || true
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -122,4 +140,4 @@ jobs:
           name: test-results
           path: |
             logcat.txt
-            main.png
+            shots/

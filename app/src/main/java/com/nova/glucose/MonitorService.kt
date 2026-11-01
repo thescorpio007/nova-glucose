@@ -172,8 +172,10 @@ class MonitorService : Service() {
             Level.STALE -> if (st.staleAlert && r != null && now - r.ts > 20 * 60_000) "stale" else null
             else -> null
         }
-        if (kind == null) { nm.cancel(ID_ALERT); return }
-        val repeat = if (kind == "urgent_low") 5 else st.repeatMin
+        if (kind == null) { nm.cancel(ID_ALERT); if (AlarmPlayer.kind != "test") AlarmPlayer.dismiss(this); return }
+        val urgent = st.urgentFor(kind)
+        if (urgent && now < st.snoozedUntil(kind)) return
+        val repeat = if (urgent) st.urgentRepeat.coerceIn(1, 60) else if (kind == "urgent_low") 5 else st.repeatMin
         if (now - st.lastAlert(kind) < repeat * 60_000L) return
         st.setLastAlert(kind, now)
 
@@ -191,6 +193,12 @@ class MonitorService : Service() {
             else -> "${adv.title}: ${r!!.mg} ${Libre.trendArrow(r.trend)} mg/dL"
         }
         val low = kind == "urgent_low" || kind == "low"
+        if (urgent) {
+            // Rings through silent / Do Not Disturb at the chosen volume, full screen, Stop / Snooze.
+            AlarmPlayer.start(this, kind, title, body)
+            Vault.logAlert(this, "URGENT ALARM · $title", body)
+            return
+        }
         val n = builder(if (low) CH_ALERT_LOW else CH_ALERT)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setContentTitle(title).setContentText(body)

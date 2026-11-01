@@ -22,21 +22,28 @@ data class DayStats(
 )
 
 /**
- * The Download/NovaGlucose folder: readings (CSV per month), meals (with photos), alerts, a daily glucose
- * assessment and the backup file. The user picks the folder once; after a reinstall, picking it again
- * lets the app resume everything from it.
+ * The Download/NovaGlucose folder:
+ *   Readings/2026-11/readings-2026-11-01.csv     one file per day
+ *   Daily/2026-11/Aycha-Daily-2026-11-01.pdf     daily report: graph, assessment, meals with photos, insulin
+ *   Meals/meals.csv · meals.json · Photos/
+ *   Insulin/insulin.csv · insulin.json
+ *   Alerts/alerts-2026-11.csv
+ *   AI-Training/corrections.csv                  what the AI estimated vs what the family counted
+ *   Backup/Aycha-Glucose-Backup-2026-11-01-0843.novaglucose   (newest 7 kept)
+ * The user picks the folder once; after a reinstall, picking it again lets the app resume everything.
  */
 object Vault {
     const val FOLDER = "NovaGlucose"
+    const val EXT = ".novaglucose"
+    private const val KEEP_BACKUPS = 7
     private val lock = Any()
     private val dayF get() = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val monF get() = SimpleDateFormat("yyyy-MM", Locale.US)
     private val tsF get() = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-    private val hmF get() = SimpleDateFormat("HH:mm", Locale.US)
+    private val stampF get() = SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US)
 
     // ---------------------------------------------------------------- folder access
 
-    /** Creates Download/NovaGlucose when Android allows it, so the picker can open straight in it. */
     fun prepare() {
         try { File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), FOLDER).mkdirs() } catch (_: Exception) { }
     }
@@ -71,7 +78,11 @@ object Vault {
         return path.ifBlank { r.name ?: FOLDER }
     }
 
-    fun hasBackup(c: Context): Boolean = try { root(c)?.findFile(Backup.FILE) != null } catch (_: Exception) { false }
+    fun hasBackup(c: Context): Boolean = try { root(c)?.let { latestBackup(it) } != null } catch (_: Exception) { false }
+
+    private fun latestBackup(r: DocumentFile): DocumentFile? =
+        r.findFile("Backup")?.listFiles()?.filter { (it.name ?: "").endsWith(EXT) }?.maxByOrNull { it.name ?: "" }
+            ?: r.findFile("NovaGlucose-backup.json")
 
     // ---------------------------------------------------------------- file helpers
 
@@ -82,9 +93,7 @@ object Vault {
     private fun file(dir: DocumentFile, name: String, mime: String): DocumentFile =
         dir.findFile(name) ?: dir.createFile(mime, name) ?: throw IllegalStateException("Can't create $name")
 
-    private fun write(c: Context, f: DocumentFile, text: String) {
-        c.contentResolver.openOutputStream(f.uri, "wt")!!.use { it.write(text.toByteArray(Charsets.UTF_8)) }
-    }
+    private fun write(c: Context, f: DocumentFile, text: String) = writeBytes(c, f, text.toByteArray(Charsets.UTF_8))
 
     private fun writeBytes(c: Context, f: DocumentFile, b: ByteArray) {
         c.contentResolver.openOutputStream(f.uri, "wt")!!.use { it.write(b) }
@@ -101,50 +110,76 @@ object Vault {
         }
     }
 
+    private fun q(s: String) = "\"" + s.replace("\"", "'").replace("\n", " ") + "\""
+
+    // ---------------------------------------------------------------- layout upgrade (build 05 → 06)
+
+    private fun migrate(c: Context, r: DocumentFile, st: Store) {
+        if (st.layout >= 2) return
+        val oldAlerts = mutableListOf<Pair<String, String>>()
+        r.findFile("alerts")?.let { d ->
+            d.listFiles().forEach { f -> f.name?.let { n -> try { oldAlerts += n to read(c, f) } catch (_: Exception) { } } }
+        }
+        // Old lowercase folders are rebuilt from the app's data in the new layout.
+        for (n in listOf("readings", "assessment", "meals", "alerts")) r.listFiles().filter { it.name == n }.forEach { it.delete() }
+        if (oldAlerts.isNotEmpty()) {
+            val d = dir(r, "Alerts")
+            oldAlerts.forEach { (n, t) -> write(c, file(d, n, "text/csv"), t) }
+        }
+        Db.get(c).resetExport()
+        st.layout = 2
+    }
+
     // ---------------------------------------------------------------- export
 
-    /** Everything new since last time: readings, meals, assessments, and the daily backup. */
-    fun exportAll(c: Context, forceBackup: Boolean = false): String? = synchronized(lock) {
-        val r = root(c) ?: return "Folder not chosen"
+    /** Everything new since last time. [pdfNow] rebuilds today's report immediately (after a meal or dose). */
+    fun exportAll(c: Context, forceBackup: Boolean = false, pdfNow: Boolean = false): String? = synchronized(lock) {
+        val r = try { root(c) } catch (_: Exception) { null } ?: return "Folder not chosen"
         val st = Store(c)
         val errors = mutableListOf<String>()
         fun part(name: String, f: () -> Unit) = try { f() } catch (e: Exception) { errors += "$name: ${e.message}" }
-        part("readings") { exportReadings(c, r, st) }
+        part("upgrade") { migrate(c, r, st) }
+        part("readings") { exportReadings(c, r) }
         part("meals") { exportMeals(c, r) }
-        part("assessment") { exportAssessments(c, r, st) }
+        part("insulin") { exportInsulin(c, r) }
+        part("training") { exportTraining(c, r) }
+        if (pdfNow || System.currentTimeMillis() - st.lastPdf > 60 * 60_000L) part("daily report") { exportDaily(c, r, st) }
         if (forceBackup || System.currentTimeMillis() - st.lastBackupTs > 24 * 3600_000L) part("backup") { backupTo(c, r) }
         st.lastExport = System.currentTimeMillis()
         errors.firstOrNull()
     }
 
-    private fun exportReadings(c: Context, r: DocumentFile, st: Store) {
-        val list = Db.get(c).unexported()
+    private fun exportReadings(c: Context, r: DocumentFile) {
+        val db = Db.get(c)
+        val list = db.unexported()
         if (list.isEmpty()) return
-        val d = dir(r, "readings")
-        list.groupBy { monF.format(Date(it.ts)) }.forEach { (mon, rs) ->
-            val name = "readings-$mon.csv"
+        val top = dir(r, "Readings")
+        val tf = tsF
+        list.groupBy { dayF.format(Date(it.ts)) }.forEach { (day, rs) ->
+            val d = dir(top, day.substring(0, 7))
+            val name = "readings-$day.csv"
             val existing = d.findFile(name)
             val f = existing ?: file(d, name, "text/csv")
             val sb = StringBuilder()
             if (existing == null) sb.append("epoch_ms,date_time,mg_dl,trend\n")
-            val tf = tsF
             rs.forEach { sb.append("${it.ts},${tf.format(Date(it.ts))},${it.mg},${Libre.trendText(it.trend)}\n") }
             append(c, f, sb.toString())
         }
-        Db.get(c).markExported(list)
-        st.lastExportReading = list.last().ts
+        db.markExported(list)
     }
 
-    fun exportMeals(c: Context) = synchronized(lock) { root(c)?.let { try { exportMeals(c, it) } catch (_: Exception) { } } }
+    fun exportMeals(c: Context) = synchronized(lock) {
+        root(c)?.let { try { migrate(c, it, Store(c)); exportMeals(c, it); exportTraining(c, it); exportDaily(c, it, Store(c)) } catch (_: Exception) { } }
+    }
 
     private fun exportMeals(c: Context, r: DocumentFile) {
-        val meals = Db.get(c).meals(100_000)
-        val d = dir(r, "meals")
-        val photos = dir(d, "photos")
+        val db = Db.get(c)
+        val meals = db.meals(100_000)
+        val d = dir(r, "Meals")
+        val photos = dir(d, "Photos")
         val have = photos.listFiles().mapNotNull { it.name }.toSet()
         val arr = JSONArray()
-        val csv = StringBuilder("date_time,meal,carbs_g,likely_low_g,likely_high_g,glucose_at_meal,glucose_2h_after,note\n")
-        val db = Db.get(c)
+        val csv = StringBuilder("date_time,meal,carbs_g,likely_low_g,likely_high_g,ai_estimate_g,glucose_at_meal,glucose_2h_after,photo,note\n")
         val tf = tsF
         for (m in meals.sortedBy { it.ts }) {
             var photoName = ""
@@ -153,22 +188,71 @@ object Vault {
                 photoName = pf.name
                 if (photoName !in have) writeBytes(c, file(photos, photoName, "image/jpeg"), pf.readBytes())
             }
+            val ai = db.ai(m.id)
             arr.put(JSONObject().put("ts", m.ts).put("title", m.title).put("items", JSONArray(m.itemsJson))
                 .put("carbs", m.carbs).put("low", m.low).put("high", m.high).put("mgAt", m.mgAt)
-                .put("photo", photoName).put("note", m.note))
+                .put("photo", photoName).put("note", m.note)
+                .apply { if (ai != null) { put("aiItems", JSONArray(ai.first)); put("aiCarbs", ai.second) } })
             val after = db.near(m.ts + 2 * 3600_000L)?.mg?.toString() ?: ""
-            csv.append("${tf.format(Date(m.ts))},${q(m.title)},${m.carbs},${m.low},${m.high},${if (m.mgAt > 0) m.mgAt else ""},$after,${q(m.note)}\n")
+            csv.append("${tf.format(Date(m.ts))},${q(m.title)},${m.carbs},${m.low},${m.high},${ai?.second ?: ""}," +
+                "${if (m.mgAt > 0) m.mgAt else ""},$after,$photoName,${q(m.note)}\n")
         }
         write(c, file(d, "meals.json", "application/json"), arr.toString(1))
         write(c, file(d, "meals.csv", "text/csv"), csv.toString())
     }
 
-    private fun q(s: String) = "\"" + s.replace("\"", "'").replace("\n", " ") + "\""
+    private fun exportInsulin(c: Context, r: DocumentFile) {
+        val st = Store(c)
+        val list = Db.get(c).doses().sortedBy { it.ts }
+        val d = dir(r, "Insulin")
+        val tf = tsF
+        val csv = StringBuilder("date_time,type,insulin,units,meal_carbs_g,wait_before_eating_min,glucose_at_dose\n")
+        val arr = JSONArray()
+        list.forEach { x ->
+            val name = if (x.kind == "long") st.longName else st.rapidName
+            csv.append("${tf.format(Date(x.ts))},${x.kind},${q(name)},${x.units},${if (x.carbs > 0) x.carbs else ""}," +
+                "${if (x.kind == "rapid") x.waitMin else ""},${if (x.mgAt > 0) x.mgAt else ""}\n")
+            arr.put(JSONObject().put("ts", x.ts).put("kind", x.kind).put("units", x.units).put("carbs", x.carbs)
+                .put("wait", x.waitMin).put("mgAt", x.mgAt).put("note", x.note))
+        }
+        val prescribed = "Prescribed (reference): long-acting ${st.longName} ${st.longDose} u at ${st.longTime} · " +
+            "rapid ${st.rapidName} · ratio ${if (st.carbRatio > 0) "1 u per ${st.carbRatio} g" else "not set"}\n"
+        write(c, file(d, "insulin.csv", "text/csv"), csv.toString())
+        write(c, file(d, "insulin.json", "application/json"), arr.toString(1))
+        write(c, file(d, "prescription.txt", "text/plain"), prescribed)
+    }
+
+    private fun exportTraining(c: Context, r: DocumentFile) {
+        val rows = Training.rows(c)
+        if (rows.isEmpty()) return
+        val d = dir(r, "AI-Training")
+        val sb = StringBuilder("date_time,meal_photo,food,ai_estimate_g,family_count_g,difference_g,change\n")
+        rows.forEach { sb.append("${tsF.format(Date(it.ts))},${it.photo},${q(it.food)},${it.ai ?: ""},${it.family ?: ""},${it.diff},${it.change}\n") }
+        write(c, file(d, "corrections.csv", "text/csv"), sb.toString())
+        if (d.findFile("README.txt") == null) write(c, file(d, "README.txt", "text/plain"),
+            "Each row is one food: what the AI estimated from the photo and what the family counted after correcting it.\n" +
+            "Nova Glucose sends recent corrections with each new photo, so estimates move closer to how this family counts.\n" +
+            "Photos are in Meals/Photos (same file name).\n")
+    }
+
+    private fun exportDaily(c: Context, r: DocumentFile, st: Store) {
+        val top = dir(r, "Daily")
+        for (back in 0..1) {
+            val day = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -back) }
+            val stamp = dayF.format(day.time)
+            val d = dir(top, stamp.substring(0, 7))
+            val name = "${st.fileName}-Daily-$stamp.pdf"
+            if (back == 1 && d.findFile(name) != null && st.lastPdf > dayRange(day).second + 3600_000L) continue
+            writeBytes(c, file(d, name, "application/pdf"), DailyPdf.build(c, day))
+        }
+        st.lastPdf = System.currentTimeMillis()
+    }
 
     fun logAlert(c: Context, title: String, body: String) = synchronized(lock) {
         try {
             val r = root(c) ?: return@synchronized
-            val d = dir(r, "alerts")
+            migrate(c, r, Store(c))
+            val d = dir(r, "Alerts")
             val now = System.currentTimeMillis()
             val name = "alerts-${monF.format(Date(now))}.csv"
             val existing = d.findFile(name)
@@ -177,20 +261,29 @@ object Vault {
         } catch (_: Exception) { }
     }
 
+    fun backupFileName(c: Context) = "${Store(c).fileName}-Glucose-Backup-${stampF.format(Date())}$EXT"
+
     fun backupNow(c: Context): String = synchronized(lock) {
         val r = root(c) ?: throw IllegalStateException("Choose the Download/NovaGlucose folder first.")
-        backupTo(c, r); "Backup saved to ${folderLabel(c)}/${Backup.FILE}"
+        "Backup saved: ${folderLabel(c)}/Backup/${backupTo(c, r)}"
     }
 
-    private fun backupTo(c: Context, r: DocumentFile) {
+    private fun backupTo(c: Context, r: DocumentFile): String {
         val st = Store(c)
-        write(c, file(r, Backup.FILE, "application/json"), Backup.build(c, st.backupPw))
+        val d = dir(r, "Backup")
+        val name = backupFileName(c)
+        writeBytes(c, d.createFile("application/octet-stream", name) ?: file(d, name, "application/octet-stream"),
+            Backup.build(c, st.backupPw).toByteArray(Charsets.UTF_8))
+        // Android may add an extension: make sure the file keeps the exact name.
+        d.listFiles().firstOrNull { it.name?.startsWith(name) == true && it.name != name }?.renameTo(name)
+        d.listFiles().filter { (it.name ?: "").endsWith(EXT) }.sortedByDescending { it.name }.drop(KEEP_BACKUPS).forEach { it.delete() }
+        r.findFile("NovaGlucose-backup.json")?.delete()
         st.lastBackupTs = System.currentTimeMillis()
+        return name
     }
 
     // ---------------------------------------------------------------- assessment
 
-    /** Readings sampled every 5 minutes (one per slot), so minute and 15-minute points weigh the same. */
     private fun sample(rs: List<Reading>): List<Reading> =
         rs.groupBy { it.ts / 300_000L }.map { it.value.first() }.sortedBy { it.ts }
 
@@ -198,7 +291,7 @@ object Vault {
         val rs = sample(all)
         if (rs.isEmpty()) return null
         val n = rs.size
-        fun pct(p: (Int) -> Boolean) = (rs.count { p(it.mg) } * 100.0 / n).let { Math.round(it).toInt() }
+        fun pct(p: (Int) -> Boolean) = Math.round(rs.count { p(it.mg) } * 100.0 / n).toInt()
         var episodes = 0; var inLow = false
         for (r in rs) { if (r.mg < st.low && !inLow) { episodes++; inLow = true } else if (r.mg >= st.low) inLow = false }
         val avg = rs.sumOf { it.mg } / n
@@ -212,59 +305,18 @@ object Vault {
         return a.timeInMillis to a.timeInMillis + 24 * 3600_000L - 1
     }
 
-    fun assessmentText(c: Context, day: Calendar): String {
-        val st = Store(c)
-        val (a, b) = dayRange(day)
-        val db = Db.get(c)
-        val s = stats(st, db.readings(a, b))
-        val sb = StringBuilder()
-        sb.append("Nova Glucose — daily glucose assessment\n")
-        sb.append("${st.patientName.ifBlank { "Glucose" }} · ${SimpleDateFormat("EEEE d MMMM yyyy", Locale.US).format(Date(a))}\n\n")
-        if (s == null) { sb.append("No readings for this day.\n") } else {
-            sb.append("Readings (5-min samples): ${s.count}  ·  coverage ${s.count * 100 / 288}%\n")
-            sb.append("Average: ${s.avg} mg/dL  ·  GMI (estimated A1c): ${"%.1f".format(Locale.US, s.gmi)}%\n")
-            sb.append("Lowest: ${s.min}  ·  Highest: ${s.max} mg/dL\n\n")
-            sb.append("Time in range ${st.low}–${st.high}: ${s.inRange}%   (common goal: over 70%)\n")
-            sb.append("Below ${st.low}: ${s.below}%   (goal: under 4%)\n")
-            sb.append("Below ${st.urgentLow}: ${s.veryLow}%   (goal: under 1%)\n")
-            sb.append("Above ${st.high}: ${s.above}%   ·   above ${st.veryHigh}: ${s.veryHigh}%   (goal: under 5%)\n")
-            sb.append("Low episodes: ${s.lowEpisodes}\n\n")
-            sb.append("Hourly average (mg/dL):\n")
-            val byHour = db.readings(a, b).groupBy { Calendar.getInstance().apply { timeInMillis = it.ts }.get(Calendar.HOUR_OF_DAY) }
-            for (h in 0..23) byHour[h]?.let { l -> sb.append("  %02d:00  %d\n".format(h, l.sumOf { it.mg } / l.size)) }
-        }
-        val meals = db.meals(100_000).filter { it.ts in a..b }.sortedBy { it.ts }
-        sb.append("\nMeals (${meals.sumOf { it.carbs }} g carbs logged):\n")
-        if (meals.isEmpty()) sb.append("  none logged\n")
-        meals.forEach { m ->
-            val after = db.near(m.ts + 2 * 3600_000L)?.mg
-            sb.append("  ${hmF.format(Date(m.ts))}  ${m.title} — ${m.carbs} g")
-            sb.append("  ·  glucose ${if (m.mgAt > 0) m.mgAt else "–"} → ${after ?: "–"} after 2 h\n")
-        }
-        sb.append("\n").append(Foods.CARE_NOTE).append("\n")
-        return sb.toString()
-    }
-
-    private fun exportAssessments(c: Context, r: DocumentFile, st: Store) {
-        val d = dir(r, "assessment")
-        for (back in 0..1) {
-            val day = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -back) }
-            val name = "assessment-${dayF.format(day.time)}.txt"
-            if (back == 1 && d.findFile(name) != null && st.lastExport > dayRange(day).second + 3600_000L) continue
-            write(c, file(d, name, "text/plain"), assessmentText(c, day))
-        }
-    }
-
     // ---------------------------------------------------------------- resume after reinstall
 
-    /** Restores settings (with the password), readings and meals from the folder. Returns a summary. */
     fun restoreAll(c: Context, password: String): String = synchronized(lock) {
         val r = root(c) ?: throw IllegalStateException("Choose the Download/NovaGlucose folder first.")
         val out = mutableListOf<String>()
-        r.findFile(Backup.FILE)?.let { out += Backup.restore(c, read(c, it), password) }
+        latestBackup(r)?.let { out += Backup.restore(c, read(c, it), password) }
         val db = Db.get(c)
-        var nR = 0; var maxTs = 0L
-        r.findFile("readings")?.listFiles()?.filter { (it.name ?: "").endsWith(".csv") }?.forEach { f ->
+        var nR = 0
+        fun csvFiles(d: DocumentFile?): List<DocumentFile> = d?.listFiles()?.flatMap {
+            if (it.isDirectory) csvFiles(it) else if ((it.name ?: "").endsWith(".csv")) listOf(it) else emptyList()
+        } ?: emptyList()
+        (csvFiles(r.findFile("Readings")) + csvFiles(r.findFile("readings"))).forEach { f ->
             val batch = mutableListOf<Reading>()
             read(c, f).lineSequence().drop(1).forEach { line ->
                 val p = line.split(',')
@@ -276,11 +328,10 @@ object Vault {
                 batch += Reading(ts, mg, trend)
             }
             db.addReadings(batch, markNew = false); nR += batch.size
-            batch.maxOfOrNull { it.ts }?.let { if (it > maxTs) maxTs = it }
         }
         var nM = 0
-        r.findFile("meals")?.let { md ->
-            val photos = md.findFile("photos")
+        (r.findFile("Meals") ?: r.findFile("meals"))?.let { md ->
+            val photos = md.findFile("Photos") ?: md.findFile("photos")
             md.findFile("meals.json")?.let { jf ->
                 val arr = JSONArray(read(c, jf))
                 val local = File(c.filesDir, "meals").apply { mkdirs() }
@@ -295,16 +346,26 @@ object Vault {
                         c.contentResolver.openInputStream(pf.uri)?.use { inp -> dst.outputStream().use { inp.copyTo(it) } }
                         path = dst.absolutePath
                     }
-                    db.addMeal(Meal(0, ts, o.optString("title"), (o.optJSONArray("items") ?: JSONArray()).toString(),
+                    val id = db.addMeal(Meal(0, ts, o.optString("title"), (o.optJSONArray("items") ?: JSONArray()).toString(),
                         o.optInt("carbs"), o.optInt("low"), o.optInt("high"), o.optInt("mgAt"), path, o.optString("note")))
+                    o.optJSONArray("aiItems")?.let { db.setAi(id, it.toString(), o.optInt("aiCarbs")) }
                     nM++
                 }
             }
         }
-        val st = Store(c)
-        if (maxTs > st.lastExportReading) st.lastExportReading = maxTs
-        st.resumeAsked = true
-        out += "$nR readings and $nM meals restored"
+        var nD = 0
+        r.findFile("Insulin")?.findFile("insulin.json")?.let { jf ->
+            val arr = JSONArray(read(c, jf))
+            for (k in 0 until arr.length()) {
+                val o = arr.getJSONObject(k)
+                val ts = o.optLong("ts")
+                if (ts == 0L || db.hasDoseAt(ts)) continue
+                db.addDose(Dose(0, ts, o.optString("kind", "rapid"), o.optDouble("units"), o.optInt("carbs"),
+                    o.optInt("wait"), o.optInt("mgAt"), o.optString("note"))); nD++
+            }
+        }
+        Store(c).resumeAsked = true
+        out += "$nR readings, $nM meals and $nD insulin doses restored"
         out.joinToString(" · ")
     }
 }

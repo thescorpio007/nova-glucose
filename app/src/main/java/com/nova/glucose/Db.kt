@@ -18,8 +18,14 @@ data class Meal(
     val note: String
 )
 
+/** A logged insulin dose (what the family gave). kind = "rapid" or "long". */
+data class Dose(
+    val id: Long = 0, val ts: Long, val kind: String, val units: Double,
+    val carbs: Int = 0, val waitMin: Int = 0, val mgAt: Int = 0, val note: String = ""
+)
+
 /** Readings history (kept 400 days) and the meal logbook, stored only on this phone. */
-class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 2) {
+class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 3) {
 
     companion object {
         @Volatile private var inst: Db? = null
@@ -32,13 +38,53 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         db.execSQL("CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, title TEXT, items TEXT, carbs INTEGER, " +
             "low INTEGER, high INTEGER, mg_at INTEGER, photo TEXT, note TEXT)")
         db.execSQL("CREATE TABLE unexported(ts INTEGER PRIMARY KEY)")
+        v3(db)
     }
+
+    private fun v3(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS insulin(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, kind TEXT, units REAL, " +
+            "carbs INTEGER, wait_min INTEGER, mg_at INTEGER, note TEXT)")
+        try { db.execSQL("ALTER TABLE meals ADD COLUMN ai_items TEXT") } catch (_: Exception) { }
+        try { db.execSQL("ALTER TABLE meals ADD COLUMN ai_carbs INTEGER") } catch (_: Exception) { }
+    }
+
+    fun addDose(d: Dose): Long = writableDatabase.insert("insulin", null, ContentValues().apply {
+        put("ts", d.ts); put("kind", d.kind); put("units", d.units); put("carbs", d.carbs)
+        put("wait_min", d.waitMin); put("mg_at", d.mgAt); put("note", d.note)
+    })
+
+    fun deleteDose(id: Long) { writableDatabase.delete("insulin", "id = ?", arrayOf(id.toString())) }
+
+    fun doses(from: Long = 0, to: Long = Long.MAX_VALUE): List<Dose> {
+        val out = mutableListOf<Dose>()
+        readableDatabase.rawQuery("SELECT id, ts, kind, units, carbs, wait_min, mg_at, note FROM insulin WHERE ts >= ? AND ts <= ? ORDER BY ts DESC",
+            arrayOf(from.toString(), to.toString())).use { c ->
+            while (c.moveToNext()) out += Dose(c.getLong(0), c.getLong(1), c.getString(2) ?: "rapid", c.getDouble(3),
+                c.getInt(4), c.getInt(5), c.getInt(6), c.getString(7) ?: "")
+        }
+        return out
+    }
+
+    fun hasDoseAt(ts: Long): Boolean =
+        readableDatabase.rawQuery("SELECT 1 FROM insulin WHERE ts = ?", arrayOf(ts.toString())).use { it.moveToFirst() }
+
+    /** AI's original estimate for a meal, saved for the family's corrections (training). */
+    fun setAi(id: Long, itemsJson: String, carbs: Int) {
+        writableDatabase.update("meals", ContentValues().apply { put("ai_items", itemsJson); put("ai_carbs", carbs) },
+            "id = ?", arrayOf(id.toString()))
+    }
+
+    fun ai(id: Long): Pair<String, Int>? =
+        readableDatabase.rawQuery("SELECT ai_items, ai_carbs FROM meals WHERE id = ?", arrayOf(id.toString())).use {
+            if (it.moveToFirst() && !it.isNull(0)) it.getString(0) to it.getInt(1) else null
+        }
 
     override fun onUpgrade(db: SQLiteDatabase, o: Int, n: Int) {
         if (o < 2) {
             db.execSQL("CREATE TABLE IF NOT EXISTS unexported(ts INTEGER PRIMARY KEY)")
             db.execSQL("INSERT OR IGNORE INTO unexported SELECT ts FROM readings")
         }
+        if (o < 3) v3(db)
     }
 
     /** New readings not yet written to the Download folder (also catches late, back-filled ones). */
@@ -73,6 +119,8 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
+
+    fun resetExport() { writableDatabase.execSQL("INSERT OR IGNORE INTO unexported SELECT ts FROM readings") }
 
     fun readings(from: Long, to: Long = Long.MAX_VALUE): List<Reading> {
         val out = mutableListOf<Reading>()

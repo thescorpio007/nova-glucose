@@ -247,8 +247,8 @@ class CarbActivity : BaseActivity() {
 
     // ---------------------------------------------------------------- estimate
 
-    private val system = """
-You estimate carbohydrates in meals for a teenager (13–17) with diabetes who uses rapid insulin. The family counts carbs and
+    private val system get() = """
+You estimate carbohydrates in meals for a ${st.age}-year-old with diabetes who uses rapid insulin. The family counts carbs and
 decides insulin themselves with their doctor's ratio. NEVER suggest insulin doses or units.
 Foods may be Tunisian, Gulf/Middle Eastern or international. Use typical cooked-food carb values.
 Count only what is visible in the photos plus what the note says. Watch for hidden sugar, sauces, drinks, bread, rice, fried coatings.
@@ -270,6 +270,7 @@ If the photo shows no food, return an empty items list and explain in notes.
             append("Estimate the carbohydrates in this meal (${images.size} image(s)).")
             if (note.text.isNotBlank()) append("\nNote from the family: ${note.text}")
             if (st.foodNotes.isNotBlank()) append("\nFamily food notes: ${st.foodNotes}")
+            append(Training.context(this@CarbActivity))
         }
         Thread {
             try {
@@ -288,6 +289,9 @@ If the photo shows no food, return an empty items list and explain in notes.
         return JSONObject(s.substring(a, b + 1))
     }
 
+    private var aiSnapshot: String? = null
+    private var aiTotal = 0
+
     private fun load(o: JSONObject) {
         items.clear()
         val arr = o.optJSONArray("items") ?: JSONArray()
@@ -299,12 +303,16 @@ If the photo shows no food, return an empty items list and explain in notes.
         }
         confidence = o.optString("confidence")
         aiNotes = o.optString("notes")
+        // Keep the AI's first answer, to learn from the family's corrections.
+        val snap = JSONArray()
+        items.forEach { snap.put(JSONObject().put("name", it.name).put("portion", it.portion).put("carbs", it.carbs)) }
+        aiSnapshot = snap.toString(); aiTotal = items.sumOf { it.carbs }
         renderResult()
     }
 
     private fun manual() {
         items.clear(); items += Item("", "", 0, 0, 0)
-        confidence = "entered by hand"; aiNotes = ""
+        confidence = "entered by hand"; aiNotes = ""; aiSnapshot = null
         renderResult()
     }
 
@@ -382,12 +390,18 @@ If the photo shows no food, return an empty items list and explain in notes.
         clean.forEach { arr.put(JSONObject().put("name", it.name).put("portion", it.portion).put("carbs", it.carbs)) }
         val title = clean.joinToString(", ") { it.name.ifBlank { "item" } }.take(80)
         val mg = Db.get(this).near(now)?.mg ?: mgAtMeal
-        Db.get(this).addMeal(Meal(0, now, title, arr.toString(), clean.sumOf { it.carbs },
+        val id = Db.get(this).addMeal(Meal(0, now, title, arr.toString(), clean.sumOf { it.carbs },
             clean.sumOf { it.low }, clean.sumOf { it.high }, mg, photo, note.text.toString()))
+        aiSnapshot?.let { Db.get(this).setAi(id, it, aiTotal) }
         val app = applicationContext
         Thread { Vault.exportMeals(app) }.start()
         Ui.toast(this, "Saved to logbook")
         sessionDir().deleteRecursively()
-        finish()
+        android.app.AlertDialog.Builder(this).setTitle("Saved · ${clean.sumOf { it.carbs }} g carbs")
+            .setMessage("Log rapid insulin and start the eat timer now?")
+            .setPositiveButton("💉 Rapid insulin") { _, _ ->
+                startActivity(android.content.Intent(this, InsulinActivity::class.java)); finish() }
+            .setNegativeButton("Done") { _, _ -> finish() }
+            .setOnCancelListener { finish() }.show()
     }
 }

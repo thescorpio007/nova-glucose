@@ -32,6 +32,23 @@ class SettingsActivity : BaseActivity() {
     private lateinit var backupPw: EditText
     private lateinit var backupMsg: TextView
     private var pendingBackup: String? = null
+    private lateinit var urgSw: Switch
+    private lateinit var cbUL: android.widget.CheckBox
+    private lateinit var cbL: android.widget.CheckBox
+    private lateinit var cbH: android.widget.CheckBox
+    private lateinit var cbVH: android.widget.CheckBox
+    private lateinit var soundTxt: TextView
+    private lateinit var vibRow: LinearLayout
+    private lateinit var volTxt: TextView
+    private lateinit var volBar: android.widget.SeekBar
+    private lateinit var permStatus: TextView
+    private lateinit var longNameE: EditText
+    private lateinit var longDoseE: EditText
+    private lateinit var longTimeE: EditText
+    private lateinit var rapidNameE: EditText
+    private lateinit var penStatus: TextView
+    private var penTarget = ""
+    private var penFile: java.io.File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,13 +101,84 @@ class SettingsActivity : BaseActivity() {
         ac.addView(numRow("repeat", "Repeat alert after (minutes)", st.repeatMin))
         stale = switch("Alert when there's no new reading for 20 minutes", st.staleAlert)
         ac.addView(stale, Ui.lp(top = Ui.dp(this, 6)))
-        ac.addView(Ui.button(this, "Notification sound & vibration…") { openNotifSettings() }, Ui.lp(top = Ui.dp(this, 8)))
+        ac.addView(Ui.button(this, "Normal alert sound & vibration…") { openNotifSettings() }, Ui.lp(top = Ui.dp(this, 8)))
         root.addView(ac)
+
+        // ---------------------------------------------------------- Urgent alarm
+        root.addView(Ui.section(this, "Urgent alarm (rings through silent and Do Not Disturb)"))
+        val uc = Ui.card(this)
+        urgSw = switch("Urgent alarm on", st.urgentOn)
+        uc.addView(urgSw)
+        uc.addView(Ui.text(this, "Which alerts ring as urgent alarms (full screen, alarm sound, even when the phone is silent):", 13f, Ui.MUTED))
+        cbUL = check("Urgent low", st.urgUrgentLow); cbL = check("Low", st.urgLow)
+        cbH = check("High", st.urgHigh); cbVH = check("Very high", st.urgVeryHigh)
+        listOf(cbUL, cbL, cbH, cbVH).forEach { uc.addView(it) }
+        soundTxt = Ui.text(this, "Sound: ${st.alarmSoundName}", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, 0) }
+        uc.addView(soundTxt)
+        val sr = Ui.row(this)
+        sr.addView(Ui.button(this, "Phone sounds…") { pickRingtone() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        sr.addView(Ui.button(this, "Song file…") { pickAudio() }, Ui.lp(0, weight = 1f))
+        uc.addView(sr, Ui.lp(top = Ui.dp(this, 6)))
+        uc.addView(Ui.text(this, "Vibration", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
+        vibRow = Ui.row(this); uc.addView(vibRow); renderVib()
+        uc.addView(numRow("ring_sec", "Ring for (seconds)", st.ringSec))
+        uc.addView(numRow("urg_repeat", "Repeat every (minutes) while still out of range", st.urgentRepeat))
+        volTxt = Ui.text(this, "", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 12), 0, 0) }
+        uc.addView(volTxt)
+        volBar = android.widget.SeekBar(this).apply {
+            max = 90; progress = (st.alarmVolume - 10).coerceIn(0, 90)
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, u: Boolean) { volTxt.text = "Urgent alarm volume: ${p + 10}% (rises over 5 s, restored after)" }
+                override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
+                override fun onStopTrackingTouch(s: android.widget.SeekBar?) {}
+            })
+        }
+        volTxt.text = "Urgent alarm volume: ${st.alarmVolume}% (rises over 5 s, restored after)"
+        uc.addView(volBar, Ui.lp(top = Ui.dp(this, 4)))
+        uc.addView(Ui.button(this, "🔔 Test urgent alarm", true) {
+            save(false); startActivity(Intent(this, AlarmActivity::class.java).putExtra("test", true))
+        }, Ui.lp(top = Ui.dp(this, 10)))
+        uc.addView(Ui.text(this, "Phone permissions for the alarm", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 14), 0, 0) })
+        permStatus = Ui.text(this, "", 13f, Ui.MUTED)
+        uc.addView(permStatus)
+        val pr1 = Ui.row(this)
+        pr1.addView(Ui.button(this, "Full-screen alarms") { openFullScreenPerm() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        pr1.addView(Ui.button(this, "Do Not Disturb access") { openDndPerm() }, Ui.lp(0, weight = 1f))
+        uc.addView(pr1, Ui.lp(top = Ui.dp(this, 6)))
+        val pr2 = Ui.row(this)
+        pr2.addView(Ui.button(this, "Exact timers") { openExactPerm() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        pr2.addView(Ui.button(this, "Battery: no limits") { openBatteryPerm() }, Ui.lp(0, weight = 1f))
+        uc.addView(pr2, Ui.lp(top = Ui.dp(this, 6)))
+        uc.addView(Ui.text(this, brandTip(), 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        root.addView(uc)
+
+        // ---------------------------------------------------------- Profile and insulin
+        root.addView(Ui.section(this, "Profile and insulin (as prescribed — reference only)"))
+        val pc = Ui.card(this)
+        pc.addView(numRow("age", "Age", st.age))
+        pc.addView(Ui.text(this, "Long-acting insulin", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
+        longNameE = Ui.input(this, "Name, e.g. Tresiba", multi = false).apply { setText(st.longName) }
+        pc.addView(nameRow(longNameE, "long"), Ui.lp(top = Ui.dp(this, 6)))
+        longDoseE = Ui.input(this, "Usual dose (units) from the last prescription", multi = false).apply {
+            setText(st.longDose); inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }
+        pc.addView(longDoseE, Ui.lp(top = Ui.dp(this, 6)))
+        longTimeE = Ui.input(this, "Usual time, e.g. 21:00", multi = false).apply { setText(st.longTime) }
+        pc.addView(longTimeE, Ui.lp(top = Ui.dp(this, 6)))
+        pc.addView(Ui.text(this, "Rapid insulin", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
+        rapidNameE = Ui.input(this, "Name, e.g. NovoRapid", multi = false).apply { setText(st.rapidName) }
+        pc.addView(nameRow(rapidNameE, "rapid"), Ui.lp(top = Ui.dp(this, 6)))
+        pc.addView(numRow("carb_ratio", "Prescribed ratio: 1 unit per … g carbs", st.carbRatio))
+        pc.addView(numRow("eat_wait", "Wait before eating after rapid (min)", st.eatWait))
+        pc.addView(Ui.text(this, "Kept as reference in the logbook and daily report, and as background for the AI. " +
+            "The app never calculates or suggests a dose.", 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        penStatus = Ui.text(this, "", 12f, Ui.MUTED)
+        pc.addView(penStatus)
+        root.addView(pc)
 
         // ---------------------------------------------------------- Carb plan
         root.addView(Ui.section(this, "Carb plan (grams)"))
         val cc = Ui.card(this)
-        cc.addView(Ui.text(this, "Standard guidance for ages 13–17. Replace with her care team's numbers when you have them.", 13f, Ui.MUTED))
+        cc.addView(Ui.text(this, "Standard guidance. Replace with her care team's numbers when you have them.", 13f, Ui.MUTED))
         cc.addView(numRow("low_treat", "Fast sugar to treat a low", st.lowTreatG))
         cc.addView(numRow("meal_min", "Meal carbs from", st.mealMin))
         cc.addView(numRow("meal_max", "Meal carbs up to", st.mealMax))
@@ -125,6 +213,9 @@ class SettingsActivity : BaseActivity() {
             ic.addView(r, Ui.lp(top = Ui.dp(this, 8)))
             ic.addView(res, Ui.lp(top = Ui.dp(this, 4)))
         }
+        ic.addView(Ui.button(this, "⚖ Compare models (time and accuracy)", true) {
+            save(false); startActivity(Intent(this, CompareActivity::class.java))
+        }, Ui.lp(top = Ui.dp(this, 14)))
         root.addView(ic)
 
         // ---------------------------------------------------------- Photo tips
@@ -227,6 +318,16 @@ class SettingsActivity : BaseActivity() {
         }
         st.appVersion = lluVersion.text.toString().trim().ifBlank { Libre.DEFAULT_VERSION }
         st.backupPw = backupPw.text.toString()
+        st.urgentOn = urgSw.isChecked
+        st.urgUrgentLow = cbUL.isChecked; st.urgLow = cbL.isChecked; st.urgHigh = cbH.isChecked; st.urgVeryHigh = cbVH.isChecked
+        st.ringSec = num("ring_sec", 60).coerceIn(10, 600)
+        st.urgentRepeat = num("urg_repeat", 5).coerceIn(1, 60)
+        st.alarmVolume = (volBar.progress + 10).coerceIn(10, 100)
+        st.age = num("age", 14).coerceIn(1, 99)
+        st.longName = longNameE.text.toString(); st.longDose = longDoseE.text.toString().replace(',', '.')
+        st.longTime = longTimeE.text.toString(); st.rapidName = rapidNameE.text.toString()
+        st.carbRatio = num("carb_ratio", 0).coerceIn(0, 100)
+        st.eatWait = num("eat_wait", 0).coerceIn(0, 90)
         val wasOn = st.monitorOn
         st.monitorOn = monitor.isChecked
         if (!st.monitorOn && wasOn) MonitorService.stop(this)
@@ -321,8 +422,8 @@ class SettingsActivity : BaseActivity() {
     private fun exportFile() {
         if (st.backupPw.isBlank()) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = "Set a backup password first."; return }
         pendingBackup = Backup.build(this, st.backupPw)
-        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json")
-            .putExtra(Intent.EXTRA_TITLE, Backup.FILE)
+        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
+            .putExtra(Intent.EXTRA_TITLE, Vault.backupFileName(this))
         startActivityForResult(i, REQ_EXPORT)
     }
 
@@ -352,10 +453,25 @@ class SettingsActivity : BaseActivity() {
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
         if (FolderFlow.onResult(this, req, res, data) { recreate() }) return
-        val uri = data?.data ?: return
         if (res != RESULT_OK) return
+        if (req == REQ_RINGTONE) {
+            @Suppress("DEPRECATION")
+            val u = data?.getParcelableExtra<Uri>(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            st.alarmSound = u?.toString() ?: ""
+            st.alarmSoundName = u?.let { android.media.RingtoneManager.getRingtone(this, it)?.getTitle(this) } ?: "Default alarm"
+            soundTxt.text = "Sound: ${st.alarmSoundName}"; return
+        }
+        if (req == REQ_PEN_CAM) { penFile?.let { identifyPen(it.readBytes()) }; return }
+        val uri = data?.data ?: return
         try {
             when (req) {
+                REQ_AUDIO -> {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    st.alarmSound = uri.toString()
+                    st.alarmSoundName = androidx.documentfile.provider.DocumentFile.fromSingleUri(this, uri)?.name ?: "Song file"
+                    soundTxt.text = "Sound: ${st.alarmSoundName}"
+                }
+                REQ_PEN_GAL -> contentResolver.openInputStream(uri)?.use { identifyPen(it.readBytes()) }
                 REQ_EXPORT -> {
                     contentResolver.openOutputStream(uri, "wt")!!.use { it.write((pendingBackup ?: "").toByteArray()) }
                     backupMsg.setTextColor(Ui.GOOD); backupMsg.text = "✓ Backup file saved"
@@ -369,7 +485,136 @@ class SettingsActivity : BaseActivity() {
         } catch (e: Exception) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = e.message }
     }
 
-    companion object { private const val REQ_EXPORT = 11; private const val REQ_IMPORT = 12 }
+    companion object {
+        private const val REQ_EXPORT = 11; private const val REQ_IMPORT = 12; private const val REQ_RINGTONE = 13
+        private const val REQ_AUDIO = 14; private const val REQ_PEN_CAM = 15; private const val REQ_PEN_GAL = 16
+    }
+
+    override fun onResume() { super.onResume(); if (::permStatus.isInitialized) renderPerms() }
+
+    private fun check(label: String, on: Boolean) = android.widget.CheckBox(this).apply {
+        text = label; isChecked = on; setTextColor(Ui.TEXT); textSize = 15f
+    }
+
+    private fun renderVib() {
+        vibRow.removeAllViews()
+        listOf("off" to "Off", "normal" to "Normal", "strong" to "Strong").forEach { (id, label) ->
+            vibRow.addView(Ui.chip(this, label, st.alarmVibrate == id) { st.alarmVibrate = id; renderVib() }, Ui.lp(-2, -2, end = Ui.dp(this, 8)))
+        }
+    }
+
+    private fun pickRingtone() {
+        val i = Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER)
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_ALARM or android.media.RingtoneManager.TYPE_RINGTONE)
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Urgent alarm sound")
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+        st.alarmSound.takeIf { it.isNotBlank() }?.let { i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(it)) }
+        try { startActivityForResult(i, REQ_RINGTONE) } catch (_: Exception) { Ui.toast(this, "No sound picker on this phone") }
+    }
+
+    private fun pickAudio() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*"), REQ_AUDIO)
+    }
+
+    private fun renderPerms() {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val am = getSystemService(ALARM_SERVICE) as android.app.AlarmManager
+        val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+        fun mark(ok: Boolean) = if (ok) "✓" else "✗"
+        val full = android.os.Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent()
+        val dnd = android.os.Build.VERSION.SDK_INT < 23 || nm.isNotificationPolicyAccessGranted
+        val exact = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+        val batt = android.os.Build.VERSION.SDK_INT < 23 || pm.isIgnoringBatteryOptimizations(packageName)
+        permStatus.text = "${mark(full)} Full-screen alarms   ${mark(dnd)} Do Not Disturb access\n${mark(exact)} Exact timers   ${mark(batt)} No battery limits"
+        permStatus.setTextColor(if (full && dnd && exact && batt) Ui.GOOD else Ui.WARN)
+    }
+
+    private fun openFullScreenPerm() {
+        if (android.os.Build.VERSION.SDK_INT >= 34) try {
+            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName"))); return
+        } catch (_: Exception) { }
+        Ui.toast(this, "Already allowed on this Android version")
+    }
+
+    private fun openDndPerm() {
+        try { startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
+        catch (_: Exception) { Ui.toast(this, "Open Settings › Notifications › Do Not Disturb › Apps") }
+    }
+
+    private fun openExactPerm() {
+        if (android.os.Build.VERSION.SDK_INT >= 31) try {
+            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))); return
+        } catch (_: Exception) { }
+        Ui.toast(this, "Already allowed on this Android version")
+    }
+
+    @android.annotation.SuppressLint("BatteryLife")
+    private fun openBatteryPerm() {
+        try { startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) }
+        catch (_: Exception) { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
+    }
+
+    private fun brandTip(): String {
+        val b = android.os.Build.MANUFACTURER.lowercase()
+        return "Your phone (${android.os.Build.MANUFACTURER}): " + when {
+            "xiaomi" in b || "redmi" in b || "poco" in b -> "Settings › Apps › Nova Glucose › turn on Autostart, Battery saver = No restrictions, and lock the app in recent apps."
+            "huawei" in b || "honor" in b -> "Settings › Battery › App launch › Nova Glucose › Manage manually (all three on)."
+            "oppo" in b || "realme" in b || "oneplus" in b -> "Settings › Battery › Nova Glucose › Allow background activity and auto-launch."
+            "samsung" in b -> "Settings › Battery › Background usage limits › Never sleeping apps › add Nova Glucose."
+            "vivo" in b -> "i Manager › App manager › Autostart › Nova Glucose on; Battery › High background power use on."
+            else -> "Allow the app to run in the background without battery limits."
+        } + " Make sure Alarms are allowed in Do Not Disturb."
+    }
+
+    private fun nameRow(e: EditText, target: String): View {
+        val r = Ui.row(this)
+        r.addView(e, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        r.addView(Ui.smallButton(this, "📷") { penPhoto(target) }, Ui.lp(Ui.dp(this, 48), Ui.dp(this, 44)))
+        return r
+    }
+
+    /** Photo of the insulin pen / box: the AI reads the name. */
+    private fun penPhoto(target: String) {
+        penTarget = target
+        android.app.AlertDialog.Builder(this).setTitle("Insulin name from a photo")
+            .setItems(arrayOf("Take photo", "Choose from gallery")) { _, w ->
+                if (w == 0) {
+                    val dir = java.io.File(cacheDir, "capture").apply { mkdirs() }
+                    val f = java.io.File(dir, "pen_${System.currentTimeMillis()}.jpg"); penFile = f
+                    val u = androidx.core.content.FileProvider.getUriForFile(this, "com.nova.glucose.files", f)
+                    try {
+                        startActivityForResult(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT, u)
+                            .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION), REQ_PEN_CAM)
+                    } catch (_: Exception) { Ui.toast(this, "No camera app") }
+                } else startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_PEN_GAL)
+            }.show()
+    }
+
+    private fun identifyPen(raw: ByteArray) {
+        save(false)
+        val p = st.current()
+        if (st.key(p).isBlank()) { penStatus.setTextColor(Ui.BAD); penStatus.text = "Add an AI key first to read the photo."; return }
+        penStatus.setTextColor(Ui.MUTED); penStatus.text = "Reading the insulin name with ${p.label}…"
+        Thread {
+            val r = try {
+                val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 })
+                val out = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+                Result.success(Providers.ask(st, p, "You read medicine labels. Reply with only the product, nothing else.",
+                    "Read the insulin product on this pen, vial or box. Reply only as: Brand (generic name), e.g. \"Tresiba (insulin degludec)\". " +
+                        "If you can't read it, reply: unknown", listOf(out.toByteArray())).lines().first().trim().trim('"', '.'))
+            } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                r.onSuccess { name ->
+                    if (name.equals("unknown", true) || name.isBlank()) { penStatus.setTextColor(Ui.WARN); penStatus.text = "Couldn't read the name — type it instead." }
+                    else {
+                        (if (penTarget == "long") longNameE else rapidNameE).setText(name)
+                        save(false); penStatus.setTextColor(Ui.GOOD); penStatus.text = "✓ Read from photo: $name — please check it's right."
+                    }
+                }.onFailure { penStatus.setTextColor(Ui.BAD); penStatus.text = it.message }
+            }
+        }.start()
+    }
 
     private fun openNotifSettings() {
         try {
