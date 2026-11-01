@@ -52,7 +52,7 @@ object Providers {
      * same AI are tried (lighter ones too) and the first that answers is kept as the new model.
      */
     fun ask(st: Store, p: Provider, system: String, user: String, images: List<ByteArray> = emptyList(),
-            status: (String) -> Unit = {}, only: String? = null): String {
+            only: String? = null, status: (String) -> Unit = {}): String {
         val key = st.key(p)
         if (key.isBlank()) throw AiException("Add your ${p.label} API key in Settings first.")
         if (only != null) {
