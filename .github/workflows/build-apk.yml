@@ -163,6 +163,8 @@ jobs:
           adb shell am start -W -n $P/.AskActivity; sleep 2; tapText "The AI sees"; shot 22-ask-ai-sees
           adb shell am start -W -n $P/.AiReviewActivity; sleep 2; shot 23-ai-review
           adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Notifications and watch"; sleep 1; findTap "Sounds of the other"; half; shot 36-general-sounds
+          tapText "Phone sounds"; sleep 2; shot 37-phone-sounds-list; adb shell input keyevent 4; adb shell input keyevent 4
           for LG in fr ar; do
             adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --es lang $LG; sleep 3; adb shell am start -W -n $P/.MainActivity; sleep 2; shot 30-$LG-home; half; shot 30b-$LG-chart; scroll; shot 30c-$LG-buttons
             adb shell am start -W -n $P/.MainActivity; sleep 1; tapText "▾"; sleep 1; shot 30d-$LG-language-menu; adb shell input keyevent 4

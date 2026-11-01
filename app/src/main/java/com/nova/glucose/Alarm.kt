@@ -88,23 +88,21 @@ object AlarmPlayer {
             }, k * 1000L)
         } catch (_: Exception) { savedVolume = -1 }
 
-        val uri = st.soundFor(kind).takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-        player = try {
-            MediaPlayer().apply {
-                setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-                setDataSource(c, uri); isLooping = true; prepare(); start()
-            }
-        } catch (_: Exception) {
-            try {
+        // The chosen sound, else the phone's alarm, else its ringtone, else a built-in beep: never silent.
+        val tries = listOfNotNull(Sounds.chosen(st, kind), RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+        player = null
+        for (u in tries) {
+            player = try {
                 MediaPlayer().apply {
-                    setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
-                    setDataSource(c, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)); isLooping = true; prepare(); start()
+                    setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                    setDataSource(c, u); isLooping = true; prepare(); start()
                 }
             } catch (_: Exception) { null }
+            if (player != null) break
         }
+        if (player == null) Sounds.beep(AudioManager.STREAM_ALARM, st.ringSec.coerceIn(10, 600) * 1000)
         vibrate(c, st.alarmVibrate, st.ringSec.coerceIn(10, 600))
         main.postDelayed({ stopSound(c) }, st.ringSec.coerceIn(10, 600) * 1000L)
     }
@@ -137,6 +135,7 @@ object AlarmPlayer {
         main.removeCallbacksAndMessages(null)
         player?.let { try { it.stop() } catch (_: Exception) { }; it.release() }
         player = null
+        Sounds.stop()
         try { vib?.cancel() } catch (_: Exception) { }
         try { vibrator(c)?.cancel() } catch (_: Exception) { }
         vib = null
@@ -232,7 +231,7 @@ class AlarmActivity : BaseActivity() {
 
 /** "Time to eat" reminder after rapid insulin. */
 object EatTimer {
-    const val CH_EAT = "eat_timer"
+    const val CH_EAT = "eat_timer2"          // silent channel: the app plays the chosen "Time to eat" sound
     private const val ID_EAT = 4
 
     /** [share]: also start it on the family's other phones (family sync). */
@@ -266,8 +265,8 @@ object EatTimer {
         val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
             NotificationChannel(CH_EAT, "Time to eat (after rapid insulin)", NotificationManager.IMPORTANCE_HIGH).apply {
-                enableVibration(true); vibrationPattern = longArrayOf(0, 400, 200, 400)
-            })
+                enableVibration(true); vibrationPattern = longArrayOf(0, 400, 200, 400); setSound(null, null)
+            }).also { try { nm.deleteNotificationChannel("eat_timer") } catch (_: Exception) { } }
         val open = PendingIntent.getActivity(c, 42, Intent(c, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val mg = if (System.currentTimeMillis() - st.lastTs < 15 * 60_000) " · glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)}" else ""
@@ -276,6 +275,7 @@ object EatTimer {
             .setContentTitle(L.s("🍽 Time to eat$mg"))
             .setContentText(L.s("The wait after rapid insulin is over — start eating now."))
             .setAutoCancel(true).setContentIntent(open).setCategory(Notification.CATEGORY_REMINDER).setLocalOnly(!st.watchEat)
+            .also { Sounds.playGeneral(c, "eat") }
             .apply { if (Build.VERSION.SDK_INT < 26) { @Suppress("DEPRECATION") setPriority(Notification.PRIORITY_MAX); setDefaults(Notification.DEFAULT_ALL) } }
             .build())
     }

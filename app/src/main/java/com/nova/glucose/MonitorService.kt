@@ -24,7 +24,7 @@ class MonitorService : Service() {
         const val CH_STATUS = "status"
         const val CH_ALERT = "alerts3"           // silent channels: the app plays the chosen sound per alert type
         const val CH_ALERT_LOW = "alerts_low3"
-        const val CH_TIP = "ai_tips"
+        const val CH_TIP = "ai_tips2"
         private const val ID_TIP = 9
         private const val ID_STATUS = 1
         private const val ID_ALERT = 2
@@ -170,7 +170,11 @@ class MonitorService : Service() {
         Thread {
             val tip = AiData.alertTip(app, kind) ?: return@Thread
             val nm = app.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CH_TIP, "AI food tips after alerts", NotificationManager.IMPORTANCE_DEFAULT))
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(NotificationChannel(CH_TIP, "AI food tips after alerts", NotificationManager.IMPORTANCE_DEFAULT).apply { setSound(null, null) })
+                try { nm.deleteNotificationChannel("ai_tips") } catch (_: Exception) { }
+            }
+            Sounds.playGeneral(app, "tip")
             val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(app, CH_TIP) else @Suppress("DEPRECATION") Notification.Builder(app)
             nm.notify(ID_TIP, b.setSmallIcon(android.R.drawable.ic_menu_info_details)
                 .setContentTitle(L.s("✦ AI tip · ${r.mg} ${Libre.trendArrow(r.trend)} mg/dL"))

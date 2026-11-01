@@ -52,5 +52,6 @@ object Watch {
                 else "If you see this on the watch, notifications reach it."))
             .setAutoCancel(true).setContentIntent(open(c)).build()
         (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(ID_TEST, n)
+        Sounds.playGeneral(c, "other")
     }
 }

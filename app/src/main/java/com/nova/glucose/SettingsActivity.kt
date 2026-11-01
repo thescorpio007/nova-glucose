@@ -57,6 +57,8 @@ class SettingsActivity : BaseActivity() {
     private lateinit var allViews: View
     private lateinit var famBox: LinearLayout
     private lateinit var soundRows: LinearLayout
+    private lateinit var genRows: LinearLayout
+    private var soundNote = ""
     private var soundKind = "urgent_low"
     private lateinit var famMsg: TextView
     private var uiLocked = false
@@ -192,7 +194,7 @@ class SettingsActivity : BaseActivity() {
         listOf(cbUL, cbL, cbH, cbVH, cbNS).forEach { uc.addView(it) }
         soundTxt = Ui.text(this, "Alert sounds (this phone)", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) }
         uc.addView(soundTxt)
-        soundRows = Ui.col(this); uc.addView(soundRows); renderSounds()
+        soundRows = Ui.col(this); uc.addView(soundRows)
         uc.addView(Ui.text(this, "Urgent alarms ring with these sounds through silent and Do Not Disturb. Normal alerts play their sound once " +
             "(lows on the alarm volume; highs and no-signal at notification volume, not when the phone is silent). " +
             "\"File…\" always opens Android's file chooser, so you can pick any folder.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
@@ -349,6 +351,8 @@ class SettingsActivity : BaseActivity() {
             Ui.lp(top = Ui.dp(this, 10)))
         wc.addView(Ui.text(this, "Unticked items stay on this phone only. Some watch apps forward everything anyway — use the test to check. " +
             "The urgent alarm's sound plays on the phone; the watch vibrates and shows it.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        wc.addView(Ui.text(this, "Sounds of the other notifications (this phone)", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
+        genRows = Ui.col(this); wc.addView(genRows)
         wc.addView(Ui.button(this, "⌚ Send a test to the watch") { Watch.test(this); Ui.toast(this, "Test sent — look at the watch") }, Ui.lp(top = Ui.dp(this, 8)))
         root.addView(wc)
 
@@ -449,8 +453,11 @@ class SettingsActivity : BaseActivity() {
         root.addView(Ui.signature(this))
         setContentView(sv)
         allViews = root
+        renderSounds()
         setupFolds()
         renderLock()
+        val app = applicationContext
+        Thread { val note = Sounds.repair(app); if (note.isNotBlank()) runOnUiThread { soundNote = note; renderSounds(); renderLock() } }.start()
     }
 
     private fun switch(label: String, on: Boolean) = Switch(this).apply {
@@ -691,15 +698,9 @@ class SettingsActivity : BaseActivity() {
         try {
             when (req) {
                 REQ_AUDIO -> {
-                    try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
-                    // Keep a private copy so the sound still works if the file is moved or the permission is lost.
-                    val name = (androidx.documentfile.provider.DocumentFile.fromSingleUri(this, uri)?.name ?: "Sound file").replace(Regex("[^A-Za-z0-9 ._()-]"), "_")
-                    val dir = java.io.File(filesDir, "sounds").apply { mkdirs() }
-                    val f = java.io.File(dir, "${soundKind}_$name")
-                    dir.listFiles()?.filter { it.name.startsWith("${soundKind}_") }?.forEach { it.delete() }
-                    contentResolver.openInputStream(uri)?.use { inp -> f.outputStream().use { inp.copyTo(it) } }
-                    st.setSound(soundKind, Uri.fromFile(f).toString(), name.substringBeforeLast('.'))
-                    renderSounds(); renderLock()
+                    // Copied into the app and test-played (any format the phone can play).
+                    val name = try { androidx.documentfile.provider.DocumentFile.fromSingleUri(this, uri)?.name } catch (_: Exception) { null } ?: "Sound file"
+                    chooseSound(uri, name)
                 }
                 REQ_PEN_GAL -> contentResolver.openInputStream(uri)?.use { identifyPen(it.readBytes()) }
                 REQ_EXPORT -> {
@@ -998,21 +999,68 @@ class SettingsActivity : BaseActivity() {
 
     private fun renderSounds() {
         soundRows.removeAllViews()
-        Sounds.KINDS.forEach { k ->
-            val box = Ui.col(this).apply {
-                background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat())
-                setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
-            }
-            box.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true))
-            box.addView(Ui.text(this, st.soundNameFor(k), 12f, Ui.MUTED))
-            val r = Ui.row(this)
-            r.addView(Ui.smallButton(this, "Phone sounds…") { soundKind = k; pickRingtone() }, Ui.lp(0, Ui.dp(this, 38), weight = 1.3f, end = Ui.dp(this, 6)))
-            r.addView(Ui.smallButton(this, "File…") { soundKind = k; pickAudio() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f, end = Ui.dp(this, 6)))
-            r.addView(Ui.smallButton(this, "▶ Test") { if (Sounds.test(this, k)) Ui.toast(this, "Playing — tap Test again to stop") }.apply { tag = "free" },
-                Ui.lp(0, Ui.dp(this, 38), weight = 1f))
-            box.addView(r, Ui.lp(top = Ui.dp(this, 8)))
-            soundRows.addView(box, Ui.lp(top = Ui.dp(this, 8)))
+        if (soundNote.isNotBlank()) soundRows.addView(Ui.text(this, soundNote, 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        Sounds.KINDS.forEach { k -> soundRows.addView(soundBox(k), Ui.lp(top = Ui.dp(this, 8))) }
+        if (::genRows.isInitialized) { genRows.removeAllViews(); Sounds.GENERAL.forEach { k -> genRows.addView(soundBox(k), Ui.lp(top = Ui.dp(this, 8))) } }
+    }
+
+    private fun soundBox(k: String): View {
+        val box = Ui.col(this).apply {
+            background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat())
+            setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
         }
+        box.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true))
+        val cur = st.soundFor(k)
+        box.addView(Ui.text(this, when { cur == Sounds.SILENT -> "Silent"; cur.isBlank() -> "Phone default"; else -> st.soundNameFor(k) }, 12f, Ui.MUTED))
+        val r1 = Ui.row(this)
+        r1.addView(Ui.smallButton(this, "Phone sounds…") { soundKind = k; phoneSounds() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f, end = Ui.dp(this, 6)))
+        r1.addView(Ui.smallButton(this, "File…") { soundKind = k; pickAudio() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f))
+        box.addView(r1, Ui.lp(top = Ui.dp(this, 8)))
+        val r2 = Ui.row(this)
+        r2.addView(Ui.smallButton(this, "▶ Test") {
+            when (Sounds.test(this, k)) {
+                "default" -> Ui.toast(this, "The chosen sound can't play — playing the phone default"); "beep" -> Ui.toast(this, "No sound file plays — built-in beep")
+                "stopped", "" -> {}; else -> Ui.toast(this, "Playing — tap Test again to stop")
+            }
+        }.apply { tag = "free" }, Ui.lp(0, Ui.dp(this, 38), weight = 1f, end = Ui.dp(this, 6)))
+        r2.addView(Ui.smallButton(this, "Default") { Sounds.setDefault(this, k); renderSounds(); renderLock() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f))
+        if (k !in Sounds.KINDS) r2.addView(Ui.smallButton(this, "Silent") { Sounds.setSilent(this, k); renderSounds(); renderLock() },
+            Ui.lp(0, Ui.dp(this, 38), weight = 1f).apply { marginStart = Ui.dp(this@SettingsActivity, 6) })
+        box.addView(r2, Ui.lp(top = Ui.dp(this, 6)))
+        return box
+    }
+
+    /** The phone's own sounds, listed by the app (works on every phone, nothing can lock it). */
+    private fun phoneSounds() {
+        val list = Sounds.phoneSounds(this)
+        if (list.isEmpty()) { Ui.toast(this, "No sound picker on this phone"); return }
+        val col = Ui.col(this, 12)
+        var dlg: android.app.AlertDialog? = null
+        var group = ""
+        list.forEach { (g, title, uri) ->
+            if (g != group) { group = g; col.addView(Ui.text(this, g, 12f, Ui.ACCENT, true).apply { setPadding(Ui.dp(context, 4), Ui.dp(context, 12), 0, Ui.dp(context, 4)) }) }
+            val r = Ui.row(this).apply { setPadding(Ui.dp(context, 4), Ui.dp(context, 6), Ui.dp(context, 4), Ui.dp(context, 6)) }
+            r.addView(Ui.text(this, title, 15f, Ui.TEXT).apply {
+                setOnClickListener {
+                    Sounds.stop()
+                    dlg?.dismiss()
+                    chooseSound(uri, title)
+                }
+            }, Ui.lp(0, Ui.dp(this, 40), weight = 1f).apply { }.also { })
+            r.addView(Ui.smallButton(this, "▶") { Sounds.preview(this, uri) }, Ui.lp(Ui.dp(this, 48), Ui.dp(this, 36)))
+            col.addView(r)
+        }
+        dlg = Tr.Builder(this).setTitle(Sounds.label(st, soundKind)).setView(ScrollView(this).apply { addView(col) })
+            .setNegativeButton("Cancel") { _, _ -> Sounds.stop() }.setOnDismissListener { Sounds.stop() }.show()
+    }
+
+    private fun chooseSound(uri: Uri, name: String) {
+        val k = soundKind; val app = applicationContext
+        Ui.toast(this, "Checking the sound…")
+        Thread {
+            val err = Sounds.use(app, k, uri, name)
+            runOnUiThread { if (err != null) Ui.toast(this, err) else Ui.toast(this, "Saved"); soundNote = ""; renderSounds(); renderLock() }
+        }.start()
     }
 
     private fun pickRingtone() {
@@ -1027,8 +1075,9 @@ class SettingsActivity : BaseActivity() {
 
     private fun pickAudio() {
         // A chooser every time: Android can't lock it to one app ("Always"), and every folder is reachable.
-        val get = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
-            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "application/ogg"))
+        val get = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "application/ogg", "audio/x-wav", "audio/wav", "audio/amr", "audio/flac",
+                "audio/mp4", "video/mp4", "application/octet-stream"))
         val open = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
         try {
             startActivityForResult(Intent.createChooser(get, "Choose the sound for " + Sounds.label(st, soundKind))
