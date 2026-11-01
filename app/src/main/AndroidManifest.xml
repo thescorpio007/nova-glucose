@@ -55,6 +55,46 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
 
+        <!-- Opens .novaglucose backups from WhatsApp, e-mail, Drive or a file manager (and "Share → Nova Glucose"). -->
+        <activity
+            android:name=".ImportActivity"
+            android:exported="true"
+            android:label="Nova Glucose backup"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/vnd.nova.glucose" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.novaglucose" />
+                <data android:pathPattern=".*\\..*\\.novaglucose" />
+                <data android:pathPattern=".*\\..*\\..*\\.novaglucose" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.nova.glucose" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
+
         <receiver android:name=".AlarmReceiver" android:exported="false" />
 
         <service

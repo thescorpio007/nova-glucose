@@ -31,15 +31,23 @@ object SelfTest {
             db.addDose(Dose(0, now - 20 * 3600_000L, "long", 18.0))
 
             // 2. Backup + verify
-            val text = Backup.build(c, pw)
-            val v = Backup.verify(text, c, pw)
+            val file = Backup.pack(c, pw)
+            check(Backup.isEncrypted(file)) { "file not encrypted" }
+            val raw = String(file, Charsets.ISO_8859_1)
+            check(!raw.contains("Lantus") && !raw.contains("LluPass") && !raw.contains("test@example.com")) { "plain text visible inside the file" }
+            val v = Backup.verifyFile(file, c, pw)
+            val wrong = try { Backup.unpack(file, "wrong-password"); "accepted" } catch (e: Exception) { e.message ?: "refused" }
+            check(wrong.contains("Wrong backup password")) { "wrong password was not refused: $wrong" }
+            val corrupt = file.copyOf().also { it[it.size - 5] = (it[it.size - 5] + 1).toByte() }
+            val bad = try { Backup.unpack(corrupt, pw); "accepted" } catch (e: Exception) { "refused" }
+            check(bad == "refused") { "damaged file was accepted" }
 
             // 3. Wipe everything (fresh phone)
             st.raw.edit().clear().commit(); db.clearAll()
             check(st.longName.isBlank() && st.password.isBlank() && db.readings(0).isEmpty()) { "wipe failed" }
 
             // 4. Restore + compare
-            val r = Backup.restore(c, text, pw)
+            val r = Backup.restoreFile(c, file, pw)
             fun eq(name: String, a: Any?, b: Any?) = check(a == b) { "$name: expected $b, got $a" }
             eq("email", st.email, "test@example.com"); eq("password", st.password, "LluPass!1")
             Providers.all.forEachIndexed { k, p -> eq("${p.label} key", st.key(p), "KEY-${p.id}-$k") }
@@ -53,7 +61,7 @@ object SelfTest {
             eq("readings", db.readings(0).size, 50); eq("meals", db.meals(10).size, 1); eq("doses", db.doses().size, 2)
             eq("AI estimate", db.ai(db.meals(1).first().id)?.second, 40)
             eq("calc note", db.doses().first { it.kind == "rapid" }.note, "calc: 45÷12 = 3.8")
-            return "PASS · $v · restore: $r"
+            return "PASS · $v · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
         } catch (e: Throwable) {
             return "FAIL · ${e.message}"
         } finally {

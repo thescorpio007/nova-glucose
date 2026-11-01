@@ -31,7 +31,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var folderStatus: TextView
     private lateinit var backupPw: EditText
     private lateinit var backupMsg: TextView
-    private var pendingBackup: String? = null
+    private var pendingBackup: ByteArray? = null
     private lateinit var genderRow: LinearLayout
     private lateinit var aboutE: EditText
     /** After a restore the screen must close WITHOUT saving its old fields over the restored values. */
@@ -328,7 +328,7 @@ class SettingsActivity : BaseActivity() {
         bc.addView(Ui.text(this, "Saved there: Readings (one CSV per day, every 15 min), Daily (PDF report per day), Meals with photos, Insulin, Alerts, AI-Training and Backup (newest 7). After a reinstall, choose the folder again to resume.",
             12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
         bc.addView(Ui.button(this, "📁 Choose folder") { FolderFlow.pick(this) }, Ui.lp(top = Ui.dp(this, 10)))
-        backupPw = Ui.input(this, "Backup password (locks login & API keys)", multi = false).apply {
+        backupPw = Ui.input(this, "Backup password (required — encrypts the whole backup)", multi = false).apply {
             setText(st.backupPw); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         bc.addView(backupPw, Ui.lp(top = Ui.dp(this, 10)))
@@ -339,6 +339,7 @@ class SettingsActivity : BaseActivity() {
         br.addView(Ui.button(this, "📤 Save as file…") { save(false); exportFile() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
         br.addView(Ui.button(this, "♻ Restore file…") { importFile() }, Ui.lp(0, weight = 1f))
         bc.addView(br, Ui.lp(top = Ui.dp(this, 8)))
+        bc.addView(Ui.button(this, "📤 Share backup (WhatsApp, e-mail…)") { shareBackup() }, Ui.lp(top = Ui.dp(this, 8)))
         bc.addView(Ui.button(this, "♻ Resume everything from folder") {
             if (!Vault.ready(this)) FolderFlow.pick(this) else FolderFlow.askResume(this) { reopen(null) }
         }, Ui.lp(top = Ui.dp(this, 8)))
@@ -553,9 +554,35 @@ class SettingsActivity : BaseActivity() {
         }.start()
     }
 
+    private fun shareBackup() {
+        save(false)
+        if (st.backupPw.isBlank()) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = "Set a backup password first."; return }
+        backupMsg.setTextColor(Ui.MUTED); backupMsg.text = "Preparing the backup…"
+        val app = applicationContext
+        Thread {
+            val r = try {
+                val name = Vault.backupFileName(app)
+                val bytes = Backup.pack(app, st.backupPw)
+                Backup.verifyFile(bytes, app, st.backupPw)
+                val dir = java.io.File(cacheDir, "capture").apply { mkdirs() }
+                dir.listFiles()?.filter { it.name.endsWith(Vault.EXT) }?.forEach { it.delete() }
+                Result.success(java.io.File(dir, name).apply { writeBytes(bytes) })
+            } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                r.onSuccess { f ->
+                    backupMsg.setTextColor(Ui.GOOD); backupMsg.text = "✓ Encrypted backup ready: ${f.name}"
+                    val uri = androidx.core.content.FileProvider.getUriForFile(this, "com.nova.glucose.files", f)
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(Backup.MIME)
+                        .putExtra(Intent.EXTRA_STREAM, uri).putExtra(Intent.EXTRA_SUBJECT, f.name)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Send the backup"))
+                }.onFailure { backupMsg.setTextColor(Ui.BAD); backupMsg.text = it.message }
+            }
+        }.start()
+    }
+
     private fun exportFile() {
         if (st.backupPw.isBlank()) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = "Set a backup password first."; return }
-        pendingBackup = Backup.build(this, st.backupPw)
+        pendingBackup = Backup.pack(this, st.backupPw)
         val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
             .putExtra(Intent.EXTRA_TITLE, Vault.backupFileName(this))
         startActivityForResult(i, REQ_EXPORT)
@@ -617,13 +644,14 @@ class SettingsActivity : BaseActivity() {
                 }
                 REQ_PEN_GAL -> contentResolver.openInputStream(uri)?.use { identifyPen(it.readBytes()) }
                 REQ_EXPORT -> {
-                    contentResolver.openOutputStream(uri, "wt")!!.use { it.write((pendingBackup ?: "").toByteArray()) }
+                    contentResolver.openOutputStream(uri, "wt")!!.use { it.write(pendingBackup ?: ByteArray(0)) }
                     backupMsg.setTextColor(Ui.GOOD); backupMsg.text = "✓ Backup file saved"
                 }
                 REQ_IMPORT -> {
-                    val text = contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
-                    if (!Backup.isBackup(text)) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = "This isn't a Nova Glucose backup file." }
-                    else restoreFromText(text)
+                    // Same path as opening a backup from WhatsApp: PIN (if on) → password → restore → summary.
+                    restored = true
+                    startActivity(Intent(this, ImportActivity::class.java).setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    finish()
                 }
             }
         } catch (e: Exception) { backupMsg.setTextColor(Ui.BAD); backupMsg.text = e.message }

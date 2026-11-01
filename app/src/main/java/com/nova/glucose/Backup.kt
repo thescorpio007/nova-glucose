@@ -121,6 +121,78 @@ object Backup {
         return "✓ $nSet settings · $secretsNote · $nr readings · $nm meals · $nd doses"
     }
 
+    // ---------------------------------------------------------------- encrypted file (format 3)
+    // NOVAGLUC | 1 byte version | 4 bytes header length | header JSON (name, date, counts — no health data)
+    // | 16 bytes salt | 12 bytes IV | AES-256-GCM( gzip( full backup JSON ) ) with the backup password.
+    private val MAGIC = "NOVAGLUC".toByteArray()
+    const val MIME = "application/vnd.nova.glucose"
+
+    fun isEncrypted(b: ByteArray) = b.size > 13 && b.copyOfRange(0, 8).contentEquals(MAGIC)
+
+    /** Whole-file encrypted backup. The backup password is required. */
+    fun pack(c: Context, password: String): ByteArray {
+        require(password.isNotBlank()) { "Set a backup password first (Settings › Backup)." }
+        val inner = build(c, password)
+        val root = JSONObject(inner)
+        val st = Store(c)
+        val header = JSONObject().put("app", "Nova Glucose").put("name", st.patientName.ifBlank { st.fileName })
+            .put("created", root.optLong("created")).put("version", Ui.version(c)).put("contents", root.optJSONObject("contents"))
+            .toString().toByteArray(Charsets.UTF_8)
+        val rnd = SecureRandom()
+        val salt = ByteArray(16).also { rnd.nextBytes(it) }
+        val iv = ByteArray(12).also { rnd.nextBytes(it) }
+        val bo = java.io.ByteArrayOutputStream()
+        java.util.zip.GZIPOutputStream(bo).use { it.write(inner.toByteArray(Charsets.UTF_8)) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, keyFrom(password, salt), GCMParameterSpec(128, iv))
+        cipher.updateAAD(header)
+        val enc = cipher.doFinal(bo.toByteArray())
+        return java.io.ByteArrayOutputStream().apply {
+            write(MAGIC); write(3)
+            write(java.nio.ByteBuffer.allocate(4).putInt(header.size).array()); write(header)
+            write(salt); write(iv); write(enc)
+        }.toByteArray()
+    }
+
+    /** Readable details shown before the password is typed (no health data). */
+    fun header(b: ByteArray): JSONObject? = try {
+        if (!isEncrypted(b)) JSONObject(String(b, Charsets.UTF_8)).let { o ->
+            JSONObject().put("app", "Nova Glucose").put("created", o.optLong("created")).put("version", o.optString("version", "older build"))
+                .put("contents", o.optJSONObject("contents"))
+        } else {
+            val n = java.nio.ByteBuffer.wrap(b, 9, 4).int
+            JSONObject(String(b, 13, n, Charsets.UTF_8))
+        }
+    } catch (_: Exception) { null }
+
+    /** The full backup JSON inside the file (decrypts format 3; older files are returned as they are). */
+    fun unpack(b: ByteArray, password: String): String {
+        if (!isEncrypted(b)) {
+            val t = String(b, Charsets.UTF_8)
+            require(isBackup(t)) { "This isn't a Nova Glucose backup file." }
+            return t
+        }
+        require(b[8].toInt() == 3) { "This backup was made by a newer Nova Glucose — update the app first." }
+        val n = java.nio.ByteBuffer.wrap(b, 9, 4).int
+        val header = b.copyOfRange(13, 13 + n)
+        val salt = b.copyOfRange(13 + n, 29 + n); val iv = b.copyOfRange(29 + n, 41 + n)
+        val enc = b.copyOfRange(41 + n, b.size)
+        val plain = try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, keyFrom(password, salt), GCMParameterSpec(128, iv))
+            cipher.updateAAD(header)
+            cipher.doFinal(enc)
+        } catch (_: Exception) { throw IllegalArgumentException("Wrong backup password.") }
+        return java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(plain)).use { it.readBytes().toString(Charsets.UTF_8) }
+    }
+
+    fun isBackupFile(b: ByteArray) = isEncrypted(b) || isBackup(String(b, Charsets.UTF_8))
+    fun restoreFile(c: Context, b: ByteArray, password: String) = restore(c, unpack(b, password), password)
+    fun verifyFile(b: ByteArray, c: Context, password: String): String {
+        require(isEncrypted(b)) { "file is not encrypted" }
+        return verify(unpack(b, password), c, password) + " · encrypted ✓"
+    }
+
     fun isBackup(text: String) = try { JSONObject(text).optString("app") == "Nova Glucose" } catch (_: Exception) { false }
 
     /** Restores settings; returns a summary line. Throws with a clear message on a bad file. */

@@ -99,6 +99,15 @@ object Vault {
         c.contentResolver.openOutputStream(f.uri, "wt")!!.use { it.write(b) }
     }
 
+    private fun readBytes(c: Context, f: DocumentFile): ByteArray =
+        c.contentResolver.openInputStream(f.uri)!!.use { it.readBytes() }
+
+    /** Latest backup file in the folder, as bytes (for Share backup). */
+    fun latestBackupBytes(c: Context): Pair<String, ByteArray>? = synchronized(lock) {
+        val r = root(c) ?: return null
+        latestBackup(r)?.let { (it.name ?: Backup.FILE) to readBytes(c, it) }
+    }
+
     private fun read(c: Context, f: DocumentFile): String =
         c.contentResolver.openInputStream(f.uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
 
@@ -278,12 +287,12 @@ object Vault {
         val d = dir(r, "Backup")
         val name = backupFileName(c)
         val f = d.createFile("application/octet-stream", name) ?: file(d, name, "application/octet-stream")
-        writeBytes(c, f, Backup.build(c, st.backupPw).toByteArray(Charsets.UTF_8))
+        writeBytes(c, f, Backup.pack(c, st.backupPw))
         // Android may add an extension: make sure the file keeps the exact name.
         d.listFiles().firstOrNull { it.name?.startsWith(name) == true && it.name != name }?.renameTo(name)
         // Read it back: the backup must open before older copies are removed.
         val check = d.findFile(name) ?: throw IllegalStateException("Backup file not found after saving")
-        st.lastBackupInfo = try { Backup.verify(read(c, check), c, st.backupPw) } catch (e: Exception) {
+        st.lastBackupInfo = try { Backup.verifyFile(readBytes(c, check), c, st.backupPw) } catch (e: Exception) {
             throw IllegalStateException("Backup check failed: ${e.message}")
         }
         d.listFiles().filter { (it.name ?: "").endsWith(EXT) }.sortedByDescending { it.name }.drop(KEEP_BACKUPS).forEach { it.delete() }
@@ -320,7 +329,7 @@ object Vault {
     fun restoreAll(c: Context, password: String): String = synchronized(lock) {
         val r = root(c) ?: throw IllegalStateException("Choose the Download/NovaGlucose folder first.")
         val out = mutableListOf<String>()
-        latestBackup(r)?.let { out += Backup.restore(c, read(c, it), password) }
+        latestBackup(r)?.let { out += Backup.restoreFile(c, readBytes(c, it), password) }
         val db = Db.get(c)
         var nR = 0
         fun csvFiles(d: DocumentFile?): List<DocumentFile> = d?.listFiles()?.flatMap {
