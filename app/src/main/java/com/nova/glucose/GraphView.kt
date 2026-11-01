@@ -221,8 +221,8 @@ class GraphView(c: Context) : View(c) {
             val ct = cursorT
             val pick = if (ct == null) days.last() else days.minByOrNull { kotlin.math.abs(it.first - ct) }!!
             cross(cv, x(pick.first), y(pick.second), pick.second, ct == null && dayOf(pick.first) == dayOf(System.currentTimeMillis()),
-                java.text.SimpleDateFormat("EEE d MMM", java.util.Locale.US).format(java.util.Date(pick.first)) + " · average ${pick.second}",
-                "lowest ${pick.third.first} · highest ${pick.third.second}", java.text.SimpleDateFormat("d MMM", java.util.Locale.US).format(java.util.Date(pick.first)),
+                java.text.SimpleDateFormat("EEE d MMM", L.loc()).format(java.util.Date(pick.first)) + " · average ${pick.second}",
+                "lowest ${pick.third.first} · highest ${pick.third.second}", java.text.SimpleDateFormat("d MMM", L.loc()).format(java.util.Date(pick.first)),
                 left, right, top, bottom)
             return
         }

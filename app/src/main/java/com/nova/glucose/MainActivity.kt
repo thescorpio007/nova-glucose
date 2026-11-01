@@ -284,7 +284,7 @@ class MainActivity : BaseActivity() {
     /** Start and end of the period shown, and its title. */
     private fun period(): Triple<Long, Long, String> {
         val now = System.currentTimeMillis()
-        val df = java.text.SimpleDateFormat("EEE d MMM", java.util.Locale.US)
+        val df = java.text.SimpleDateFormat("EEE d MMM", L.loc())
         val cal = java.util.Calendar.getInstance().apply {
             set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
         }
@@ -292,10 +292,10 @@ class MainActivity : BaseActivity() {
             "24" -> { cal.add(java.util.Calendar.DAY_OF_YEAR, offset); val a = cal.timeInMillis
                 Triple(a, a + 24 * 3600_000L - 1, if (offset == 0) "Today · ${df.format(java.util.Date(a))}" else df.format(java.util.Date(a))) }
             "w" -> { cal.add(java.util.Calendar.DAY_OF_YEAR, -6 + offset * 7); val a = cal.timeInMillis; val b = a + 7 * 24 * 3600_000L - 1
-                Triple(a, b, "${java.text.SimpleDateFormat("d MMM", java.util.Locale.US).format(java.util.Date(a))} – ${java.text.SimpleDateFormat("d MMM", java.util.Locale.US).format(java.util.Date(b))}") }
+                Triple(a, b, "${java.text.SimpleDateFormat("d MMM", L.loc()).format(java.util.Date(a))} – ${java.text.SimpleDateFormat("d MMM", L.loc()).format(java.util.Date(b))}") }
             "m" -> { cal.set(java.util.Calendar.DAY_OF_MONTH, 1); cal.add(java.util.Calendar.MONTH, offset); val a = cal.timeInMillis
                 cal.add(java.util.Calendar.MONTH, 1)
-                Triple(a, cal.timeInMillis - 1, java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.US).format(java.util.Date(a))) }
+                Triple(a, cal.timeInMillis - 1, java.text.SimpleDateFormat("MMMM yyyy", L.loc()).format(java.util.Date(a))) }
             else -> Triple(now - 12 * 3600_000L, now, "")
         }
     }

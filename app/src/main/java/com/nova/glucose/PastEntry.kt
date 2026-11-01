@@ -27,8 +27,8 @@ object PastEntry {
         fun renderTime() {
             val today = Calendar.getInstance()
             val sameDay = today.get(Calendar.YEAR) == cal.get(Calendar.YEAR) && today.get(Calendar.DAY_OF_YEAR) == cal.get(Calendar.DAY_OF_YEAR)
-            dateB.text = "📅  " + if (sameDay) "Today" else SimpleDateFormat("EEE d MMM", Locale.US).format(cal.time)
-            timeB.text = "🕘  " + SimpleDateFormat("HH:mm", Locale.US).format(cal.time)
+            dateB.text = "📅  " + if (sameDay) "Today" else SimpleDateFormat("EEE d MMM", L.loc()).format(cal.time)
+            timeB.text = "🕘  " + SimpleDateFormat("HH:mm", L.loc()).format(cal.time)
         }
         dateB.setOnClickListener {
             DatePickerDialog(a, { _, y, m, d -> cal.set(y, m, d); renderTime() },
@@ -95,7 +95,7 @@ object PastEntry {
                 }
                 val app = a.applicationContext
                 Thread { Vault.exportAll(app, pdfNow = true) }.start()
-                Ui.toast(a, "Saved at " + SimpleDateFormat("HH:mm", Locale.US).format(cal.time))
+                Ui.toast(a, "Saved at " + SimpleDateFormat("HH:mm", L.loc()).format(cal.time))
                 d.dismiss(); done()
             }
         }

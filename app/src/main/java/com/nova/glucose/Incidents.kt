@@ -23,7 +23,7 @@ object Incidents {
         listOf("Sensor / pump issue", "Doctor visit", "Hospital"),
     )
 
-    private val df = SimpleDateFormat("EEE d MMM HH:mm", Locale.US)
+    private val df = SimpleDateFormat("EEE d MMM HH:mm", L.loc())
     fun period(i: Incident): String = df.format(Date(i.ts)) + if (i.ongoing) " · still ongoing" else " → " + df.format(Date(i.end))
 
     fun dir(c: Context) = File(c.filesDir, "incidents").apply { mkdirs() }

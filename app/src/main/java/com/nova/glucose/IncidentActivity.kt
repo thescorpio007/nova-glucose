@@ -143,8 +143,8 @@ class IncidentActivity : BaseActivity() {
         }
     }
 
-    private val dfD = SimpleDateFormat("EEE d MMM", Locale.US)
-    private val dfT = SimpleDateFormat("HH:mm", Locale.US)
+    private val dfD = SimpleDateFormat("EEE d MMM", L.loc())
+    private val dfT = SimpleDateFormat("HH:mm", L.loc())
     private fun renderTimes() {
         startB.text = "📅  " + dfD.format(start.time); startT.text = "🕘  " + dfT.format(start.time)
         endB.text = "📅  " + dfD.format(end.time); endT.text = "🕘  " + dfT.format(end.time)

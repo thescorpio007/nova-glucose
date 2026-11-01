@@ -65,7 +65,7 @@ object MarkHistory {
                     is Entry.X -> at >= e.i.ts - NEAR && at <= (if (e.i.ongoing) now else e.i.end) + NEAR
                 } }.sortedBy { it.ts }.ifEmpty { all.filter { it.ts == at } }
             val hasM = group.any { it is Entry.M }; val hasI = group.any { it is Entry.I }
-            title.text = (if (hasM && hasI) "Meal and insulin" else if (hasM) "Meal" else if (hasI) "Insulin" else "Incident") + " · " + day(at)
+            title.text = L.s(if (hasM && hasI) "Meal and insulin" else if (hasM) "Meal" else if (hasI) "Insulin" else "Incident") + " · " + day(at)
             details.removeAllViews()
             if (group.isEmpty()) details.addView(Ui.text(a, "Nothing saved at this time.", 13f, Ui.MUTED))
             group.forEach { details.addView(detail(a, it) { reopen(at) }) }
@@ -80,15 +80,15 @@ object MarkHistory {
             .show()
     }
 
-    private val hm = SimpleDateFormat("HH:mm", Locale.US)
+    private val hm = SimpleDateFormat("HH:mm", L.loc())
     private fun day(t: Long): String {
         val c = Calendar.getInstance(); val today = c.get(Calendar.DAY_OF_YEAR); val y = c.get(Calendar.YEAR)
         c.timeInMillis = t
         val d = c.get(Calendar.DAY_OF_YEAR)
         return when {
             c.get(Calendar.YEAR) == y && d == today -> hm.format(Date(t))
-            c.get(Calendar.YEAR) == y && d == today - 1 -> "Yesterday ${hm.format(Date(t))}"
-            else -> SimpleDateFormat("EEE d MMM HH:mm", Locale.US).format(Date(t))
+            c.get(Calendar.YEAR) == y && d == today - 1 -> L.s("Yesterday") + " " + hm.format(Date(t))
+            else -> SimpleDateFormat("EEE d MMM HH:mm", L.loc()).format(Date(t))
         }
     }
 
@@ -112,7 +112,7 @@ object MarkHistory {
         when (e) {
             is Entry.M -> {
                 val m = e.m
-                letter(head, "M"); head.append("  ${hm.format(Date(m.ts))} · ${m.title} · ${m.carbs} g carbs")
+                letter(head, "M"); head.append("  ${hm.format(Date(m.ts))} · ${m.title} · " + L.s("${m.carbs} g carbs"))
                 try {
                     val arr = JSONArray(m.itemsJson)
                     if (arr.length() > 1) more += (0 until arr.length()).joinToString("\n") { k ->
@@ -120,21 +120,21 @@ object MarkHistory {
                 } catch (_: Exception) { }
                 db.ai(m.id)?.let { (_, ai) -> more += if (ai == m.carbs) "AI said $ai g · kept by the family" else "AI said $ai g · family corrected to ${m.carbs} g" }
                 listOfNotNull(if (m.mgAt > 0) "glucose then ${m.mgAt} mg/dL" else null,
-                    db.who("meals", m.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") }
+                    db.who("meals", m.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") { x -> L.s(x) } }
                 if (m.note.isNotBlank()) more += "Note: ${m.note}"
             }
             is Entry.I -> {
                 val d = e.d
                 val name = if (d.kind == "rapid") st.rapidName.ifBlank { "Rapid insulin" } else st.longName.ifBlank { "Long-acting insulin" }
                 letter(head, if (d.kind == "rapid") "I" else "L")
-                head.append("  ${hm.format(Date(d.ts))} · $name · ${units(d.units)} u" + if (d.waitMin > 0) " · eat after ${d.waitMin} min" else "")
+                head.append("  ${hm.format(Date(d.ts))} · ${L.s(name)} · ${units(d.units)} u" + if (d.waitMin > 0) L.s(" · eat after ${d.waitMin} min") else "")
                 listOfNotNull(if (d.carbs > 0) "for ${d.carbs} g carbs" else null, if (d.mgAt > 0) "glucose then ${d.mgAt} mg/dL" else null,
-                    db.who("insulin", d.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") }
+                    db.who("insulin", d.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") { x -> L.s(x) } }
                 if (d.note.isNotBlank()) more += "Note: ${d.note}"
             }
             is Entry.X -> {
                 val i = e.i
-                letter(head, "!"); head.append("  ${i.kind}")
+                letter(head, "!"); head.append("  ${L.s(i.kind)}")
                 more += Incidents.period(i)
                 if (i.details.isNotBlank()) more += i.details
                 if (i.meds.isNotBlank()) more += "Prescription:\n${i.meds}"
@@ -161,10 +161,10 @@ object MarkHistory {
             is Entry.M -> { letter(sb, "M"); sb.append("  ${day(e.ts)} · ${e.m.title}"); right = "${e.m.carbs} g" }
             is Entry.I -> {
                 letter(sb, if (e.d.kind == "rapid") "I" else "L")
-                sb.append("  ${day(e.ts)} · " + if (e.d.kind == "rapid") st.rapidName.ifBlank { "Rapid insulin" } else st.longName.ifBlank { "Long-acting insulin" })
+                sb.append("  ${day(e.ts)} · " + if (e.d.kind == "rapid") st.rapidName.ifBlank { L.s("Rapid insulin") } else st.longName.ifBlank { L.s("Long-acting insulin") })
                 right = "${units(e.d.units)} u"
             }
-            is Entry.X -> { letter(sb, "!"); sb.append("  ${day(e.ts)} · ${e.i.kind}"); right = if (e.i.ongoing) "ongoing" else "›" }
+            is Entry.X -> { letter(sb, "!"); sb.append("  ${day(e.ts)} · ${L.s(e.i.kind)}"); right = if (e.i.ongoing) L.s("ongoing") else "›" }
         }
         val r = Ui.row(a).apply {
             setPadding(Ui.dp(a, 10), Ui.dp(a, 9), Ui.dp(a, 10), Ui.dp(a, 9))

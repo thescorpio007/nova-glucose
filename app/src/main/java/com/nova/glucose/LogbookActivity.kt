@@ -17,7 +17,7 @@ class LogbookActivity : BaseActivity() {
     private lateinit var list: LinearLayout
     private lateinit var today: LinearLayout
     private lateinit var incCard: LinearLayout
-    private val fmt = SimpleDateFormat("EEE d MMM · HH:mm", Locale.US)
+    private val fmt = SimpleDateFormat("EEE d MMM · HH:mm", L.loc())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

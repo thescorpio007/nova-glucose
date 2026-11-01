@@ -18,8 +18,8 @@ object EditEntry {
     private fun timeRow(a: Activity, root: android.widget.LinearLayout, cal: Calendar) {
         val dateB = Ui.smallButton(a, "") {}; val timeB = Ui.smallButton(a, "") {}
         fun render() {
-            dateB.text = "📅  " + SimpleDateFormat("EEE d MMM", Locale.US).format(cal.time)
-            timeB.text = "🕘  " + SimpleDateFormat("HH:mm", Locale.US).format(cal.time)
+            dateB.text = "📅  " + SimpleDateFormat("EEE d MMM", L.loc()).format(cal.time)
+            timeB.text = "🕘  " + SimpleDateFormat("HH:mm", L.loc()).format(cal.time)
         }
         dateB.setOnClickListener {
             DatePickerDialog(a, { _, y, m, d -> cal.set(y, m, d); render() }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH))

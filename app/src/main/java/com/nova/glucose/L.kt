@@ -32,6 +32,9 @@ object L {
 
     fun init(c: Context) { set(c, Store(c).lang) }
 
+    /** Locale for dates on screen (Arabic with Western digits, as in Tunisia). */
+    fun loc(): Locale = when (lang) { "fr" -> Locale.FRANCE; "ar" -> Locale("ar", "TN"); else -> Locale.US }
+
     fun set(c: Context, l: String) {
         lang = if (l in setOf("fr", "ar")) l else "en"
         if (lang == "en") { exact = emptyMap(); tpls = emptyList(); chunks = emptyList(); loaded = "en"; return }
@@ -116,6 +119,7 @@ object L {
         if (lang == "en") return
         walk(root)
         root.viewTreeObserver.addOnGlobalLayoutListener { walk(root) }
+        root.viewTreeObserver.addOnPreDrawListener { walk(root); true }
     }
 
     /** Context in the chosen language (also sets right-to-left for Arabic). */

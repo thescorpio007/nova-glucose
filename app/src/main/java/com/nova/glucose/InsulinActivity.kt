@@ -28,7 +28,7 @@ class InsulinActivity : BaseActivity() {
     private lateinit var refBox: TextView
     private var calcNote = ""
     private val ui = Handler(Looper.getMainLooper())
-    private val hm get() = SimpleDateFormat("EEE HH:mm", Locale.US)
+    private val hm get() = SimpleDateFormat("EEE HH:mm", L.loc())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -183,7 +183,7 @@ class InsulinActivity : BaseActivity() {
         val sb = android.text.SpannableStringBuilder()
         refLines().forEachIndexed { k, (t, col) ->
             if (k > 0) sb.append("\n")
-            val s0 = sb.length; sb.append(t)
+            val s0 = sb.length; sb.append(L.s(t))
             sb.setSpan(android.text.style.ForegroundColorSpan(col), s0, sb.length, 0)
             if (k == 0) sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), s0, sb.length, 0)
         }

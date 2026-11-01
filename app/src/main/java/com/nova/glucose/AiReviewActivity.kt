@@ -81,7 +81,7 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
     private fun showSaved() {
         if (st.aiReview.isBlank()) { out.text = "Choose a period and tap Review now."; actions.visibility = android.view.View.GONE; return }
         out.text = st.aiReview
-        status.text = "Last review: ${SimpleDateFormat("EEE d MMM HH:mm", Locale.US).format(Date(st.aiReviewTs))} · ${st.aiReviewDays} day(s)"
+        status.text = "Last review: ${SimpleDateFormat("EEE d MMM HH:mm", L.loc()).format(Date(st.aiReviewTs))} · ${st.aiReviewDays} day(s)"
         actions.visibility = android.view.View.VISIBLE
     }
 
@@ -108,7 +108,7 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
             .putExtra(Intent.EXTRA_SUBJECT, "Nova Glucose AI review")
             .putExtra(Intent.EXTRA_TEXT, "Nova Glucose — AI review (${st.aiReviewDays} day(s), " +
-                SimpleDateFormat("d MMM yyyy", Locale.US).format(Date(st.aiReviewTs)) + ")\n\n" + st.aiReview +
+                SimpleDateFormat("d MMM yyyy", L.loc()).format(Date(st.aiReviewTs)) + ")\n\n" + st.aiReview +
                 "\n\nAI review, not medical advice."), "Share the review"))
     }
 }
