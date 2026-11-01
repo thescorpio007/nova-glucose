@@ -31,6 +31,15 @@ class MainActivity : BaseActivity() {
     private lateinit var connectCard: LinearLayout
     private lateinit var folderCard: LinearLayout
     private lateinit var eatLine: TextView
+    private lateinit var rangeBtn: TextView
+    private lateinit var navRow: LinearLayout
+    private lateinit var navLabel: TextView
+    private lateinit var chartLegend: TextView
+    private lateinit var tirBox: Pair<LinearLayout, TextView>
+    private lateinit var avgBox: Pair<LinearLayout, TextView>
+    private lateinit var periodExtra: TextView
+    private lateinit var gmiCard: LinearLayout
+    private var offset = 0
     private lateinit var folderText: TextView
     private var snap: Snapshot? = null
     private val ui = Handler(Looper.getMainLooper())
@@ -129,9 +138,28 @@ class MainActivity : BaseActivity() {
         root.addView(error, Ui.lp(top = Ui.dp(this, 8)))
 
         val gc = Ui.card(this)
-        gc.addView(Ui.text(this, "Last 12 hours", 13f, Ui.MUTED))
+        rangeBtn = Ui.smallButton(this, "") { pickRange() }
+        gc.addView(rangeBtn, Ui.lp(-2, Ui.dp(this, 36)))
+        navRow = Ui.row(this).apply { setPadding(0, Ui.dp(c(), 8), 0, 0) }
+        navRow.addView(Ui.smallButton(this, "‹") { offset--; renderChart() }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 32)))
+        navLabel = Ui.text(this, "", 14f, Ui.TEXT).apply { gravity = android.view.Gravity.CENTER }
+        navRow.addView(navLabel, Ui.lp(0, weight = 1f))
+        navRow.addView(Ui.smallButton(this, "›") { if (offset < 0) { offset++; renderChart() } }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 32)))
+        gc.addView(navRow)
         graph = GraphView(this)
         gc.addView(graph, Ui.lp(top = Ui.dp(this, 6)))
+        chartLegend = Ui.text(this, "", 11f, Ui.MUTED)
+        gc.addView(chartLegend)
+        val sr = Ui.row(this).apply { setPadding(0, Ui.dp(c(), 10), 0, 0) }
+        tirBox = statBox("Time in range"); avgBox = statBox("Average")
+        sr.addView(tirBox.first, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8))); sr.addView(avgBox.first, Ui.lp(0, weight = 1f))
+        gc.addView(sr)
+        periodExtra = Ui.text(this, "", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(c(), 6), 0, 0) }
+        gc.addView(periodExtra)
+        gmiCard = Ui.col(this, 12).apply {
+            background = Ui.round(Ui.CARD2, Ui.dp(c(), 12).toFloat(), Ui.dp(c(), 1), 0x552EC4B6)
+        }
+        gc.addView(gmiCard, Ui.lp(top = Ui.dp(this, 10)))
         root.addView(gc, Ui.lp(top = Ui.dp(this, 12)))
 
         // actions
@@ -189,14 +217,96 @@ class MainActivity : BaseActivity() {
         if (err.isNullOrBlank() || !st.loggedIn) error.visibility = View.GONE
         else { error.text = err; error.visibility = View.VISIBLE }
 
-        val t0 = System.currentTimeMillis() - 12 * 3600_000L
-        val pts = Db.get(this).readings(t0).ifEmpty { snap?.graph ?: emptyList() }
-        graph.low = snap?.targetLow ?: st.low; graph.high = snap?.targetHigh ?: st.high
-        graph.lowLine = st.low; graph.highLine = st.high
-        graph.meals = Db.get(this).meals(30).map { it.ts }
-        graph.readings = pts
+        renderChart()
 
         renderAdvice(r)
+    }
+
+    private val ranges = listOf("12" to "Last 12 hours", "24" to "24 hours (full day)", "w" to "Week", "m" to "Month")
+
+    private fun statBox(label: String): Pair<LinearLayout, TextView> {
+        val b = Ui.col(this, 10).apply { background = Ui.round(Ui.CARD2, Ui.dp(c(), 10).toFloat()) }
+        b.addView(Ui.text(this, label, 12f, Ui.MUTED))
+        val v = Ui.text(this, "–", 19f, Ui.TEXT, true); b.addView(v)
+        return b to v
+    }
+
+    private fun pickRange() {
+        val pm = android.widget.PopupMenu(this, rangeBtn)
+        ranges.forEachIndexed { k, (id, label) -> pm.menu.add(0, k, k, (if (id == st.chartRange) "✓  " else "     ") + label) }
+        pm.setOnMenuItemClickListener { st.chartRange = ranges[it.itemId].first; offset = 0; renderChart(); true }
+        pm.show()
+    }
+
+    /** Start and end of the period shown, and its title. */
+    private fun period(): Triple<Long, Long, String> {
+        val now = System.currentTimeMillis()
+        val df = java.text.SimpleDateFormat("EEE d MMM", java.util.Locale.US)
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }
+        return when (st.chartRange) {
+            "24" -> { cal.add(java.util.Calendar.DAY_OF_YEAR, offset); val a = cal.timeInMillis
+                Triple(a, a + 24 * 3600_000L - 1, if (offset == 0) "Today · ${df.format(java.util.Date(a))}" else df.format(java.util.Date(a))) }
+            "w" -> { cal.add(java.util.Calendar.DAY_OF_YEAR, -6 + offset * 7); val a = cal.timeInMillis; val b = a + 7 * 24 * 3600_000L - 1
+                Triple(a, b, "${java.text.SimpleDateFormat("d MMM", java.util.Locale.US).format(java.util.Date(a))} – ${java.text.SimpleDateFormat("d MMM", java.util.Locale.US).format(java.util.Date(b))}") }
+            "m" -> { cal.set(java.util.Calendar.DAY_OF_MONTH, 1); cal.add(java.util.Calendar.MONTH, offset); val a = cal.timeInMillis
+                cal.add(java.util.Calendar.MONTH, 1)
+                Triple(a, cal.timeInMillis - 1, java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale.US).format(java.util.Date(a))) }
+            else -> Triple(now - 12 * 3600_000L, now, "")
+        }
+    }
+
+    private fun renderChart() {
+        val mode = st.chartRange
+        rangeBtn.text = (ranges.firstOrNull { it.first == mode }?.second ?: "Last 12 hours") + "  ▾"
+        val (a, b, title) = period()
+        navRow.visibility = if (mode == "12") View.GONE else View.VISIBLE
+        navLabel.text = title
+        val db = Db.get(this)
+        val pts = db.readings(a, b).ifEmpty { if (mode == "12") snap?.graph ?: emptyList() else emptyList() }
+        graph.low = snap?.targetLow ?: st.low; graph.high = snap?.targetHigh ?: st.high
+        graph.lowLine = st.low; graph.highLine = st.high
+        graph.meals = db.meals(500).map { it.ts }
+        graph.doses = db.doses(a, b).filter { it.kind == "rapid" }.map { it.ts }
+        graph.set(mode, a, b, pts)
+        chartLegend.text = when (mode) {
+            "12" -> "Every hour labelled · M = meal · I = rapid insulin"
+            "24" -> "Full day · ‹ › other days · M = meal · I = rapid insulin"
+            "w" -> "All readings of the 7 days · ‹ › other weeks"
+            else -> "Line = daily average · band = lowest to highest · ‹ › other months"
+        }
+        val s = Vault.stats(st, pts)
+        tirBox.second.text = s?.let { "${it.inRange}%" } ?: "–"
+        tirBox.second.setTextColor(when { s == null -> Ui.MUTED; s.inRange >= 70 -> Ui.GOOD; s.inRange >= 50 -> Ui.WARN; else -> Ui.BAD })
+        avgBox.second.text = s?.let { "${it.avg} mg/dL" } ?: "–"
+        periodExtra.text = s?.let { "Below ${st.low}: ${it.below}% · above ${st.high}: ${it.above}% · low episodes: ${it.lowEpisodes} · lowest ${it.min} · highest ${it.max}" } ?: ""
+        renderGmi()
+    }
+
+    private fun renderGmi() {
+        gmiCard.removeAllViews()
+        gmiCard.addView(Ui.text(this, "Estimated HbA1c (GMI)", 12f, Ui.MUTED))
+        val now = System.currentTimeMillis()
+        val db = Db.get(this)
+        fun est(days: Int): Pair<DayStats?, Double> {
+            val rs = db.readings(now - days * 24 * 3600_000L)
+            val s = Vault.stats(st, rs)
+            return s to (s?.count ?: 0) / 288.0      // days of data (5-minute samples)
+        }
+        val (s14, d14) = est(14)
+        if (s14 == null) {
+            gmiCard.addView(Ui.text(this, "–", 22f, Ui.MUTED, true))
+            gmiCard.addView(Ui.text(this, "Needs 14 days of readings.", 12f, Ui.MUTED)); return
+        }
+        val enough = d14 >= 14 * 0.7
+        gmiCard.addView(Ui.text(this, "%.1f%%".format(java.util.Locale.US, s14.gmi), 24f, if (enough) Ui.ACCENT else Ui.MUTED, true))
+        val (s30, d30) = est(30)
+        gmiCard.addView(Ui.text(this, if (enough) "Last 14 days · average ${s14.avg} mg/dL" +
+                (if (s30 != null && d30 >= 21) " · 30 days: %.1f%%".format(java.util.Locale.US, s30.gmi) else "")
+            else "Partial estimate: %.1f of 14 days so far — needs %d more day(s).".format(java.util.Locale.US, d14, kotlin.math.ceil(14 * 0.7 - d14).toInt().coerceAtLeast(1)),
+            12f, Ui.TEXT))
+        gmiCard.addView(Ui.text(this, "From sensor readings, not a lab test (can differ by about ±0.5%).", 11f, Ui.MUTED))
     }
 
     private fun renderEat() {

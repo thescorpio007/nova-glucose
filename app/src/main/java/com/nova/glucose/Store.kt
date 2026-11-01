@@ -45,6 +45,11 @@ class Store(c: Context) {
     /** Minutes before the same alert repeats. */
     var repeatMin: Int get() = i("repeat", 20); set(v) = puti("repeat", v)
     var staleAlert: Boolean get() = b("stale_alert", true); set(v) = putb("stale_alert", v)
+    /** Minutes without a new reading before the "no signal" alert. */
+    var staleMin: Int get() = i("stale_min", 20); set(v) = puti("stale_min", v)
+    var urgNoSignal: Boolean get() = b("urg_nosignal", false); set(v) = putb("urg_nosignal", v)
+    /** Home chart range: "12", "24", "w", "m". */
+    var chartRange: String get() = s("chart_range", "12"); set(v) = put("chart_range", v)
 
     // ---------------------------------------------------------------- carb plan (standard guidance, editable)
     var lowTreatG: Int get() = i("low_treat", 15); set(v) = puti("low_treat", v)
@@ -130,7 +135,7 @@ class Store(c: Context) {
     var urgentRepeat: Int get() = i("urg_repeat", 5); set(v) = puti("urg_repeat", v)
     var alarmVolume: Int get() = i("alarm_vol", 80); set(v) = puti("alarm_vol", v)
     fun urgentFor(kind: String) = urgentOn && when (kind) {
-        "urgent_low" -> urgUrgentLow; "low" -> urgLow; "high" -> urgHigh; "very_high" -> urgVeryHigh; else -> false
+        "urgent_low" -> urgUrgentLow; "low" -> urgLow; "high" -> urgHigh; "very_high" -> urgVeryHigh; "stale" -> urgNoSignal; else -> false
     }
     fun snoozedUntil(kind: String): Long = sp.getLong("last_snooze_$kind", 0)
     fun snooze(kind: String, until: Long) = sp.edit().putLong("last_snooze_$kind", until).apply()

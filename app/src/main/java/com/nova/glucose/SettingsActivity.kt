@@ -37,6 +37,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var cbL: android.widget.CheckBox
     private lateinit var cbH: android.widget.CheckBox
     private lateinit var cbVH: android.widget.CheckBox
+    private lateinit var cbNS: android.widget.CheckBox
     private lateinit var soundTxt: TextView
     private lateinit var vibRow: LinearLayout
     private lateinit var volTxt: TextView
@@ -99,8 +100,9 @@ class SettingsActivity : BaseActivity() {
         ac.addView(numRow("high", "High above", st.high))
         ac.addView(numRow("very_high", "Very high above", st.veryHigh))
         ac.addView(numRow("repeat", "Repeat alert after (minutes)", st.repeatMin))
-        stale = switch("Alert when there's no new reading for 20 minutes", st.staleAlert)
+        stale = switch("Notify when there's no new reading (no signal)", st.staleAlert)
         ac.addView(stale, Ui.lp(top = Ui.dp(this, 6)))
+        ac.addView(numRow("stale_min", "No signal after (minutes)", st.staleMin))
         ac.addView(Ui.button(this, "Normal alert sound & vibration…") { openNotifSettings() }, Ui.lp(top = Ui.dp(this, 8)))
         root.addView(ac)
 
@@ -112,7 +114,8 @@ class SettingsActivity : BaseActivity() {
         uc.addView(Ui.text(this, "Which alerts ring as urgent alarms (full screen, alarm sound, even when the phone is silent):", 13f, Ui.MUTED))
         cbUL = check("Urgent low", st.urgUrgentLow); cbL = check("Low", st.urgLow)
         cbH = check("High", st.urgHigh); cbVH = check("Very high", st.urgVeryHigh)
-        listOf(cbUL, cbL, cbH, cbVH).forEach { uc.addView(it) }
+        cbNS = check("No signal — no new reading for the minutes set in Alerts", st.urgNoSignal)
+        listOf(cbUL, cbL, cbH, cbVH, cbNS).forEach { uc.addView(it) }
         soundTxt = Ui.text(this, "Sound: ${st.alarmSoundName}", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, 0) }
         uc.addView(soundTxt)
         val sr = Ui.row(this)
@@ -229,7 +232,7 @@ class SettingsActivity : BaseActivity() {
         val bc = Ui.card(this)
         folderStatus = Ui.text(this, "", 14f, Ui.TEXT)
         bc.addView(folderStatus)
-        bc.addView(Ui.text(this, "Saved there: readings (CSV per month, every 15 min), meals with photos, alerts, a daily glucose assessment, and the backup. After a reinstall, choose the folder again to resume.",
+        bc.addView(Ui.text(this, "Saved there: Readings (one CSV per day, every 15 min), Daily (PDF report per day), Meals with photos, Insulin, Alerts, AI-Training and Backup (newest 7). After a reinstall, choose the folder again to resume.",
             12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
         bc.addView(Ui.button(this, "📁 Choose folder") { FolderFlow.pick(this) }, Ui.lp(top = Ui.dp(this, 10)))
         backupPw = Ui.input(this, "Backup password (locks login & API keys)", multi = false).apply {
@@ -320,6 +323,7 @@ class SettingsActivity : BaseActivity() {
         st.backupPw = backupPw.text.toString()
         st.urgentOn = urgSw.isChecked
         st.urgUrgentLow = cbUL.isChecked; st.urgLow = cbL.isChecked; st.urgHigh = cbH.isChecked; st.urgVeryHigh = cbVH.isChecked
+        st.urgNoSignal = cbNS.isChecked; st.staleMin = num("stale_min", 20).coerceIn(5, 240)
         st.ringSec = num("ring_sec", 60).coerceIn(10, 600)
         st.urgentRepeat = num("urg_repeat", 5).coerceIn(1, 60)
         st.alarmVolume = (volBar.progress + 10).coerceIn(10, 100)

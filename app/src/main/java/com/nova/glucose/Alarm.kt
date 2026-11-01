@@ -35,6 +35,8 @@ object AlarmPlayer {
     private var player: MediaPlayer? = null
     private var savedVolume = -1
     private var savedFilter = -1
+    /** The exact vibrator that started the vibration: Android only cancels it through the same object. */
+    private var vib: Vibrator? = null
     @Volatile var kind: String = ""; private set
     @Volatile var title: String = ""; private set
     @Volatile var body: String = ""; private set
@@ -103,29 +105,41 @@ object AlarmPlayer {
                 }
             } catch (_: Exception) { null }
         }
-        vibrate(c, st.alarmVibrate)
+        vibrate(c, st.alarmVibrate, st.ringSec.coerceIn(10, 600))
         main.postDelayed({ stopSound(c) }, st.ringSec.coerceIn(10, 600) * 1000L)
     }
 
     @Suppress("DEPRECATION")
-    private fun vibrate(c: Context, mode: String) {
+    private fun vibrator(c: Context): Vibrator? =
+        if (Build.VERSION.SDK_INT >= 31) (c.applicationContext.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager)?.defaultVibrator
+        else c.applicationContext.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+
+    @Suppress("DEPRECATION")
+    private fun vibrate(c: Context, mode: String, seconds: Int) {
         if (mode == "off") return
-        val v = c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
-        val pattern = if (mode == "strong") longArrayOf(0, 900, 300, 900, 300, 900, 900) else longArrayOf(0, 500, 700)
+        val v = vibrator(c) ?: return
+        vib = v
+        // A finite pattern as long as the ring time: it ends by itself even if Stop were missed.
+        val unit = if (mode == "strong") longArrayOf(900, 300) else longArrayOf(500, 700)
+        val reps = maxOf(1, (seconds * 1000 / (unit[0] + unit[1])).toInt())
+        val pattern = LongArray(1 + reps * 2).also { p -> for (k in 0 until reps) { p[1 + 2 * k] = unit[0]; p[2 + 2 * k] = unit[1] } }
         try {
             if (Build.VERSION.SDK_INT >= 26) {
                 val amps = IntArray(pattern.size) { if (it % 2 == 1) (if (mode == "strong") 255 else 160) else 0 }
-                v.vibrate(VibrationEffect.createWaveform(pattern, amps, 0))
-            } else v.vibrate(pattern, 0)
+                v.vibrate(VibrationEffect.createWaveform(pattern, amps, -1))
+            } else v.vibrate(pattern, -1)
         } catch (_: Exception) { }
     }
 
     /** Stops the sound and vibration and restores volume / Do Not Disturb (the alert stays in the list). */
-    fun stopSound(c: Context) {
+    fun stopSound(ctx: Context) {
+        val c = ctx.applicationContext
         main.removeCallbacksAndMessages(null)
         player?.let { try { it.stop() } catch (_: Exception) { }; it.release() }
         player = null
-        try { (c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)?.cancel() } catch (_: Exception) { }
+        try { vib?.cancel() } catch (_: Exception) { }
+        try { vibrator(c)?.cancel() } catch (_: Exception) { }
+        vib = null
         val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         if (savedVolume >= 0) { try { am.setStreamVolume(AudioManager.STREAM_ALARM, savedVolume, 0) } catch (_: Exception) { }; savedVolume = -1 }
         if (savedFilter >= 0 && Build.VERSION.SDK_INT >= 23) {
@@ -135,7 +149,7 @@ object AlarmPlayer {
     }
 
     fun dismiss(c: Context) {
-        stopSound(c)
+        stopSound(c.applicationContext)
         (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(ID_URGENT)
     }
 

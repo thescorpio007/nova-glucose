@@ -167,9 +167,9 @@ class MonitorService : Service() {
     private fun checkAlerts(r: Reading?, nm: NotificationManager) {
         val now = System.currentTimeMillis()
         val lv = Foods.level(st, r, now)
-        val kind = when (lv) {
+        val noSignal = r != null && now - r.ts > st.staleMin.coerceIn(5, 240) * 60_000L
+        val kind = if (noSignal) { if (st.staleAlert || st.urgNoSignal) "stale" else null } else when (lv) {
             Level.URGENT_LOW -> "urgent_low"; Level.LOW -> "low"; Level.HIGH -> "high"; Level.VERY_HIGH -> "very_high"
-            Level.STALE -> if (st.staleAlert && r != null && now - r.ts > 20 * 60_000) "stale" else null
             else -> null
         }
         if (kind == null) { nm.cancel(ID_ALERT); if (AlarmPlayer.kind != "test") AlarmPlayer.dismiss(this); return }
@@ -186,10 +186,11 @@ class MonitorService : Service() {
                 if (kind == "urgent_low") " Tell an adult." else ""
             "high" -> "Drink water and choose low-carb food (e.g. $tip). Follow her high plan."
             "very_high" -> "Drink water, check ketones as advised. Low-carb food: $tip."
-            else -> "No new reading for 20+ min — check her phone, the Libre app and the sensor."
+            else -> "Last reading ${r!!.mg} ${Libre.trendArrow(r.trend)} at ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(r.ts))}. " +
+                "Check her phone is online, the Libre app is open and the sensor is working."
         }
         val title = when (kind) {
-            "stale" -> "Glucose reading is old"
+            "stale" -> "No glucose signal for ${(now - r!!.ts) / 60_000} min"
             else -> "${adv.title}: ${r!!.mg} ${Libre.trendArrow(r.trend)} mg/dL"
         }
         val low = kind == "urgent_low" || kind == "low"
