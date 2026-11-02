@@ -196,7 +196,7 @@ jobs:
           adb shell input keyevent 4; adb shell input keyevent 4
           adb shell am start -W -n $P/.MainActivity; sleep 2; scroll; shot 48-home-buttons
           adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demopick true; sleep 4; shot 49-report-choice; adb shell input keyevent 4
-          adb logcat -c; adb shell am start -W -n $P/.MainActivity --ez demoreport true; sleep 25
+          adb shell am force-stop $P; adb logcat -c; adb shell am start -W -n $P/.MainActivity --ez demoreport true; sleep 25
           adb logcat -d -s NOVA_REPORT:I | tee report.txt
           adb pull /sdcard/Download/nova-report-sum.pdf shots/report-summary.pdf || true
           adb pull /sdcard/Download/nova-report-key.pdf shots/report-detailed-key-days.pdf || true

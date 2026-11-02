@@ -155,7 +155,7 @@ class HealthActivity : BaseActivity() {
         else {
             val drops = k.sports.mapNotNull { it.drop2h }
             val lows = k.sports.filter { it.lowAt != null }
-            val hours = lows.map { SimpleDateFormat("HH:mm", Locale.US).format(Date(it.lowAt!!.ts)) }
+            val hours = lows.map { SimpleDateFormat("EEE HH:mm", L.loc()).format(Date(it.lowAt!!.ts)) }
             c2.addView(grid(listOf(
                 Tile("Glucose drop in 2 h", if (drops.isNotEmpty()) "−${drops.average().toInt()}" else "–", "mg/dL on average"),
                 Tile("Low within 12 h", L.s("{0} of {1}").replace("{0}", "${lows.size}").replace("{1}", "${k.sports.size}"),
