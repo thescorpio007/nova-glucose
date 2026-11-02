@@ -1014,25 +1014,56 @@ class SettingsActivity : BaseActivity() {
             background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat())
             setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
         }
-        box.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true))
-        val cur = st.soundFor(k)
-        box.addView(Ui.text(this, when { cur == Sounds.SILENT -> "Silent"; cur.isBlank() -> "Phone default"; else -> st.soundNameFor(k) }, 12f, Ui.MUTED))
+        val urgent = k in Sounds.KINDS && st.urgentFor(k)
+        val h = Ui.row(this)
+        h.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true), Ui.lp(0, weight = 1f))
+        if (urgent) h.addView(Ui.text(this, "URGENT", 10f, 0xFFFF8A8D.toInt(), true))
+        box.addView(h)
         val r1 = Ui.row(this)
-        r1.addView(Ui.smallButton(this, "Phone sounds…") { soundKind = k; phoneSounds() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f, end = Ui.dp(this, 6)))
-        r1.addView(Ui.smallButton(this, "File…") { soundKind = k; pickAudio() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f))
-        box.addView(r1, Ui.lp(top = Ui.dp(this, 8)))
-        val r2 = Ui.row(this)
-        r2.addView(Ui.smallButton(this, "▶ Test") {
+        lateinit var dd: TextView
+        dd = Ui.smallButton(this, "🔔 ${Sounds.displayName(st, k)}  ▾") { soundMenu(k, dd) }
+        r1.addView(dd, Ui.lp(0, Ui.dp(this, 40), weight = 1f, end = Ui.dp(this, 6)))
+        r1.addView(Ui.smallButton(this, "▶ Test") {
             when (Sounds.test(this, k)) {
                 "default" -> Ui.toast(this, "The chosen sound can't play — playing the phone default"); "beep" -> Ui.toast(this, "No sound file plays — built-in beep")
-                "stopped", "" -> {}; else -> Ui.toast(this, "Playing — tap Test again to stop")
+                else -> {}
             }
-        }.apply { tag = "free" }, Ui.lp(0, Ui.dp(this, 38), weight = 1f, end = Ui.dp(this, 6)))
-        r2.addView(Ui.smallButton(this, "Default") { Sounds.setDefault(this, k); renderSounds(); renderLock() }, Ui.lp(0, Ui.dp(this, 38), weight = 1f))
-        if (k !in Sounds.KINDS) r2.addView(Ui.smallButton(this, "Silent") { Sounds.setSilent(this, k); renderSounds(); renderLock() },
-            Ui.lp(0, Ui.dp(this, 38), weight = 1f).apply { marginStart = Ui.dp(this@SettingsActivity, 6) })
-        box.addView(r2, Ui.lp(top = Ui.dp(this, 6)))
+        }.apply { tag = "free" }, Ui.lp(Ui.dp(this, 84), Ui.dp(this, 40)))
+        box.addView(r1, Ui.lp(top = Ui.dp(this, 8)))
+        val r2 = Ui.row(this)
+        r2.addView(Switch(this).apply {
+            text = "Vibrate"; isChecked = st.vibFor(k); setTextColor(Ui.TEXT); textSize = 13f
+            setOnCheckedChangeListener { _, v -> st.setVib(k, v) }
+        }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 12)))
+        r2.addView(Switch(this).apply {
+            text = "Pop up"; isChecked = st.popFor(k); setTextColor(Ui.TEXT); textSize = 13f
+            setOnCheckedChangeListener { _, v -> st.setPop(k, v) }
+        }, Ui.lp(0, weight = 1f))
+        box.addView(r2, Ui.lp(top = Ui.dp(this, 4)))
+        if (urgent) box.addView(Ui.text(this, "Urgent: full screen, rings through silent until Stop — can't be silent.", 11f, Ui.MUTED))
+        else if (!Sounds.silentAllowed(st, k)) box.addView(Ui.text(this, "Lows are never silent.", 11f, Ui.MUTED))
         return box
+    }
+
+    /** Sound menu for one line: built-in sounds, the phone's sounds, a file, Silent (where allowed). */
+    private fun soundMenu(k: String, anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        val cur = Sounds.current(st, k)
+        Sounds.BUILTIN.forEachIndexed { i, (v, n) -> pm.menu.add(0, i, i, (if (v == cur) "✓ " else "    ") + n) }
+        pm.menu.add(0, 10, 10, "    " + L.s("Phone sounds…"))
+        pm.menu.add(0, 11, 11, "    " + L.s("File…"))
+        pm.menu.add(0, 12, 12, (if (cur == Sounds.SILENT) "✓ " else "    ") + L.s(if (Sounds.silentAllowed(st, k)) "Silent" else "Silent — not allowed here")).isEnabled = Sounds.silentAllowed(st, k)
+        pm.setOnMenuItemClickListener { item ->
+            soundKind = k
+            when (item.itemId) {
+                in 0..2 -> { Sounds.setBuiltin(this, k, Sounds.BUILTIN[item.itemId].first); renderSounds(); renderLock(); Sounds.test(this, k) }
+                10 -> phoneSounds()
+                11 -> pickAudio()
+                12 -> { Sounds.setSilent(this, k); renderSounds(); renderLock() }
+            }
+            true
+        }
+        pm.show()
     }
 
     /** The phone's own sounds, listed by the app (works on every phone, nothing can lock it). */

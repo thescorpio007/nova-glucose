@@ -13,7 +13,7 @@ import kotlin.math.max
 open class BaseActivity : Activity() {
     override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(L.wrap(newBase)) }
 
-    override fun onCreate(savedInstanceState: android.os.Bundle?) { L.init(this); super.onCreate(savedInstanceState) }
+    override fun onCreate(savedInstanceState: android.os.Bundle?) { L.init(this); Sounds.init(this); super.onCreate(savedInstanceState) }
 
     override fun setContentView(view: View) {
         super.setContentView(view)

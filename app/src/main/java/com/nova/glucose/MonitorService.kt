@@ -51,15 +51,6 @@ class MonitorService : Service() {
                 setShowBadge(false)
             })
             listOf("alerts2", "alerts_low2").forEach { try { nm.deleteNotificationChannel(it) } catch (_: Exception) { } }
-            nm.createNotificationChannel(NotificationChannel(CH_ALERT, "High / old-reading alerts", NotificationManager.IMPORTANCE_HIGH).apply {
-                enableVibration(true); setSound(null, null)
-            })
-            nm.createNotificationChannel(NotificationChannel(CH_ALERT_LOW, "Low glucose alarms", NotificationManager.IMPORTANCE_HIGH).apply {
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 600, 300, 600, 300, 600)
-                setSound(null, null)
-                setBypassDnd(true)
-            })
         }
     }
 
@@ -96,7 +87,7 @@ class MonitorService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             wake?.acquire(2 * POLL_MS)
-            L.init(this@MonitorService)
+            L.init(this@MonitorService); Sounds.init(this@MonitorService)
             var next = POLL_MS
             try {
                 val snap = Libre(st).fetch()
@@ -170,12 +161,9 @@ class MonitorService : Service() {
         Thread {
             val tip = AiData.alertTip(app, kind) ?: return@Thread
             val nm = app.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            if (Build.VERSION.SDK_INT >= 26) {
-                nm.createNotificationChannel(NotificationChannel(CH_TIP, "AI food tips after alerts", NotificationManager.IMPORTANCE_DEFAULT).apply { setSound(null, null) })
-                try { nm.deleteNotificationChannel("ai_tips") } catch (_: Exception) { }
-            }
-            Sounds.playGeneral(app, "tip")
-            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(app, CH_TIP) else @Suppress("DEPRECATION") Notification.Builder(app)
+            if (Build.VERSION.SDK_INT >= 26) try { nm.deleteNotificationChannel("ai_tips") } catch (_: Exception) { }
+            Sounds.after(app, "tip")
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(app, Sounds.channel(app, "tip")) else @Suppress("DEPRECATION") Notification.Builder(app)
             nm.notify(ID_TIP, b.setSmallIcon(android.R.drawable.ic_menu_info_details)
                 .setContentTitle(L.s("✦ AI tip · ${r.mg} ${Libre.trendArrow(r.trend)} mg/dL"))
                 .setContentText(tip).setStyle(Notification.BigTextStyle().bigText(tip + L.s("\nAI tip — food only, not medical advice.")))
@@ -234,7 +222,7 @@ class MonitorService : Service() {
             Vault.logAlert(this, "URGENT ALARM · $title", body)
             return
         }
-        val n = builder(if (low) CH_ALERT_LOW else CH_ALERT)
+        val n = builder(Sounds.channel(this, kind))
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setContentTitle(L.s(title)).setContentText(L.s(body))
             .setStyle(Notification.BigTextStyle().bigText(L.s(body)))
@@ -244,7 +232,7 @@ class MonitorService : Service() {
             .setLocalOnly(!(if (kind == "stale") st.watchStale else st.watchAlerts))
             .build()
         nm.notify(ID_ALERT, n)
-        Sounds.playOnce(this, kind)
+        Sounds.after(this, kind)
         Vault.logAlert(this, title, body)
     }
 }

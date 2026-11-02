@@ -157,8 +157,13 @@ class Store(c: Context) {
     /** "off", "normal", "strong". */
     var alarmVibrate: String get() = s("alarm_vib", "strong"); set(v) = put("alarm_vib", v)
     /** Sound per alert type (urgent_low, low, high, very_high, stale); falls back to the single alarm sound. */
-    fun soundFor(kind: String): String = s("snd_$kind").ifBlank { alarmSound }
-    fun soundNameFor(kind: String): String = s("snd_${kind}_name").ifBlank { if (s("snd_$kind").isBlank()) alarmSoundName else "Sound" }
+    fun soundFor(kind: String): String = s("snd_$kind")
+    fun soundNameFor(kind: String): String = s("snd_${kind}_name").ifBlank { "Sound" }
+    /** Per notification line: vibrate and pop up on screen (this phone). */
+    fun vibFor(kind: String): Boolean = b("nvib_$kind", true)
+    fun setVib(kind: String, v: Boolean) = putb("nvib_$kind", v)
+    fun popFor(kind: String): Boolean = b("npop_$kind", true)
+    fun setPop(kind: String, v: Boolean) = putb("npop_$kind", v)
     fun setSound(kind: String, uri: String, name: String) { sp.edit().putString("snd_$kind", uri).putString("snd_${kind}_name", name).apply() }
     var ringSec: Int get() = i("ring_sec", 60); set(v) = puti("ring_sec", v)
     var urgentRepeat: Int get() = i("urg_repeat", 5); set(v) = puti("urg_repeat", v)

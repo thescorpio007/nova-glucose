@@ -46,12 +46,12 @@ object Watch {
     fun test(c: Context) {
         channel(c); MonitorService.channels(c)
         val st = Store(c)
-        val n = builder(c, MonitorService.CH_ALERT).setSmallIcon(android.R.drawable.stat_sys_warning)
+        val n = builder(c, Sounds.channel(c, "other")).setSmallIcon(android.R.drawable.stat_sys_warning)
             .setContentTitle(L.s("Nova Glucose test ⌚"))
             .setContentText(L.s(if (st.lastTs > 0) "Last glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)} mg/dL — if you see this on the watch, it works."
                 else "If you see this on the watch, notifications reach it."))
             .setAutoCancel(true).setContentIntent(open(c)).build()
         (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(ID_TEST, n)
-        Sounds.playGeneral(c, "other")
+        Sounds.after(c, "other")
     }
 }

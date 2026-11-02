@@ -22,6 +22,19 @@ object Sounds {
     val KINDS = listOf("urgent_low", "low", "high", "very_high", "stale")
     val GENERAL = listOf("eat", "tip", "other")
     const val SILENT = "silent"
+    /** Sounds built into the app (same on every phone). */
+    val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep")
+    fun defaultFor(kind: String) = if (kind == "low" || kind == "urgent_low") "builtin:medical" else "builtin:blip"
+    fun builtinUri(c: Context, v: String): Uri? = when (v) {
+        "builtin:blip" -> R.raw.nova_blip; "builtin:medical" -> R.raw.nova_medical; "builtin:beep" -> R.raw.nova_beep; else -> null
+    }?.let { Uri.parse("android.resource://${c.packageName}/$it") }
+    /** Silent is never allowed for lows; for very high / no signal only when not urgent. */
+    fun silentAllowed(st: Store, kind: String) = kind !in setOf("low", "urgent_low") && !(kind in KINDS && st.urgentFor(kind))
+    fun current(st: Store, kind: String): String = st.soundFor(kind).ifBlank { defaultFor(kind) }
+    fun displayName(st: Store, kind: String): String {
+        val v = current(st, kind)
+        return BUILTIN.firstOrNull { it.first == v }?.second ?: if (v == SILENT) "Silent" else st.soundNameFor(kind)
+    }
     val EXT = setOf("mp3", "wav", "ogg", "oga", "m4a", "aac", "mp4", "3gp", "amr", "flac", "opus", "mid", "midi", "xmf", "mkv", "webm")
 
     fun label(st: Store, kind: String) = when (kind) {
@@ -38,16 +51,19 @@ object Sounds {
             else RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
 
-    /** The chosen sound, or null for the phone default ("" or a sound that disappeared). */
-    fun chosen(st: Store, kind: String): Uri? {
-        val s = st.soundFor(kind)
-        if (s.isBlank() || s == SILENT) return null
+    /** The chosen sound (built-in, file or phone sound); a silent or missing choice falls back to the Nova default. */
+    fun chosen(st: Store, kind: String, c: Context? = null): Uri? {
+        var s = current(st, kind)
+        if (s == SILENT) s = defaultFor(kind)
+        if (s.startsWith("builtin:")) return c?.let { builtinUri(it, s) } ?: appCtx?.let { builtinUri(it, s) }
         val u = Uri.parse(s)
-        if (u.scheme == "file" && !File(u.path ?: "").exists()) return null
+        if (u.scheme == "file" && !File(u.path ?: "").exists()) return appCtx?.let { builtinUri(it, defaultFor(kind)) }
         return u
     }
+    @Volatile private var appCtx: Context? = null
+    fun init(c: Context) { appCtx = c.applicationContext }
 
-    fun isSilent(st: Store, kind: String) = st.soundFor(kind) == SILENT && kind !in KINDS
+    fun isSilent(st: Store, kind: String) = current(st, kind) == SILENT && silentAllowed(st, kind)
 
     // ---------------------------------------------------------------- choosing
     /** The phone's own sounds (alarms, ringtones, notifications): always readable, listed by the app itself. */
@@ -92,8 +108,9 @@ object Sounds {
         return null
     }
 
-    fun setSilent(c: Context, kind: String) { if (kind !in KINDS) Store(c).setSound(kind, SILENT, "Silent") }
-    fun setDefault(c: Context, kind: String) { Store(c).setSound(kind, "", "Phone default") }
+    fun setSilent(c: Context, kind: String) { if (silentAllowed(Store(c), kind)) Store(c).setSound(kind, SILENT, "Silent") }
+    fun setDefault(c: Context, kind: String) { Store(c).setSound(kind, "", "") }
+    fun setBuiltin(c: Context, kind: String, v: String) { Store(c).setSound(kind, v, BUILTIN.firstOrNull { it.first == v }?.second ?: "") }
 
     private fun playable(c: Context, u: Uri): Boolean = try {
         MediaPlayer().run { setDataSource(c.applicationContext, u); prepare(); val ok = duration != 0; release(); ok }
@@ -108,7 +125,7 @@ object Sounds {
         val reset = mutableListOf<String>()
         for (k in KINDS + GENERAL) {
             val s = st.soundFor(k)
-            if (s.isBlank() || s == SILENT || s.startsWith("file:")) continue
+            if (s.isBlank() || s == SILENT || s.startsWith("file:") || s.startsWith("builtin:")) continue
             val u = Uri.parse(s)
             if (u.authority == "media" && playable(c, u)) continue                // the phone's own media: always readable
             if (use(c, k, u, st.soundNameFor(k)) != null) { setDefault(c, k); reset += label(st, k) }
@@ -126,7 +143,8 @@ object Sounds {
         stop()
         val st = Store(c)
         if (isSilent(st, kind)) return ""
-        for ((u, how) in listOf(chosen(st, kind) to "chosen", defaultUri(kind) to "default")) {
+        appCtx = c.applicationContext
+        for ((u, how) in listOf(chosen(st, kind, c) to "chosen", builtinUri(c, defaultFor(kind)) to "default", defaultUri(kind) to "default")) {
             if (u == null) continue
             once = try {
                 MediaPlayer().apply {
@@ -187,6 +205,40 @@ object Sounds {
             }
         } catch (_: Exception) { null }
         main.postDelayed({ stop() }, 6_000)
+    }
+
+    // ---------------------------------------------------------------- channels and vibration (Android stays silent; the app decides)
+    const val CH_POP = "nova_pop"; const val CH_POP_LOW = "nova_pop_low"; const val CH_QUIET = "nova_quiet"
+
+    /** Notification channel for a line: pops up or goes quietly to the list; never Android's own sound or vibration. */
+    fun channel(c: Context, kind: String): String {
+        val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            fun mk(id: String, name: String, imp: Int, dnd: Boolean = false) = nm.createNotificationChannel(
+                android.app.NotificationChannel(id, name, imp).apply { setSound(null, null); enableVibration(false); if (dnd) setBypassDnd(true) })
+            mk(CH_POP, "Glucose alerts and notifications (pop up)", NotificationManager.IMPORTANCE_HIGH)
+            mk(CH_POP_LOW, "Low glucose (pop up)", NotificationManager.IMPORTANCE_HIGH, dnd = true)
+            mk(CH_QUIET, "Quiet notifications (in the list only)", NotificationManager.IMPORTANCE_LOW)
+            listOf("alerts3", "alerts_low3", "ai_tips2", "eat_timer2").forEach { try { nm.deleteNotificationChannel(it) } catch (_: Exception) { } }
+        }
+        val st = Store(c)
+        return if (!st.popFor(kind)) CH_QUIET else if (lowKind(kind)) CH_POP_LOW else CH_POP
+    }
+
+    /** After posting a notification: the chosen sound and vibration for that line. */
+    fun after(c: Context, kind: String) {
+        if (kind in KINDS) playOnce(c, kind) else playGeneral(c, kind)
+        if (Store(c).vibFor(kind)) vibrate(c, lowKind(kind))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun vibrate(c: Context, always: Boolean) {
+        val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (!always && am.ringerMode == AudioManager.RINGER_MODE_SILENT) return
+        val v = (if (android.os.Build.VERSION.SDK_INT >= 31) (c.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager)?.defaultVibrator
+            else c.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator) ?: return
+        val p = longArrayOf(0, 350, 200, 350)
+        try { if (android.os.Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createWaveform(p, -1)) else v.vibrate(p, -1) } catch (_: Exception) { }
     }
 
     fun stop() {

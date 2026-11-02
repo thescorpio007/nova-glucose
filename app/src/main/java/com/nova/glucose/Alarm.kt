@@ -89,7 +89,7 @@ object AlarmPlayer {
         } catch (_: Exception) { savedVolume = -1 }
 
         // The chosen sound, else the phone's alarm, else its ringtone, else a built-in beep: never silent.
-        val tries = listOfNotNull(Sounds.chosen(st, kind), RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+        val tries = listOfNotNull(Sounds.chosen(st, kind, c), Sounds.builtinUri(c, Sounds.defaultFor(kind)), RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
         player = null
         for (u in tries) {
@@ -257,25 +257,22 @@ object EatTimer {
     }
 
     fun fire(c: Context) {
-        L.init(c)
+        L.init(c); Sounds.init(c)
         val st = Store(c)
         if (st.eatAt == 0L) return
         st.eatAt = 0
         if (!st.notifyEat) return                  // this phone chose no eat-timer reminder
         val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
-            NotificationChannel(CH_EAT, "Time to eat (after rapid insulin)", NotificationManager.IMPORTANCE_HIGH).apply {
-                enableVibration(true); vibrationPattern = longArrayOf(0, 400, 200, 400); setSound(null, null)
-            }).also { try { nm.deleteNotificationChannel("eat_timer") } catch (_: Exception) { } }
+        if (Build.VERSION.SDK_INT >= 26) try { nm.deleteNotificationChannel("eat_timer") } catch (_: Exception) { }
         val open = PendingIntent.getActivity(c, 42, Intent(c, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val mg = if (System.currentTimeMillis() - st.lastTs < 15 * 60_000) " · glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)}" else ""
-        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, CH_EAT) else @Suppress("DEPRECATION") Notification.Builder(c)
+        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, Sounds.channel(c, "eat")) else @Suppress("DEPRECATION") Notification.Builder(c)
         nm.notify(ID_EAT, b.setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle(L.s("🍽 Time to eat$mg"))
             .setContentText(L.s("The wait after rapid insulin is over — start eating now."))
             .setAutoCancel(true).setContentIntent(open).setCategory(Notification.CATEGORY_REMINDER).setLocalOnly(!st.watchEat)
-            .also { Sounds.playGeneral(c, "eat") }
+            .also { Sounds.after(c, "eat") }
             .apply { if (Build.VERSION.SDK_INT < 26) { @Suppress("DEPRECATION") setPriority(Notification.PRIORITY_MAX); setDefaults(Notification.DEFAULT_ALL) } }
             .build())
     }
