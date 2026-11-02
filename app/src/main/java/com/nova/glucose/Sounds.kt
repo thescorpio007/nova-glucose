@@ -154,7 +154,7 @@ object Sounds {
                     prepare(); start()
                 }
             } catch (_: Exception) { null }
-            if (once != null) { main.postDelayed({ stop() }, maxMs); return how }
+            if (once != null) { main.removeCallbacks(stopper); main.postDelayed(stopper, maxMs); return how }
         }
         beep(if (usage == AudioAttributes.USAGE_ALARM) AudioManager.STREAM_ALARM else AudioManager.STREAM_NOTIFICATION, 2500)
         return "beep"
@@ -165,7 +165,7 @@ object Sounds {
         try {
             tone?.release()
             tone = ToneGenerator(stream, 100).apply { startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK, ms) }
-            main.postDelayed({ try { tone?.release() } catch (_: Exception) { }; tone = null }, ms + 200L)
+            main.removeCallbacks(stopper); main.postDelayed(stopper, ms + 200L)
         } catch (_: Exception) { }
     }
 
@@ -190,9 +190,23 @@ object Sounds {
     fun playGeneral(c: Context, kind: String) { if (!quiet(c)) play(c, kind, AudioAttributes.USAGE_NOTIFICATION, 15_000) }
 
     /** Settings › ▶ Test (tap again to stop). Returns what played. */
+    /** Settings › ▶ Test: always out loud (alarm volume), whatever the phone's mode. Tap again to stop. */
     fun test(c: Context, kind: String): String {
         if (once != null || tone != null) { stop(); return "stopped" }
-        return play(c, kind, if (isAlarm(kind)) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION, 8_000)
+        val st = Store(c)
+        if (isSilent(st, kind)) return "silent"
+        return play(c, kind, AudioAttributes.USAGE_ALARM, 10_000)
+    }
+
+    /** Why the non-urgent notifications might be quiet on this phone right now ("" if all is fine). */
+    fun volumeNote(c: Context): String {
+        val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return when {
+            am.ringerMode == AudioManager.RINGER_MODE_SILENT -> "The phone is on silent — these notifications make no sound now (urgent alarms still ring)."
+            am.ringerMode == AudioManager.RINGER_MODE_VIBRATE -> "The phone is on vibrate — these notifications make no sound now (urgent alarms still ring)."
+            am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) == 0 -> "Notification volume is 0 — raise it in the phone's sound settings, or these notifications will be silent."
+            else -> ""
+        }
     }
 
     /** Preview of a phone sound in the list. */
@@ -204,7 +218,7 @@ object Sounds {
                 setDataSource(c.applicationContext, u); setOnCompletionListener { stop() }; prepare(); start()
             }
         } catch (_: Exception) { null }
-        main.postDelayed({ stop() }, 6_000)
+        main.removeCallbacks(stopper); main.postDelayed(stopper, 6_000)
     }
 
     // ---------------------------------------------------------------- channels and vibration (Android stays silent; the app decides)
@@ -241,7 +255,10 @@ object Sounds {
         try { if (android.os.Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createWaveform(p, -1)) else v.vibrate(p, -1) } catch (_: Exception) { }
     }
 
+    private val stopper = Runnable { stop() }
+
     fun stop() {
+        main.removeCallbacks(stopper)
         try { once?.stop(); once?.release() } catch (_: Exception) { }
         once = null
         try { tone?.release() } catch (_: Exception) { }

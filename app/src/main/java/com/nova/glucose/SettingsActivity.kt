@@ -725,6 +725,7 @@ class SettingsActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         if (::permStatus.isInitialized) renderPerms()
+        if (::soundRows.isInitialized) renderSounds()
         if (::allViews.isInitialized) renderLock()
         lockTick.post(watch)
     }
@@ -1006,7 +1007,9 @@ class SettingsActivity : BaseActivity() {
         soundRows.removeAllViews()
         if (soundNote.isNotBlank()) soundRows.addView(Ui.text(this, soundNote, 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
         Sounds.KINDS.forEach { k -> soundRows.addView(soundBox(k), Ui.lp(top = Ui.dp(this, 8))) }
-        if (::genRows.isInitialized) { genRows.removeAllViews(); Sounds.GENERAL.forEach { k -> genRows.addView(soundBox(k), Ui.lp(top = Ui.dp(this, 8))) } }
+        if (::genRows.isInitialized) { genRows.removeAllViews()
+            Sounds.volumeNote(this).takeIf { it.isNotBlank() }?.let { genRows.addView(Ui.text(this, "⚠ " + L.s(it), 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }) }
+            Sounds.GENERAL.forEach { k -> genRows.addView(soundBox(k), Ui.lp(top = Ui.dp(this, 8))) } }
     }
 
     private fun soundBox(k: String): View {
@@ -1025,7 +1028,10 @@ class SettingsActivity : BaseActivity() {
         r1.addView(dd, Ui.lp(0, Ui.dp(this, 40), weight = 1f, end = Ui.dp(this, 6)))
         r1.addView(Ui.smallButton(this, "▶ Test") {
             when (Sounds.test(this, k)) {
-                "default" -> Ui.toast(this, "The chosen sound can't play — playing the phone default"); "beep" -> Ui.toast(this, "No sound file plays — built-in beep")
+                "default" -> Ui.toast(this, "The chosen sound can't play — playing the phone default")
+                "beep" -> Ui.toast(this, "No sound file plays — built-in beep")
+                "silent" -> Ui.toast(this, "This line is set to Silent")
+                "chosen" -> Ui.toast(this, L.s("Playing") + " " + Sounds.displayName(st, k) + "…")
                 else -> {}
             }
         }.apply { tag = "free" }, Ui.lp(Ui.dp(this, 84), Ui.dp(this, 40)))

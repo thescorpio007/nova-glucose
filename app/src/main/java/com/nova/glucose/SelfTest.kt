@@ -23,6 +23,11 @@ object SelfTest {
             st.low = 72; st.high = 190; st.urgNoSignal = true; st.alarmVolume = 70; st.staleMin = 30; st.ringSec = 30
             st.mealMin = 40; st.foodNotes = "no nuts"; st.aiProvider = "claude"; st.chartRange = "24"; st.driveFreq = "3"
             st.patientName = "Test Child"; st.backupPw = pw
+            // a chosen sound file and notification choices
+            val sndDir = java.io.File(c.filesDir, "sounds").apply { mkdirs() }
+            val snd = java.io.File(sndDir, "eat_test.mp3").apply { writeBytes(ByteArray(4000) { (it % 97).toByte() }) }
+            st.setSound("eat", android.net.Uri.fromFile(snd).toString(), "My eat sound"); st.setSound("tip", Sounds.SILENT, "Silent")
+            st.setSound("low", "builtin:medical", "Nova Medical"); st.setVib("tip", false); st.setPop("other", false)
             val now = System.currentTimeMillis()
             db.addReadings((0 until 50).map { Reading(now - it * 300_000L, 100 + it, 3) })
             val mid = db.addMeal(Meal(0, now - 3600_000L, "Couscous", "[{\"name\":\"Couscous\",\"portion\":\"1 cup\",\"carbs\":45}]", 45, 40, 50, 140, "", ""))
@@ -43,7 +48,7 @@ object SelfTest {
             check(bad == "refused") { "damaged file was accepted" }
 
             // 3. Wipe everything (fresh phone)
-            st.raw.edit().clear().commit(); db.clearAll()
+            st.raw.edit().clear().commit(); db.clearAll(); snd.delete()
             check(st.longName.isBlank() && st.password.isBlank() && db.readings(0).isEmpty()) { "wipe failed" }
 
             // 4. Restore + compare
@@ -58,10 +63,13 @@ object SelfTest {
             eq("no signal min", st.staleMin, 30); eq("ring", st.ringSec, 30); eq("meal min", st.mealMin, 40); eq("food notes", st.foodNotes, "no nuts")
             eq("AI", st.aiProvider, "claude"); eq("chart", st.chartRange, "24"); eq("drive freq", st.driveFreq, "3")
             eq("backup password", st.backupPw, pw)
+            eq("eat sound file", java.io.File(android.net.Uri.parse(st.soundFor("eat")).path!!).readBytes().size, 4000)
+            eq("eat sound name", st.soundNameFor("eat"), "My eat sound"); eq("tip silent", st.soundFor("tip"), Sounds.SILENT)
+            eq("low sound", st.soundFor("low"), "builtin:medical"); eq("tip vibrate", st.vibFor("tip"), false); eq("other pop-up", st.popFor("other"), false)
             eq("readings", db.readings(0).size, 50); eq("meals", db.meals(10).size, 1); eq("doses", db.doses().size, 2)
             eq("AI estimate", db.ai(db.meals(1).first().id)?.second, 40)
             eq("calc note", db.doses().first { it.kind == "rapid" }.note, "calc: 45÷12 = 3.8")
-            return "PASS · $v · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
+            return "PASS · $v · sounds and notification choices ✓ · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
         } catch (e: Throwable) {
             return "FAIL · ${e.message}"
         } finally {

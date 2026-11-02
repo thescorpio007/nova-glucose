@@ -44,6 +44,7 @@ object Backup {
                 .put("doses", data.getJSONArray("doses").length()))
             .put("settings", settings)
             .put("data", gzip(data.toString()))
+            .put("sounds", soundsJson(c))
         if (password.isNotBlank()) root.put("secrets", encrypt(secrets.toString(), password))
         return root.toString()
     }
@@ -72,6 +73,33 @@ object Backup {
                 .put("photo", if (i.photo.isNotBlank()) java.io.File(i.photo).name else ""))
         }
         return JSONObject().put("readings", rs).put("meals", ms).put("doses", ds).put("incidents", inc)
+    }
+
+    /** Sound files chosen on this phone (copied into the app), so a restore brings them back too. */
+    private fun soundsJson(c: Context): JSONObject {
+        val st = Store(c); val o = JSONObject()
+        for (k in Sounds.KINDS + Sounds.GENERAL) {
+            val v = st.soundFor(k)
+            if (!v.startsWith("file:")) continue
+            val f = java.io.File(android.net.Uri.parse(v).path ?: continue)
+            if (!f.exists() || f.length() > 3_000_000) continue
+            o.put(k, JSONObject().put("file", f.name).put("data", Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)))
+        }
+        return o
+    }
+
+    private fun restoreSounds(c: Context, o: JSONObject?): Int {
+        if (o == null) return 0
+        val dir = java.io.File(c.filesDir, "sounds").apply { mkdirs() }
+        var n = 0
+        for (k in o.keys()) try {
+            val x = o.getJSONObject(k)
+            val f = java.io.File(dir, x.getString("file").replace("/", "_"))
+            f.writeBytes(Base64.decode(x.getString("data"), Base64.NO_WRAP))
+            Store(c).raw.edit().putString("snd_$k", android.net.Uri.fromFile(f).toString()).apply()
+            n++
+        } catch (_: Exception) { }
+        return n
     }
 
     private fun gzip(s: String): String {
@@ -233,6 +261,8 @@ object Backup {
         // Per-phone: Google Drive must be connected again on this phone.
         e.putBoolean("drive_on", false)
         e.commit()
+        val nSnd = restoreSounds(c, root.optJSONObject("sounds"))
+        e.commit()
         var note = "no passwords or API keys in the file"
         root.optJSONObject("secrets")?.let { enc ->
             note = try {
@@ -296,7 +326,7 @@ object Backup {
             }
             dataNote = " · ${ra.length()} readings · $nm meals · $nd doses" + if (ni > 0) " · $ni incidents" else ""
         }
-        return "Settings ${settings.length()} ✓ · $note$dataNote"
+        return "Settings ${settings.length()} ✓ · $note$dataNote" + if (nSnd > 0) " · $nSnd sound file(s)" else ""
     }
 
     private fun keyFrom(password: String, salt: ByteArray): SecretKeySpec {
