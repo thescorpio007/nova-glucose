@@ -73,6 +73,18 @@ class MainActivity : BaseActivity() {
             if (lg != st.lang) { st.lang = lg; L.set(this, lg); startActivity(Intent(this, MainActivity::class.java)); finish(); return }
         }
         if (intent?.getBooleanExtra("demo", false) == true && SelfTest.canRun(this)) Demo.fill(this)
+        if (intent?.getBooleanExtra("demowatch", false) == true && SelfTest.canRun(this)) Demo.watch(this)
+        if (intent?.getBooleanExtra("demoreport", false) == true) {            // automatic test: both doctor reports as files
+            val app = applicationContext
+            Thread {
+                val out = getExternalFilesDir(null)
+                for (m in listOf("sum", "key")) try {
+                    val f = DoctorReport.make(app, 14, m)
+                    if (out != null) f.copyTo(java.io.File(out, "report-$m.pdf"), overwrite = true)
+                    android.util.Log.i("NOVA_REPORT", "$m OK ${f.length()} bytes")
+                } catch (e: Exception) { android.util.Log.i("NOVA_REPORT", "$m FAIL ${e.message}") }
+            }.start()
+        }
         build()
         if (intent?.getBooleanExtra("demoinc", false) == true)
             Db.get(this).incidents().firstOrNull()?.let { IncidentActivity.open(this, it.id) }
@@ -91,6 +103,7 @@ class MainActivity : BaseActivity() {
         FamilySync.listener = { ui.post { render(st.lastError.ifBlank { null }) } }
         graph.showCard()
         FamilySync.kick(this)
+        try { HealthRead.maybe(this) } catch (_: Exception) { }
     }
 
     override fun onPause() {
@@ -215,11 +228,15 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this, CarbActivity::class.java))
         }, Ui.lp(top = Ui.dp(this, 8)))
         val ar = Ui.row(this)
-        ar.addView(Ui.button(this, "✦ Ask AI for food ideas") { startActivity(Intent(this, AskActivity::class.java)) },
+        ar.addView(Ui.button(this, "✦ Ask AI — food & recipes") { startActivity(Intent(this, AskActivity::class.java)) },
             Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
         ar.addView(Ui.button(this, "📒 Logbook") { startActivity(Intent(this, LogbookActivity::class.java)) },
             Ui.lp(0, weight = 0.7f))
         root.addView(ar, Ui.lp(top = Ui.dp(this, 8)))
+        val wr = Ui.row(this)
+        wr.addView(Ui.button(this, "⌚ Activity & sleep") { startActivity(Intent(this, HealthActivity::class.java)) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        wr.addView(Ui.button(this, "⭐ Recipe book") { startActivity(Intent(this, RecipeBookActivity::class.java)) }, Ui.lp(0, weight = 1f))
+        root.addView(wr, Ui.lp(top = Ui.dp(this, 8)))
         val dr = Ui.row(this)
         dr.addView(Ui.button(this, "📊 AI review") { startActivity(Intent(this, AiReviewActivity::class.java)) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
         dr.addView(Ui.button(this, "📤 Share with doctor") { DoctorReport.pick(this) }, Ui.lp(0, weight = 1f))

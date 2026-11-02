@@ -106,6 +106,24 @@ object SyncTest {
             check(names.containsAll(listOf("Phone A", "Phone B")) && "Stranger" !in names) { "members: $names" }
             done += "phones listed: ${names.joinToString(", ")} ✓"
 
+            // Watch data (one day) and height/weight reach the family
+            val wd = WatchDay(WatchData.dayKey(now), IntArray(24) { if (it in 8..20) 500 else 0 }, IntArray(288) { if (it in 100..200) 90 else 0 },
+                listOf(Seg(now - 8 * 3600_000L, now - 7 * 3600_000L, 5)), listOf(Ex(now - 3 * 3600_000L, now - 2 * 3600_000L, 56, "")), 61, 97.0)
+            val hg = "hc-" + wd.day; val bg = "t" + now.toString(36) + "b"
+            gids += listOf(hg, bg)
+            val hcItem = JSONObject().put("t", "hc").put("g", hg).put("u", now).put("day", wd.day).put("d", wd.json())
+            val bodyItem = JSONObject().put("t", "body").put("g", bg).put("u", now).put("ts", now - 86_400_000L).put("h", 158.0).put("w", 46.5)
+                .put("src", "manual").put("by", "Phone A")
+            FamilySync.push(sa, fam, key, listOf(hg to hcItem, bg to bodyItem))
+            val p3 = FamilySync.pull(sb, fam, key, "")
+            check(p3.items.any { it.optString("t") == "hc" } && p3.items.any { it.optString("t") == "body" }) { "watch data / height-weight did not reach phone B" }
+            p3.items.filter { it.optString("t") in setOf("hc", "body") }.forEach { FamilySync.apply(c, it); FamilySync.apply(c, it) }
+            val got = WatchData.get(c, WatchData.dayStart(now))
+            check(got.totalSteps == 6500 && got.rhr == 61 && got.ex.size == 1 && got.sleep.size == 1) { "watch day wrong: ${got.totalSteps} steps" }
+            check(db.bodies().size == 1 && st.heightCm == 158.0 && st.weightKg == 46.5) { "height/weight wrong: ${db.bodies().size} entries, ${st.heightCm} cm" }
+            check(st.aboutLine().contains("158 cm")) { "height not in the AI profile" }
+            done += "watch day shared ✓ · height & weight shared ✓"
+
             // Family update file (WhatsApp) round trip
             val file = FamilySync.exportFile(c, pw)
             check(Backup.isEncrypted(file) && Backup.kind(file) == "family") { "update file not encrypted" }

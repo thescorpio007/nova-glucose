@@ -12,7 +12,8 @@ object AiData {
     private val dhm = SimpleDateFormat("EEE d MMM HH:mm", Locale.US)
 
     const val NO_DOSE = "NEVER suggest insulin doses or units, and never say to inject more or less or to change the ratio or correction: " +
-        "for any dose question, say to follow her diabetes care team. Food, timing, patterns and questions for the doctor only."
+        "for any dose question, say to follow her diabetes care team. Food, timing, patterns and questions for the doctor only. " +
+        "Height and weight are background only: never comment on her weight, body shape or BMI, and never suggest losing or gaining weight."
 
     fun limits(st: Store) = "Her limits (mg/dL): urgent low below ${st.urgentLow}, low below ${st.low}, target ${st.low}–${st.high}, " +
         "high above ${st.high}, very high above ${st.veryHigh}."
@@ -34,7 +35,9 @@ object AiData {
             "Limits: urgent low ${st.urgentLow} · low ${st.low} · high ${st.high} · very high ${st.veryHigh}",
             "Today: ${meals.size} meals (${meals.sumOf { it.carbs }} g) · ${doses.count { it.kind == "rapid" }} rapid doses (${units(doses.filter { it.kind == "rapid" }.sumOf { it.units })} u)" +
                 (doses.firstOrNull { it.kind == "long" }?.let { " · long-acting ${units(it.units)} u" } ?: ""),
-            inc.takeIf { it.isNotEmpty() }?.joinToString(" · ") { "Incident: ${it.kind}" + if (it.ongoing) " (ongoing)" else "" })
+            inc.takeIf { it.isNotEmpty() }?.joinToString(" · ") { "Incident: ${it.kind}" + if (it.ongoing) " (ongoing)" else "" },
+            "Profile: ${st.aboutLine()}".take(160),
+            WatchData.aiNow(c).trim().takeIf { it.isNotBlank() })
     }
 
     /** Full picture for Ask AI and alert tips: last [hours] h of readings every 5 min, statistics, today's food and insulin, incidents. */
@@ -60,6 +63,7 @@ object AiData {
                 "${hm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long-acting"}" } + "\n")
             if (st.eatAt > now) append("An eat timer is running: she should start eating at ${hm.format(Date(st.eatAt))}.\n")
             append(Incidents.context(c))
+            append(WatchData.aiNow(c))
         }
     }
 
@@ -99,6 +103,7 @@ object AiData {
                 "${dhm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long"}" } + "\n")
             val inc = db.incidents(start, now)
             if (inc.isNotEmpty()) append("Incidents: " + inc.joinToString("; ") { "${it.kind} ${Incidents.period(it)}" + if (it.details.isNotBlank()) " (${it.details})" else "" } + "\n")
+            append(WatchData.aiPeriod(c, days))
         }
     }
 

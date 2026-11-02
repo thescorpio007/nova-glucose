@@ -34,6 +34,12 @@ object SelfTest {
             db.setAi(mid, "[{\"name\":\"Couscous\",\"portion\":\"1 cup\",\"carbs\":40}]", 40)
             db.addDose(Dose(0, now - 3500_000L, "rapid", 4.5, 45, 15, 140, "calc: 45÷12 = 3.8"))
             db.addDose(Dose(0, now - 20 * 3600_000L, "long", 18.0))
+            val wd = WatchDay(WatchData.dayKey(now), IntArray(24) { 100 * it }, IntArray(288) { if (it % 2 == 0) 80 else 0 }, listOf(Seg(now - 9 * 3600_000L, now - 8 * 3600_000L, 5)),
+                listOf(Ex(now - 4 * 3600_000L, now - 3 * 3600_000L, 73, "Swimming")), 62, 96.5)
+            db.putWatch(wd.day, wd.json(), now, share = false)
+            db.addBody(now - 86_400_000L, 157.5, 45.9, "manual", share = false)
+            db.addRecipe(Db.Recipe(0, now, "Chakchouka", "Dinner", "Tunisian", 28, 25, 4, "eggs, tomato", FoodAi.Recipe("Chakchouka", 4, 25, 28, "",
+                listOf("8 eggs", "4 tomatoes"), listOf("Cook the sauce", "Add the eggs"), "").json()))
 
             // 2. Backup + verify
             val file = Backup.pack(c, pw)
@@ -69,7 +75,11 @@ object SelfTest {
             eq("readings", db.readings(0).size, 50); eq("meals", db.meals(10).size, 1); eq("doses", db.doses().size, 2)
             eq("AI estimate", db.ai(db.meals(1).first().id)?.second, 40)
             eq("calc note", db.doses().first { it.kind == "rapid" }.note, "calc: 45÷12 = 3.8")
-            return "PASS · $v · sounds and notification choices ✓ · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
+            val w2 = WatchData.get(c, WatchData.dayStart(now))
+            eq("watch steps", w2.totalSteps, 27600); eq("watch RHR", w2.rhr, 62); eq("watch sport", w2.ex.firstOrNull()?.title, "Swimming")
+            eq("height", st.heightCm, 157.5); eq("weight", st.weightKg, 45.9); eq("growth entries", db.bodies().size, 1)
+            eq("recipe", db.recipes().firstOrNull()?.title, "Chakchouka"); eq("recipe steps", FoodAi.Recipe.from(db.recipes().first()).steps.size, 2)
+            return "PASS · $v · watch data, height/weight and recipe book ✓ · sounds and notification choices ✓ · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
         } catch (e: Throwable) {
             return "FAIL · ${e.message}"
         } finally {

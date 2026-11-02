@@ -112,6 +112,7 @@ class MonitorService : Service() {
                 notifyListeners(null, st.lastError)
                 update(null)
             }
+            try { HealthRead.maybe(this@MonitorService) } catch (_: Exception) { }   // watch data every 15 min
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             handler.postDelayed(this, next)
         }

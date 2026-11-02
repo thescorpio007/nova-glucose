@@ -28,19 +28,49 @@ object DoctorReport {
     private val green = Color.rgb(59, 109, 17)
     private val purple = Color.rgb(83, 74, 183)
 
+    /** Asks every time: which report (summary, detailed every day, detailed key days) and which period. */
     fun pick(a: Activity) {
-        val opts = arrayOf("Last 14 days", "Last 30 days", "Last 90 days")
-        Tr.Builder(a).setTitle("📤 Share with doctor").setItems(opts) { _, w ->
-            val days = intArrayOf(14, 30, 90)[w]
-            Ui.toast(a, "Preparing the report…")
-            val app = a.applicationContext
-            Thread {
-                val r = try { Result.success(make(app, days)) } catch (e: Exception) { Result.failure(e) }
-                a.runOnUiThread {
-                    r.onSuccess { f -> share(a, f) }.onFailure { Ui.toast(a, "Couldn't make the report: ${it.message}") }
+        var mode = "sum"; var days = 14
+        val root = Ui.col(a, 18)
+        root.addView(Ui.text(a, "1 · Which report?", 13f, Ui.MUTED))
+        val opts = Ui.col(a)
+        root.addView(opts, Ui.lp(top = Ui.dp(a, 6)))
+        val choices = listOf(
+            Triple("sum", "📄 Summary", "Glucose first · watch at a glance · 2–3 pages"),
+            Triple("all", "📚 Detailed — every day", "Everything + full watch section + one page per day"),
+            Triple("key", "📚 Detailed — key days only", "Everything + full watch section + pages only for days with a low, a high above 250 or an incident"))
+        fun renderOpts() {
+            opts.removeAllViews()
+            choices.forEach { (id, t, d) ->
+                val on = id == mode
+                val b = Ui.col(a, 12).apply {
+                    background = Ui.round(if (on) 0x222EC4B6 else 0, Ui.dp(a, 14).toFloat(), Ui.dp(a, 1), if (on) Ui.ACCENT else 0xFF3A4152.toInt())
+                    setOnClickListener { mode = id; renderOpts() }
                 }
-            }.start()
-        }.setNegativeButton("Cancel", null).show()
+                b.addView(Ui.text(a, t, 15f, Ui.TEXT, true)); b.addView(Ui.text(a, d, 12f, Ui.MUTED))
+                opts.addView(b, Ui.lp(top = Ui.dp(a, 8)))
+            }
+        }
+        renderOpts()
+        root.addView(Ui.text(a, "2 · Period", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 14), 0, Ui.dp(a, 6)) })
+        val pr = Ui.row(a)
+        fun renderPr() {
+            pr.removeAllViews()
+            listOf(14, 30, 90).forEach { d -> pr.addView(Ui.chip(a, "$d days", d == days) { days = d; renderPr() }, Ui.lp(-2, -2, end = Ui.dp(a, 8))) }
+        }
+        renderPr(); root.addView(pr)
+        Tr.Builder(a).setTitle("📤 Share with doctor").setView(android.widget.ScrollView(a).apply { addView(root) })
+            .setPositiveButton("Make the report") { _, _ ->
+                Ui.toast(a, "Preparing the report…")
+                val app = a.applicationContext; val m = mode; val d = days
+                Thread {
+                    val r = try { Result.success(make(app, d, m)) } catch (e: Exception) { Result.failure(e) }
+                    a.runOnUiThread {
+                        r.onSuccess { f -> share(a, f) }.onFailure { Ui.toast(a, "Couldn't make the report: ${it.message}") }
+                    }
+                }.start()
+            }
+            .setNegativeButton("Cancel", null).show()
     }
 
     private fun share(a: Activity, f: File) {
@@ -106,7 +136,7 @@ object DoctorReport {
 
     // ---------------------------------------------------------------- report
 
-    fun make(c: Context, days: Int): File {
+    fun make(c: Context, days: Int, mode: String = "sum"): File {
         val st = Store(c); val db = Db.get(c)
         val endCal = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
         val now = System.currentTimeMillis()
@@ -122,8 +152,12 @@ object DoctorReport {
         val doc = Doc(PdfDocument(), Ui.version(c).let { "Nova Glucose $it" })
         doc.newPage()
 
-        text(doc, "Glucose report for the diabetes team", paint(17f, teal, true))
-        text(doc, "$name · age ${st.age} · ${df.format(Date(start))} – ${df.format(Date(now))} ($days days) · FreeStyle Libre via LibreLinkUp · created ${df.format(Date(now))}", paint(9f))
+        val detailed = mode != "sum"
+        text(doc, "Glucose report for the diabetes team · " + when (mode) { "all" -> "Detailed (every day)"; "key" -> "Detailed (key days)"; else -> "Summary" }, paint(17f, teal, true))
+        text(doc, "$name · ${df.format(Date(start))} – ${df.format(Date(now))} ($days days) · FreeStyle Libre via LibreLinkUp · created ${df.format(Date(now))}", paint(9f))
+        text(doc, listOfNotNull("Age ${st.age}", st.gender.ifBlank { null }, st.heightCm.takeIf { it > 0 }?.let { "height ${fmt(it)} cm" },
+            st.weightKg.takeIf { it > 0 }?.let { "weight ${fmt(it)} kg" + if (st.bodyTs > 0) " (${df.format(Date(st.bodyTs))})" else "" },
+            listOfNotNull(st.longName.ifBlank { null }, st.rapidName.ifBlank { null }).joinToString(" / ").ifBlank { null }).joinToString(" · "), paint(9f, muted))
         doc.y += 6
 
         if (s == null) {
@@ -260,6 +294,11 @@ object DoctorReport {
             st.aiReview.lines().filter { it.isNotBlank() }.forEach { text(doc, it.trim(), paint(8.5f)) }
         }
 
+        val watch = st.hcReport && Db.get(c).watchDays(WatchData.dayKey(start), WatchData.dayKey(now)).isNotEmpty()
+        val ds = if (watch) (0 until days).map { WatchData.sum(c, start + it * 24 * 3600_000L, st) }.filter { it.start <= now } else emptyList()
+        val cmp = if (watch) WatchData.compare(c, ds) else null
+        if (watch && cmp != null) watchBox(c, doc, ds, cmp)
+
         h2(doc, "Day by day")
         val dRows = mutableListOf(listOf("Date", "Average", "In range", "Lowest", "Highest", "Carbs logged", "Rapid insulin"))
         val ddf = SimpleDateFormat("EEE d MMM", Locale.US)
@@ -277,10 +316,13 @@ object DoctorReport {
             "Carbs are counted by the family (photo estimates corrected by hand). Insulin doses are as given by the family; " +
             "Nova Glucose does not calculate doses.", paint(7.5f, muted))
 
+        if (detailed && watch && cmp != null) watchSection(c, doc, ds, cmp)
+        if (detailed) dayPages(c, doc, start, now, days, mode == "key", st)
+
         doc.finish()
         val dir = File(c.cacheDir, "capture").apply { mkdirs() }
         dir.listFiles()?.filter { it.name.contains("Doctor-Report") }?.forEach { it.delete() }
-        val f = File(dir, "${st.fileName}-Glucose-Doctor-Report-${dfs.format(Date(start))}-to-${dfs.format(Date(now))}.pdf")
+        val f = File(dir, "${st.fileName}-Glucose-Doctor-Report-${if (detailed) "Detailed" else "Summary"}-${dfs.format(Date(start))}-to-${dfs.format(Date(now))}.pdf")
         f.outputStream().use { doc.pdf.writeTo(it) }; doc.pdf.close()
         Vault.saveReport(c, f)
         return f
@@ -347,5 +389,172 @@ object DoctorReport {
         }
         cv.drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.3f; color = Color.rgb(38, 33, 92) })
         @Suppress("UNUSED_VARIABLE") val u = purple
+    }
+
+    // ---------------------------------------------------------------- watch (Huawei through Health Connect)
+    private fun avgOf(l: List<Int>) = l.filter { it > 0 }.takeIf { it.isNotEmpty() }?.average()?.toInt()
+
+    /** Summary: one small box with the watch at a glance and the key link. */
+    private fun watchBox(c: Context, d: Doc, ds: List<DaySum>, k: WatchData.Compare) {
+        h2(d, "Watch at a glance (Huawei watch)")
+        d.need(84f)
+        val top = d.y
+        val box = RectF(M, top, W - M, top + 74)
+        d.cv!!.drawRoundRect(box, 6f, 6f, Paint().apply { color = Color.rgb(242, 251, 250) })
+        d.cv!!.drawRoundRect(box, 6f, 6f, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 0.8f; color = Color.rgb(46, 196, 182) })
+        val w = ds.filter { it.hasWatch }
+        val vals = listOf(
+            (avgOf(w.map { it.steps })?.let { "%,d".format(Locale.US, it) } ?: "–") to "steps / day",
+            (avgOf(w.map { it.sleepMin })?.let { WatchData.hm(it) } ?: "–") to "sleep / night",
+            (avgOf(w.map { it.rhr })?.toString() ?: "–") to "resting heart rate",
+            "${k.sports.size}" to "sport sessions")
+        val cw = (W - 2 * M) / 4
+        vals.forEachIndexed { i, (v, l) ->
+            val x = M + i * cw + cw / 2
+            val pv = paint(14f, bold = true); val pl = paint(7.5f, muted)
+            d.cv!!.drawText(v, x - pv.measureText(v) / 2, top + 22, pv)
+            d.cv!!.drawText(l, x - pl.measureText(l) / 2, top + 33, pl)
+        }
+        d.y = top + 40
+        val key = WatchData.lines(c, k).firstOrNull { it.startsWith("After") } ?: WatchData.lines(c, k).firstOrNull()
+        if (key != null) text(d, "Key link: $key", paint(8f), M + 8, W - 2 * M - 16)
+        d.y = maxOf(d.y, top + 74) + 6
+    }
+
+    /** Detailed: the full watch section. */
+    private fun watchSection(c: Context, d: Doc, ds: List<DaySum>, k: WatchData.Compare) {
+        d.newPage()
+        text(d, "Activity and sleep (Huawei watch, through Health Connect)", paint(14f, teal, true))
+        text(d, "Consumer watch: sleep stages and SpO2 are estimates. Links below are associations seen in the data, not causes.", paint(8f, muted))
+        val w = ds.filter { it.hasWatch }
+        h2(d, "Average per day")
+        table(d, listOf(listOf("Steps", "Exercise", "Sleep (deep)", "Resting HR", "Max HR", "SpO2 at night"),
+            listOf(avgOf(w.map { it.steps })?.let { "%,d".format(Locale.US, it) } ?: "–",
+                "${k.sports.size} sessions" + (avgOf(w.map { it.exMin }.filter { it > 0 })?.let { " · $it min avg" } ?: ""),
+                (avgOf(w.map { it.sleepMin })?.let { WatchData.hm(it) } ?: "–") + (avgOf(w.map { it.deepMin })?.let { " (${WatchData.hm(it)})" } ?: ""),
+                avgOf(w.map { it.rhr })?.let { "$it bpm" } ?: "–", avgOf(w.map { it.maxHr })?.let { "$it bpm" } ?: "–",
+                w.map { it.spo2 }.filter { it > 0 }.takeIf { it.isNotEmpty() }?.average()?.let { "%.0f%%".format(Locale.US, it) } ?: "–")),
+            listOf(70f, 110f, 95f, 80f, 75f, 93f), Color.rgb(225, 245, 238))
+
+        h2(d, "Glucose by activity and sleep")
+        val rows = mutableListOf(listOf("", "Days", "Time in range", "Average", "Night lows (00–06)"))
+        if (k.active.isNotEmpty() && k.quiet.isNotEmpty()) {
+            rows += listOf(k.activeLabel, "${k.active.size}", k.tir(k.active)?.let { "$it%" } ?: "–", k.avg(k.active)?.toString() ?: "–", "${k.nightLows(c, k.active)}")
+            rows += listOf(k.quietLabel, "${k.quiet.size}", k.tir(k.quiet)?.let { "$it%" } ?: "–", k.avg(k.quiet)?.toString() ?: "–", "${k.nightLows(c, k.quiet)}")
+        }
+        rows += listOf("After < 7 h sleep (wake-up glucose)", "${k.shortSleep.size}", "–", k.wake(k.shortSleep)?.toString() ?: "–", "–")
+        rows += listOf("After ≥ 8 h sleep (wake-up glucose)", "${k.longSleep.size}", "–", k.wake(k.longSleep)?.toString() ?: "–", "–")
+        table(d, rows, listOf(200f, 45f, 85f, 70f, 123f), Color.rgb(238, 237, 254))
+
+        h2(d, "After sport")
+        val tf = SimpleDateFormat("EEE d MMM HH:mm", Locale.US); val hmf = SimpleDateFormat("HH:mm", Locale.US)
+        val sRows = mutableListOf(listOf("Start", "Activity", "Minutes", "Glucose at start", "Drop within 2 h", "Low within 12 h"))
+        k.sports.take(30).forEach { e -> sRows += listOf(tf.format(Date(e.ex.a)), WatchData.exName(e.ex.type, e.ex.title), "${(e.ex.b - e.ex.a) / 60_000}",
+            e.atStart?.toString() ?: "–", e.drop2h?.let { "−$it" } ?: "–", e.lowAt?.let { "${it.mg} at ${tf.format(Date(it.ts))}" } ?: "no") }
+        if (sRows.size == 1) sRows += listOf("–", "No exercise sessions", "", "", "", "")
+        table(d, sRows, listOf(95f, 85f, 45f, 75f, 80f, 143f), Color.rgb(252, 235, 235))
+
+        h2(d, "Resting heart rate and incidents")
+        text(d, WatchData.lines(c, k).firstOrNull { it.startsWith("Resting") } ?: "Resting heart rate steady around ${k.rhrBase} bpm.", paint(9f))
+
+        h2(d, "Day by day (watch and glucose)")
+        val ddf = SimpleDateFormat("EEE d MMM", Locale.US)
+        val dRows = mutableListOf(listOf("Date", "Steps", "Exercise", "Sleep", "Deep", "Woke", "RHR", "Max HR", "In range", "Lows"))
+        ds.forEach { x ->
+            dRows += listOf(ddf.format(Date(x.start)), if (x.steps > 0) "%,d".format(Locale.US, x.steps) else "–", if (x.exMin > 0) "${x.exMin} min" else "–",
+                if (x.sleepMin > 0) WatchData.hm(x.sleepMin) else "–", if (x.deepMin > 0) WatchData.hm(x.deepMin) else "–",
+                if (x.wake > 0) hmf.format(Date(x.wake)) else "–", if (x.rhr > 0) "${x.rhr}" else "–", if (x.maxHr > 0) "${x.maxHr}" else "–",
+                x.tir?.let { "$it%" } ?: "–", "${x.lows}")
+        }
+        table(d, dRows, listOf(70f, 50f, 52f, 50f, 45f, 42f, 35f, 48f, 52f, 79f), Color.rgb(225, 245, 238))
+    }
+
+    /** Detailed: one page per day (every day, or only days with a low, a high above 250 or an incident). */
+    private fun dayPages(c: Context, d: Doc, start: Long, now: Long, days: Int, keyOnly: Boolean, st: Store) {
+        val db = Db.get(c)
+        val df = SimpleDateFormat("EEE d MMM yyyy", Locale.US); val hmf = SimpleDateFormat("HH:mm", Locale.US)
+        var shown = 0
+        for (k in 0 until days) {
+            val a = WatchData.addDays(start, k); val b = WatchData.addDays(a, 1) - 1
+            if (a > now) break
+            val rs = db.readings(a, b)
+            val inc = db.incidents(a, b)
+            val s = Vault.stats(st, rs)
+            val isKey = (s != null && (s.lowEpisodes > 0 || s.max > 250)) || inc.isNotEmpty()
+            if (keyOnly && !isKey) continue
+            if (rs.isEmpty() && !WatchData.hasAny(c)) continue
+            val sm = WatchData.sum(c, a, st)
+            d.newPage(); shown++
+            val flags = listOfNotNull(sm.firstLow?.let { "low ${it.mg} at ${hmf.format(Date(it.ts))}" }, if ((s?.max ?: 0) > 250) "high ${s!!.max}" else null,
+                inc.firstOrNull()?.kind).joinToString(" · ")
+            text(d, df.format(Date(a)) + if (flags.isNotBlank()) "   ·  $flags" else "", paint(13f, if (flags.isNotBlank()) red else teal, true))
+            text(d, listOfNotNull(s?.let { "In range ${it.inRange}% · average ${it.avg} · lowest ${it.min} · highest ${it.max}" },
+                if (sm.steps > 0) "%,d steps".format(Locale.US, sm.steps) else null,
+                sm.ex.takeIf { it.isNotEmpty() }?.joinToString(", ") { "${WatchData.exName(it.type, it.title)} ${hmf.format(Date(it.a))}–${hmf.format(Date(it.b))}" },
+                if (sm.sleepMin > 0) "sleep ${WatchData.hm(sm.sleepMin)}" else null, if (sm.rhr > 0) "resting HR ${sm.rhr}" else null).joinToString(" · "), paint(8.5f, muted))
+            d.y += 4
+            val w = WatchData.get(c, a)
+            val ex = (WatchData.get(c, WatchData.addDays(a, -1)).ex + w.ex).filter { it.b > a && it.a <= b }
+            val meals = db.meals(100_000).filter { it.ts in a..b }.sortedBy { it.ts }
+            val doses = db.doses(a, b).sortedBy { it.ts }
+            dayChart(d.cv!!, RectF(M + 24, d.y, W - M, d.y + 250), a, rs, w, WatchData.sleepIn(c, a, b + 1), ex, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, st)
+            d.y += 268
+            val rows = mutableListOf(listOf("Time", "", "Entry"))
+            val ev = mutableListOf<Pair<Long, List<String>>>()
+            doses.forEach { x -> ev += x.ts to listOf(hmf.format(Date(x.ts)), if (x.kind == "rapid") "I" else "L",
+                "${if (x.kind == "rapid") st.rapidName.ifBlank { "Rapid insulin" } else st.longName.ifBlank { "Long-acting" }} ${fmt(x.units)} u" +
+                    (if (x.waitMin > 0) " · eat after ${x.waitMin} min" else "")) }
+            meals.forEach { m -> ev += m.ts to listOf(hmf.format(Date(m.ts)), "M", "${m.title} · ${m.carbs} g" + if (m.mgAt > 0) " · glucose ${m.mgAt}" else "") }
+            ex.forEach { e -> ev += e.a to listOf(hmf.format(Date(e.a)), "Sport", "${WatchData.exName(e.type, e.title)} ${(e.b - e.a) / 60_000} min" +
+                (w.hr.toList().subList(((e.a - a) / 300_000).toInt().coerceIn(0, 287), ((e.b - a) / 300_000).toInt().coerceIn(1, 288)).maxOrNull()?.takeIf { it > 0 }?.let { " · max HR $it" } ?: "")) }
+            var inLow = false
+            rs.forEach { r -> if (r.mg < st.low && !inLow) { inLow = true; ev += r.ts to listOf(hmf.format(Date(r.ts)), "Low", "${r.mg} mg/dL") } else if (r.mg >= st.low) inLow = false }
+            inc.forEach { i -> ev += maxOf(i.ts, a) to listOf(hmf.format(Date(maxOf(i.ts, a))), "!", i.kind + if (i.details.isNotBlank()) " · " + i.details.take(60) else "") }
+            ev.sortedBy { it.first }.take(26).forEach { rows += it.second }
+            if (rows.size == 1) rows += listOf("–", "", "Nothing logged this day")
+            table(d, rows, listOf(55f, 45f, 423f), Color.rgb(243, 245, 247))
+        }
+        if (shown == 0) { d.newPage(); text(d, "Day pages: no " + (if (keyOnly) "key days (lows, highs above 250 or incidents)" else "days with data") + " in this period.", paint(10f, muted)) }
+    }
+
+    private fun dayChart(cv: Canvas, r: RectF, start: Long, rs: List<Reading>, w: WatchDay, sleep: List<Seg>, ex: List<Ex>, meals: List<Long>, doses: List<Long>, st: Store) {
+        val day = 24 * 3600_000f
+        fun x(t: Long) = r.left + r.width() * ((t - start) / day).coerceIn(0f, 1f)
+        val gTop = r.top; val gBot = r.top + 120
+        fun gy(v: Int) = gBot - (gBot - gTop) * ((v.coerceIn(40, 300) - 40f) / 260f)
+        val lab = paint(7f, muted)
+        ex.forEach { e -> cv.drawRect(x(e.a), r.top, x(e.b), r.bottom, Paint().apply { color = Color.argb(40, 46, 196, 182) }) }
+        cv.drawRect(r.left, gy(st.high), r.right, gy(st.low), Paint().apply { color = Color.argb(45, 125, 203, 107) })
+        for (v in listOf(70, 180, 250)) cv.drawText("$v", r.left - 18, gy(v) + 3, lab)
+        val dash = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 0.8f; pathEffect = DashPathEffect(floatArrayOf(4f, 3f), 0f) }
+        dash.color = red; cv.drawLine(r.left, gy(st.low), r.right, gy(st.low), dash)
+        dash.color = amber; cv.drawLine(r.left, gy(st.high), r.right, gy(st.high), dash)
+        val p = Path(); var first = true; var last = 0L
+        rs.sortedBy { it.ts }.forEach { q -> if (!first && q.ts - last > 20 * 60_000) first = true; if (first) p.moveTo(x(q.ts), gy(q.mg)) else p.lineTo(x(q.ts), gy(q.mg)); first = false; last = q.ts }
+        cv.drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.4f; color = Color.rgb(30, 30, 30) })
+        val mk = paint(7.5f, Color.rgb(220, 60, 60), true)
+        doses.forEach { cv.drawText("I", x(it) - 5, gy(st.low) + 10, mk) }
+        meals.forEach { cv.drawText("M", x(it) + 1, gy(st.low) + 10, mk) }
+        // steps
+        val sTop = gBot + 18; val sBot = sTop + 34
+        cv.drawText("Steps / hour", r.left, sTop - 3, paint(7f, Color.rgb(70, 110, 230), true))
+        val maxS = maxOf(1000, w.steps.maxOrNull() ?: 0); val bw = r.width() / 24
+        w.steps.forEachIndexed { h, v -> if (v > 0) cv.drawRect(r.left + h * bw + 1, sBot - (sBot - sTop) * v / maxS, r.left + (h + 1) * bw - 1, sBot, Paint().apply { color = Color.rgb(91, 140, 255) }) }
+        // heart rate
+        val hTop = sBot + 16; val hBot = hTop + 34
+        fun hy(v: Int) = hBot - (hBot - hTop) * ((v.coerceIn(40, 200) - 40f) / 160f)
+        cv.drawText("Heart rate", r.left, hTop - 3, paint(7f, Color.rgb(220, 80, 120), true))
+        val hp = Path(); var on = false
+        w.hr.forEachIndexed { k, v -> if (v <= 0) { on = false; return@forEachIndexed }; val t = start + k * 300_000L; if (!on) { hp.moveTo(x(t), hy(v)); on = true } else hp.lineTo(x(t), hy(v)) }
+        cv.drawPath(hp, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.rgb(255, 122, 154) })
+        // sleep
+        val lTop = hBot + 16; val lBot = lTop + 16
+        cv.drawText("Sleep", r.left, lTop - 3, paint(7f, Color.rgb(110, 90, 220), true))
+        sleep.forEach { s0 ->
+            val depth = when (s0.st) { 5 -> 1f; 4, 2 -> 0.66f; 6 -> 0.5f; else -> 0.3f }
+            cv.drawRect(x(s0.a), lBot - (lBot - lTop) * depth, maxOf(x(s0.b), x(s0.a) + 0.8f), lBot,
+                Paint().apply { color = DayChart.STAGE[s0.st] ?: Color.rgb(142, 124, 255) })
+        }
+        for (h in 0..24 step 3) cv.drawText("%02d".format(h % 24), r.left + h / 24f * r.width() - 4, lBot + 10, lab)
     }
 }

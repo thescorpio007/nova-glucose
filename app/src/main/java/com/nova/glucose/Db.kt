@@ -32,7 +32,7 @@ data class Dose(
 )
 
 /** Readings history (kept 400 days) and the meal logbook, stored only on this phone. */
-class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 6) {
+class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 7) {
     private val app: Context = c.applicationContext
 
     companion object {
@@ -46,7 +46,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         db.execSQL("CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, title TEXT, items TEXT, carbs INTEGER, " +
             "low INTEGER, high INTEGER, mg_at INTEGER, photo TEXT, note TEXT)")
         db.execSQL("CREATE TABLE unexported(ts INTEGER PRIMARY KEY)")
-        v3(db); v4(db); v5(db); v6(db)
+        v3(db); v4(db); v5(db); v6(db); v7(db)
     }
 
     /** Incidents: illness, hypo treated, sport, sensor issue, doctor visit… with an optional prescription. */
@@ -154,9 +154,11 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         db.beginTransaction()
         try {
             var q = System.nanoTime()
-            for ((t, k) in listOf("meals" to "meal", "insulin" to "dose", "incidents" to "inc"))
+            for ((t, k) in listOf("meals" to "meal", "insulin" to "dose", "incidents" to "inc", "body" to "body"))
                 db.rawQuery("SELECT gid FROM $t", null).use { c -> while (c.moveToNext()) db.insertWithOnConflict("sync_out", null,
                     ContentValues().apply { put("gid", c.getString(0)); put("kind", k); put("q", q++) }, SQLiteDatabase.CONFLICT_REPLACE) }
+            if (Store(app).hcShare) db.rawQuery("SELECT day FROM watch ORDER BY day DESC LIMIT 120", null).use { c -> while (c.moveToNext()) db.insertWithOnConflict("sync_out", null,
+                ContentValues().apply { put("gid", "hc-" + c.getString(0)); put("kind", "hc"); put("q", q++) }, SQLiteDatabase.CONFLICT_REPLACE) }
             db.rawQuery("SELECT gid FROM sync_del", null).use { c -> while (c.moveToNext()) db.insertWithOnConflict("sync_out", null,
                 ContentValues().apply { put("gid", c.getString(0)); put("kind", "del"); put("q", q++) }, SQLiteDatabase.CONFLICT_REPLACE) }
             db.setTransactionSuccessful()
@@ -268,6 +270,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         if (o < 4) v4(db)
         if (o < 5) v5(db)
         if (o < 6) v6(db)
+        if (o < 7) v7(db)
     }
 
     /** New readings not yet written to the Download folder (also catches late, back-filled ones). */
@@ -305,7 +308,8 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
 
     /** Self-test only (blank install). */
     fun clearAll() { writableDatabase.apply { delete("readings", null, null); delete("meals", null, null); delete("insulin", null, null); delete("unexported", null, null)
-        delete("sync_out", null, null); delete("sync_del", null, null); delete("incidents", null, null) } }
+        delete("sync_out", null, null); delete("sync_del", null, null); delete("incidents", null, null)
+        delete("watch", null, null); delete("body", null, null); delete("recipes", null, null) } }
 
     fun resetExport() { writableDatabase.execSQL("INSERT OR IGNORE INTO unexported SELECT ts FROM readings") }
 
@@ -354,10 +358,11 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
     /** Applies a deletion received from the family; returns the photo path of a deleted meal (to remove it). */
     fun applyDelete(gid: String, ts: Long): Boolean {
         var hit = false
-        for (t in listOf("meals", "insulin", "incidents")) byGid(t, gid)?.let { (id, _) ->
+        for (t in listOf("meals", "insulin", "incidents", "body")) byGid(t, gid)?.let { (id, _) ->
             if (t == "incidents") incident(id)?.photo?.takeIf { it.isNotBlank() }?.let { java.io.File(it).delete() }
             writableDatabase.delete(t, "id = ?", arrayOf(id.toString())); hit = true }
         tombstone(gid, ts)
+        if (hit) Store(app).bodyChanged(this)
         return hit
     }
 
@@ -369,4 +374,105 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db"
         }
         return out
     }
+
+    // ================================================================ v7: watch data, height & weight, recipe book
+    private fun v7(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS watch(day TEXT PRIMARY KEY, upd INTEGER, data TEXT)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS body(id INTEGER PRIMARY KEY AUTOINCREMENT, gid TEXT, upd INTEGER, who TEXT, ts INTEGER, " +
+            "height REAL, weight REAL, src TEXT)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS recipes(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, title TEXT, cat TEXT, cuisine TEXT, " +
+            "carbs INTEGER, minutes INTEGER, serves INTEGER, descr TEXT, body TEXT)")
+    }
+
+    /** Watch data of one day (yyyy-MM-dd) as stored: (edit time, JSON) or null. */
+    fun watchDay(day: String): Pair<Long, String>? =
+        readableDatabase.rawQuery("SELECT upd, data FROM watch WHERE day = ?", arrayOf(day)).use { if (it.moveToFirst()) it.getLong(0) to (it.getString(1) ?: "") else null }
+
+    /** Days from [from] to [to] (inclusive, yyyy-MM-dd). */
+    fun watchDays(from: String, to: String): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        readableDatabase.rawQuery("SELECT day, data FROM watch WHERE day >= ? AND day <= ? ORDER BY day", arrayOf(from, to)).use { c ->
+            while (c.moveToNext()) out[c.getString(0)] = c.getString(1) ?: "" }
+        return out
+    }
+
+    fun allWatch(): List<Triple<String, Long, String>> {
+        val out = mutableListOf<Triple<String, Long, String>>()
+        readableDatabase.rawQuery("SELECT day, upd, data FROM watch ORDER BY day", null).use { c ->
+            while (c.moveToNext()) out += Triple(c.getString(0), c.getLong(1), c.getString(2) ?: "") }
+        return out
+    }
+
+    fun watchCount(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM watch", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+
+    /** Saves a day; returns true when something changed. Shared with the family when [share]. */
+    fun putWatch(day: String, data: String, upd: Long = System.currentTimeMillis(), share: Boolean = true, force: Boolean = false): Boolean {
+        val old = watchDay(day)
+        if (old != null && old.second == data) return false
+        if (old != null && !force && upd <= old.first) return false
+        writableDatabase.insertWithOnConflict("watch", null, ContentValues().apply { put("day", day); put("upd", upd); put("data", data) },
+            SQLiteDatabase.CONFLICT_REPLACE)
+        if (share && Store(app).hcShare) queue("hc-$day", "hc", kick = false)
+        return true
+    }
+
+    /** Height (cm) and weight (kg) measured at [ts]; 0 = not given. */
+    data class Body(val id: Long, val ts: Long, val height: Double, val weight: Double, val src: String, val who: String)
+
+    fun addBody(ts: Long, height: Double, weight: Double, src: String = "", gid: String? = null, upd: Long? = null, share: Boolean = true, who: String? = null): Long {
+        val g = gid ?: newGid()
+        val id = writableDatabase.insert("body", null, ContentValues().apply {
+            put("gid", g); put("upd", upd ?: System.currentTimeMillis()); put("who", who ?: Store(app).syncName.ifBlank { "this phone" })
+            put("ts", ts); put("height", height); put("weight", weight); put("src", src) })
+        if (share) queue(g, "body")
+        Store(app).bodyChanged(this)
+        return id
+    }
+
+    fun updateBody(id: Long, ts: Long, height: Double, weight: Double, upd: Long, share: Boolean = false) {
+        writableDatabase.update("body", ContentValues().apply { put("ts", ts); put("height", height); put("weight", weight); put("upd", upd) },
+            "id = ?", arrayOf(id.toString()))
+        if (share) gidOf("body", id)?.let { queue(it, "body") }
+        Store(app).bodyChanged(this)
+    }
+
+    fun deleteBody(id: Long, share: Boolean = true) {
+        val g = gidOf("body", id)
+        writableDatabase.delete("body", "id = ?", arrayOf(id.toString()))
+        if (g != null) { tombstone(g, System.currentTimeMillis()); if (share) queue(g, "del") }
+        Store(app).bodyChanged(this)
+    }
+
+    fun bodies(): List<Body> {
+        val out = mutableListOf<Body>()
+        readableDatabase.rawQuery("SELECT id, ts, height, weight, src, who FROM body ORDER BY ts DESC", null).use { c ->
+            while (c.moveToNext()) out += Body(c.getLong(0), c.getLong(1), c.getDouble(2), c.getDouble(3), c.getString(4) ?: "", c.getString(5) ?: "") }
+        return out
+    }
+
+    fun body(id: Long): Body? = bodies().firstOrNull { it.id == id }
+
+    fun findBody(ts: Long): Long? = readableDatabase.rawQuery("SELECT id FROM body WHERE ts = ?", arrayOf(ts.toString())).use { if (it.moveToFirst()) it.getLong(0) else null }
+
+    /** Recipe book (this phone only, kept in the backup). */
+    data class Recipe(val id: Long = 0, val ts: Long, val title: String, val cat: String, val cuisine: String, val carbs: Int,
+                      val minutes: Int, val serves: Int, val descr: String, val body: String)
+
+    private fun recipeValues(r: Recipe) = ContentValues().apply {
+        put("ts", r.ts); put("title", r.title); put("cat", r.cat); put("cuisine", r.cuisine); put("carbs", r.carbs)
+        put("minutes", r.minutes); put("serves", r.serves); put("descr", r.descr); put("body", r.body)
+    }
+
+    fun addRecipe(r: Recipe): Long = writableDatabase.insert("recipes", null, recipeValues(r))
+    fun updateRecipe(id: Long, r: Recipe) { writableDatabase.update("recipes", recipeValues(r), "id = ?", arrayOf(id.toString())) }
+    fun deleteRecipe(id: Long) { writableDatabase.delete("recipes", "id = ?", arrayOf(id.toString())) }
+    fun recipes(): List<Recipe> {
+        val out = mutableListOf<Recipe>()
+        readableDatabase.rawQuery("SELECT id, ts, title, cat, cuisine, carbs, minutes, serves, descr, body FROM recipes ORDER BY ts DESC", null).use { c ->
+            while (c.moveToNext()) out += Recipe(c.getLong(0), c.getLong(1), c.getString(2) ?: "", c.getString(3) ?: "", c.getString(4) ?: "",
+                c.getInt(5), c.getInt(6), c.getInt(7), c.getString(8) ?: "", c.getString(9) ?: "") }
+        return out
+    }
+    fun recipe(id: Long): Recipe? = recipes().firstOrNull { it.id == id }
+    fun findRecipe(title: String): Recipe? = recipes().firstOrNull { it.title.equals(title, ignoreCase = true) }
 }

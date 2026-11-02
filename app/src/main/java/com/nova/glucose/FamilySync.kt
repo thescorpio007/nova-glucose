@@ -354,6 +354,12 @@ object FamilySync {
         return "set"
     }
 
+    fun bodyItem(c: Context, id: Long): JSONObject? {
+        val db = Db.get(c); val b = db.body(id) ?: return null
+        return JSONObject().put("t", "body").put("g", db.gid("body", id)).put("u", db.upd("body", id)).put("ts", b.ts).put("h", b.height).put("w", b.weight)
+            .put("src", b.src).put("by", db.who("body", id))
+    }
+
     /** Current state of a pending item (null = nothing to send). */
     fun itemFor(c: Context, gid: String, kind: String): JSONObject? {
         val db = Db.get(c)
@@ -362,6 +368,11 @@ object FamilySync {
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
         db.byGid("incidents", gid)?.let { return Incidents.item(c, it.first) }
+        if (kind == "hc" && gid.startsWith("hc-")) {
+            val day = gid.removePrefix("hc-")
+            return db.watchDay(day)?.let { (u, d) -> JSONObject().put("t", "hc").put("g", gid).put("u", u).put("day", day).put("d", d) }
+        }
+        db.byGid("body", gid)?.let { return bodyItem(c, it.first) }
         val del = db.deletedAt(gid)
         return if (del > 0) JSONObject().put("t", "del").put("g", gid).put("u", del) else null
     }
@@ -373,6 +384,7 @@ object FamilySync {
         db.meals(1_000_000).forEach { m -> mealItem(c, m.id)?.let { out += it } }
         db.doses().forEach { d -> doseItem(c, d.id)?.let { out += it } }
         db.incidents().forEach { i -> Incidents.item(c, i.id)?.let { out += it } }
+        db.bodies().forEach { b -> bodyItem(c, b.id)?.let { out += it } }
         db.deletedGids().forEach { (g, ts) -> out += JSONObject().put("t", "del").put("g", g).put("u", ts) }
         return out
     }
@@ -413,6 +425,28 @@ object FamilySync {
             }
             "inc" -> return Incidents.apply(c, item)
             "set" -> return applySettings(c, item)
+            "hc" -> {
+                val day = item.optString("day"); val d = item.optString("d")
+                if (day.isBlank() || d.isBlank()) return ""
+                if (!db.putWatch(day, d, u, share = false)) return ""
+                val st = Store(c)
+                val w = WatchDay.parse(day, d)
+                val newest = maxOf(w.sleep.maxOfOrNull { it.b } ?: 0L, w.ex.maxOfOrNull { it.b } ?: 0L,
+                    w.hr.indexOfLast { it > 0 }.takeIf { it >= 0 }?.let { WatchData.startOf(day) + it * 300_000L + 300_000L } ?: 0L,
+                    w.steps.indexOfLast { it > 0 }.takeIf { it >= 0 }?.let { WatchData.startOf(day) + (it + 1) * 3600_000L } ?: 0L)
+                if (newest in (st.hcLastData + 1)..(System.currentTimeMillis() + 3600_000L)) st.hcLastData = newest
+                return "hc"
+            }
+            "body" -> {
+                if (db.deletedAt(g) > 0) return ""
+                val ts = item.optLong("ts"); val h = item.optDouble("h", 0.0); val w = item.optDouble("w", 0.0)
+                var row = db.byGid("body", g)
+                if (row == null) db.findBody(ts)?.let { same -> if (!resolveTwin(db, "body", "body", same, g)) return ""; row = db.byGid("body", g) }
+                val r = row
+                if (r == null) { db.addBody(ts, h, w, item.optString("src"), g, u, share = false, who = item.optString("by")); return "body+" }
+                if (u <= r.second) return ""
+                db.updateBody(r.first, ts, h, w, u); return "upd"
+            }
             "del" -> {
                 db.byGid("meals", g)?.let { (id, _) -> db.meal(id)?.photo?.takeIf { p -> p.isNotBlank() }?.let { p -> java.io.File(p).delete() } }
                 return if (db.applyDelete(g, if (u > 0) u else System.currentTimeMillis())) "del" else ""

@@ -23,8 +23,9 @@ class AiReviewActivity : BaseActivity() {
 You review the glucose data of a child with type 1 diabetes for her family, to prepare the next talk with her diabetes care team.
 Write in plain text for a phone screen, with exactly these two headings:
 What the AI noticed
-(4 to 7 short bullets "• …": when highs and lows happen (time of day, after which meals or foods), nights, sick days or other incidents,
-how photo carb estimates were corrected, anything improving; quote numbers from the data)
+(4 to 8 short bullets "• …": when highs and lows happen (time of day, after which meals or foods), nights, sick days or other incidents,
+how photo carb estimates were corrected, anything improving; when watch data is given, how sport, steps, sleep and resting heart rate
+line up with her glucose (e.g. night lows after sport, higher mornings after short nights); quote numbers from the data)
 Questions for the doctor
 (2 to 4 short bullets "• …" the family can ask)
 Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too little data, say so. No markdown symbols other than "•".
@@ -47,7 +48,8 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         head.addView(lb, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
         head.addView(Ui.smallButton(this, "Close") { finish() })
         root.addView(head)
-        root.addView(Ui.text(this, "AI: ${st.current().label} · looks at readings, meals, insulin times and incidents", 13f, Ui.MUTED))
+        root.addView(Ui.text(this, "AI: ${st.current().label} · " + L.s("looks at her profile ({0}), readings, meals, insulin times, incidents and watch data (activity, sleep, heart rate)")
+            .replace("{0}", listOfNotNull("age ${st.age}", st.heightCm.takeIf { it > 0 }?.let { "${it.fmt()} cm" }, st.weightKg.takeIf { it > 0 }?.let { "${it.fmt()} kg" }).joinToString(", ")), 13f, Ui.MUTED))
         chips = Ui.row(this)
         root.addView(chips, Ui.lp(top = Ui.dp(this, 10)))
         root.addView(Ui.button(this, "✦ Review now", true) { review() }, Ui.lp(top = Ui.dp(this, 10)))
@@ -67,6 +69,8 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         setContentView(sv)
         renderChips(); showSaved()
     }
+
+    private fun Double.fmt() = if (this % 1.0 == 0.0) this.toInt().toString() else "%.1f".format(Locale.US, this)
 
     /** The review's own language (defaults to the app language). */
     private fun revLang() = st.aiReviewLang.ifBlank { L.lang }

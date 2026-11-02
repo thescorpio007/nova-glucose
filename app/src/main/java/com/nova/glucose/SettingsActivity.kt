@@ -80,6 +80,13 @@ class SettingsActivity : BaseActivity() {
     private lateinit var rapidNameE: EditText
     private lateinit var penStatus: TextView
     private var penTarget = ""
+    private lateinit var heightE: EditText
+    private lateinit var weightE: EditText
+    private lateinit var bodyInfo: TextView
+    private lateinit var bodyList: LinearLayout
+    private lateinit var hcStatus: TextView
+    private lateinit var hcTypes: LinearLayout
+    private lateinit var hcMsg: TextView
     private var penFile: java.io.File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -237,6 +244,17 @@ class SettingsActivity : BaseActivity() {
         pc.addView(numRow("age", "Age", st.age))
         pc.addView(Ui.text(this, "Gender", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
         genderRow = Ui.row(this); pc.addView(genderRow); renderGender()
+        heightE = decRow(pc, "Height (cm)", st.heightCm)
+        weightE = decRow(pc, "Weight (kg)", st.weightKg)
+        bodyInfo = Ui.text(this, "", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
+        pc.addView(bodyInfo)
+        pc.addView(check("Also take height and weight from Health Connect (if her Huawei app records them)", st.hcBody)
+            .apply { setOnCheckedChangeListener { _, v -> st.hcBody = v } }, Ui.lp(top = Ui.dp(this, 6)))
+        val gh = Ui.col(this, 12).apply { background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat()) }
+        gh.addView(Ui.text(this, "📈 Growth history", 14f, Ui.TEXT, true))
+        bodyList = Ui.col(this); gh.addView(bodyList)
+        pc.addView(gh, Ui.lp(top = Ui.dp(this, 8)))
+        renderBody()
         pc.addView(Ui.text(this, "About her (brief, used by the AI — never for doses)", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
         aboutE = Ui.input(this, "e.g. type 1 since 2019, swims Mon/Wed 5 pm, school lunch 12:30, loves couscous, no nuts", minLines = 3).apply { setText(st.aboutHer) }
         pc.addView(aboutE)
@@ -255,6 +273,8 @@ class SettingsActivity : BaseActivity() {
         pc.addView(numRow("eat_wait", "Wait before eating after rapid (min)", st.eatWait))
         pc.addView(numRow("target_mg", "Target glucose (mg/dL)", st.targetMg))
         pc.addView(numRow("corr_factor", "Prescribed correction: 1 unit lowers … mg/dL", st.corrFactor))
+        pc.addView(Ui.text(this, "Age, gender, height and weight go to the AI full picture, AI review and AI tips as background, and into the doctor report. " +
+            "The AI never calculates doses and never comments on her weight or body.", 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         pc.addView(Ui.text(this, "Kept as reference in the logbook and daily report, and as background for the AI. " +
             "The app never calculates or suggests a dose.", 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         penStatus = Ui.text(this, "", 12f, Ui.MUTED)
@@ -355,6 +375,31 @@ class SettingsActivity : BaseActivity() {
         genRows = Ui.col(this); wc.addView(genRows)
         wc.addView(Ui.button(this, "⌚ Send a test to the watch") { Watch.test(this); Ui.toast(this, "Test sent — look at the watch") }, Ui.lp(top = Ui.dp(this, 8)))
         root.addView(wc)
+
+        // ---------------------------------------------------------- Huawei watch data
+        root.addView(Ui.section(this, "Huawei watch data (Health Connect)"))
+        val hc = Ui.card(this)
+        hcStatus = Ui.text(this, "", 15f, Ui.GOOD, true)
+        hc.addView(hcStatus)
+        hc.addView(Ui.text(this, "Reads Aycha's watch data from Health Connect every 15 minutes: Huawei Health → Health Sync → Health Connect → Nova Glucose. " +
+            "The data is added to the Activity & sleep page, the AI review and the doctor report.", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) })
+        hcTypes = Ui.col(this); hc.addView(hcTypes)
+        hc.addView(switch("Share with the family", st.hcShare).apply { setOnCheckedChangeListener { _, v -> st.hcShare = v; if (v) Db.get(context).queueAll() } },
+            Ui.lp(top = Ui.dp(this, 8)))
+        hc.addView(switch("Use in AI review, full picture and tips", st.hcAi).apply { setOnCheckedChangeListener { _, v -> st.hcAi = v } })
+        hc.addView(switch("Add to the doctor report", st.hcReport).apply { setOnCheckedChangeListener { _, v -> st.hcReport = v } })
+        val hb = Ui.row(this)
+        hb.addView(Ui.button(this, "🔐 Connect / permissions") { HealthRead.ask(this) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        hb.addView(Ui.button(this, "⟳ Read now", true) { readWatch() }, Ui.lp(0, weight = 1f))
+        hc.addView(hb, Ui.lp(top = Ui.dp(this, 8)))
+        hcMsg = Ui.text(this, "", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
+        hc.addView(hcMsg)
+        hc.addView(Ui.button(this, "⌚ Open Activity & sleep") { startActivity(Intent(this, HealthActivity::class.java)) }, Ui.lp(top = Ui.dp(this, 8)))
+        hc.addView(Ui.text(this, "Needs Huawei Health and Health Sync on the phone paired with the watch (Android 14 or newer), with Health Sync set to " +
+            "write to Health Connect. On the other family phones this section only shows the shared data.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        hc.addView(Ui.smallButton(this, "Health Connect settings") { HealthRead.openSettings(this) }.apply { tag = "free" }, Ui.lp(-2, Ui.dp(this, 36), top = Ui.dp(this, 8)))
+        root.addView(hc)
+        renderHc()
 
         // ---------------------------------------------------------- Family sync
         root.addView(Ui.section(this, "Family sync (all phones)"))
@@ -522,6 +567,7 @@ class SettingsActivity : BaseActivity() {
         st.eatWait = num("eat_wait", 0).coerceIn(0, 90)
         st.targetMg = num("target_mg", 100).coerceIn(70, 180)
         st.aboutHer = aboutE.text.toString()
+        saveBody()
         st.corrFactor = num("corr_factor", 0).coerceIn(0, 400)
         if (::driveAutoSw.isInitialized) { st.driveAuto = driveAutoSw.isChecked; st.driveWifi = driveWifiCb.isChecked; st.drivePhotos = drivePhotoCb.isChecked }
         val wasOn = st.monitorOn
@@ -726,6 +772,7 @@ class SettingsActivity : BaseActivity() {
         super.onResume()
         if (::permStatus.isInitialized) renderPerms()
         if (::soundRows.isInitialized) renderSounds()
+        if (::hcStatus.isInitialized) renderHc()
         if (::allViews.isInitialized) renderLock()
         lockTick.post(watch)
     }
@@ -974,7 +1021,9 @@ class SettingsActivity : BaseActivity() {
             t.startsWith("URGENT") -> if (!st.urgentOn) "Off" else "On · " + listOfNotNull(
                 "urgent low".takeIf { st.urgUrgentLow }, "low".takeIf { st.urgLow }, "high".takeIf { st.urgHigh },
                 "very high".takeIf { st.urgVeryHigh }, "no signal".takeIf { st.urgNoSignal }).joinToString(", ")
+            t.startsWith("HUAWEI") -> hcSummary()
             t.startsWith("PROFILE") -> listOfNotNull("Age ${st.age}", st.gender.ifBlank { null },
+                st.heightCm.takeIf { it > 0 }?.let { "${fmtD(it)} cm" }, st.weightKg.takeIf { it > 0 }?.let { "${fmtD(it)} kg" },
                 st.rapidName.ifBlank { null }, st.longName.ifBlank { null }).joinToString(" · ")
             t.startsWith("CARB") -> "Meals ${st.mealMin}–${st.mealMax} g · snacks ${st.snackMin}–${st.snackMax} g · low ${st.lowTreatG} g"
             t.startsWith("AI") -> st.current().label + " · " + st.model(st.current())
@@ -1233,5 +1282,123 @@ class SettingsActivity : BaseActivity() {
         } catch (_: Exception) {
             startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }
+    }
+
+    // ================================================================ height & weight
+    private fun fmtD(v: Double) = if (v % 1.0 == 0.0) v.toInt().toString() else "%.1f".format(java.util.Locale.US, v)
+
+    private fun decRow(parent: LinearLayout, label: String, v: Double): EditText {
+        val r = Ui.row(this)
+        r.addView(Ui.text(this, label, 14f, Ui.TEXT), Ui.lp(0, weight = 1f))
+        val e = Ui.input(this, "", multi = false).apply {
+            setText(if (v > 0) fmtD(v) else ""); inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            gravity = android.view.Gravity.CENTER
+        }
+        r.addView(e, Ui.lp(Ui.dp(this, 84), -2))
+        r.setPadding(0, Ui.dp(this, 8), 0, 0)
+        parent.addView(r)
+        return e
+    }
+
+    /** A changed height or weight becomes a new dated entry of the growth history (shared with the family). */
+    private fun saveBody() {
+        if (!::heightE.isInitialized) return
+        val h = heightE.text.toString().replace(',', '.').trim().toDoubleOrNull()?.takeIf { it in 40.0..230.0 } ?: 0.0
+        val w = weightE.text.toString().replace(',', '.').trim().toDoubleOrNull()?.takeIf { it in 5.0..250.0 } ?: 0.0
+        if (h == 0.0 && w == 0.0) return
+        val hNew = if (h > 0) h else st.heightCm; val wNew = if (w > 0) w else st.weightKg
+        if (kotlin.math.abs(hNew - st.heightCm) < 0.05 && kotlin.math.abs(wNew - st.weightKg) < 0.05) return
+        Db.get(this).addBody(System.currentTimeMillis(), hNew, wNew, "manual")
+        renderBody()
+    }
+
+    private fun renderBody() {
+        if (!::bodyList.isInitialized) return
+        val f = java.text.SimpleDateFormat("EEE d MMM yyyy", L.loc())
+        bodyInfo.text = if (st.bodyTs > 0) L.s("Last updated {0} · saved with the date each time it changes").replace("{0}", f.format(java.util.Date(st.bodyTs)))
+            else L.s("Enter her height and weight; each change is saved with its date.")
+        bodyList.removeAllViews()
+        val l = Db.get(this).bodies()
+        if (l.isEmpty()) { bodyList.addView(Ui.text(this, "No entries yet.", 12f, Ui.MUTED)); return }
+        val df = java.text.SimpleDateFormat("d MMM yyyy", L.loc())
+        l.take(12).forEach { b ->
+            val r = Ui.row(this).apply { setPadding(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) }
+            r.addView(Ui.text(this, df.format(java.util.Date(b.ts)), 13f, Ui.TEXT), Ui.lp(0, weight = 1.3f))
+            r.addView(Ui.text(this, if (b.height > 0) "${fmtD(b.height)} cm" else "–", 13f, Ui.TEXT), Ui.lp(0, weight = 1f))
+            r.addView(Ui.text(this, if (b.weight > 0) "${fmtD(b.weight)} kg" else "–", 13f, Ui.TEXT), Ui.lp(0, weight = 1f))
+            r.addView(Ui.text(this, if (b.src == "watch") "Health Connect" else b.who.ifBlank { "" }, 11f, Ui.MUTED), Ui.lp(0, weight = 1.2f))
+            r.setOnLongClickListener {
+                Tr.Builder(this).setTitle("Delete this entry?").setMessage(df.format(java.util.Date(b.ts)))
+                    .setPositiveButton("Delete") { _, _ ->
+                        Db.get(this).deleteBody(b.id); heightE.setText(if (st.heightCm > 0) fmtD(st.heightCm) else ""); weightE.setText(if (st.weightKg > 0) fmtD(st.weightKg) else ""); renderBody() }
+                    .setNegativeButton("Cancel", null).show(); true
+            }
+            bodyList.addView(r)
+        }
+        bodyList.addView(Ui.text(this, "Touch and hold an entry to delete it.", 11f, Ui.MUTED))
+    }
+
+    // ================================================================ Huawei watch data
+    private fun hcSummary(): String = when {
+        st.hcOn && HealthRead.granted(this).isNotEmpty() -> "Connected" + if (st.hcLastData > 0) " · last data " +
+            java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(java.util.Date(st.hcLastData)) else ""
+        WatchData.hasAny(this) -> "Shared by the family" + if (st.hcLastData > 0) " · last data " +
+            java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(java.util.Date(st.hcLastData)) else ""
+        else -> "Not connected"
+    }
+
+    private fun renderHc() {
+        val g = HealthRead.granted(this)
+        val f = java.text.SimpleDateFormat("d MMM HH:mm", L.loc())
+        hcStatus.setTextColor(if (g.isNotEmpty() || WatchData.hasAny(this)) Ui.GOOD else Ui.MUTED)
+        hcStatus.text = when {
+            !HealthRead.supported() && WatchData.hasAny(this) -> L.s("Shared by the family") + lastData(f)
+            !HealthRead.supported() -> L.s("This phone can't read the watch (needs Android 14 or newer). It shows the data shared by the family.")
+            g.isEmpty() -> L.s("Not connected — tap Connect on Aycha's phone")
+            else -> L.s("Connected") + lastData(f) + (st.hcSources.takeIf { it.isNotBlank() }?.let { " · " + L.s("from") + " " + it } ?: "")
+        }
+        hcTypes.removeAllViews()
+        val got = st.hcGot.split(',').toSet()
+        listOf("steps" to "Steps", "ex" to "Exercise sessions", "sleep" to "Sleep and stages", "hr" to "Heart rate",
+            "rhr" to "Resting heart rate", "spo2" to "SpO2 (if Health Sync sends it)").forEach { (k, l) ->
+            val r = Ui.row(this).apply { setPadding(0, Ui.dp(context, 5), 0, Ui.dp(context, 5)) }
+            val ok = k in got
+            r.addView(Ui.text(this, if (ok) "✓" else "·", 15f, if (ok) Ui.GOOD else Ui.MUTED, true), Ui.lp(Ui.dp(this, 24), -2))
+            r.addView(Ui.text(this, l, 14f, Ui.TEXT), Ui.lp(0, weight = 1f))
+            r.addView(Ui.text(this, if (ok) "received" else "not yet", 12f, if (ok) Ui.GOOD else Ui.MUTED))
+            hcTypes.addView(r)
+        }
+        val r = Ui.row(this).apply { setPadding(0, Ui.dp(context, 5), 0, Ui.dp(context, 5)); alpha = 0.6f }
+        r.addView(Ui.text(this, "–", 15f, Ui.MUTED, true), Ui.lp(Ui.dp(this, 24), -2))
+        r.addView(Ui.text(this, "Stress", 14f, Ui.TEXT), Ui.lp(0, weight = 1f))
+        r.addView(Ui.text(this, "not in Health Connect", 12f, Ui.MUTED))
+        hcTypes.addView(r)
+        if (st.hcInfo.isNotBlank() && hcMsg.text.isNullOrBlank()) hcMsg.text = st.hcInfo
+    }
+
+    private fun lastData(f: java.text.SimpleDateFormat) = if (st.hcLastData > 0) " · " + L.s("last data") + " " + f.format(java.util.Date(st.hcLastData)) else ""
+
+    private fun readWatch() {
+        if (!HealthRead.supported()) { hcMsg.setTextColor(Ui.WARN); hcMsg.text = L.s("Reading the watch needs Android 14 or newer"); return }
+        if (HealthRead.granted(this).isEmpty()) { HealthRead.ask(this); return }
+        st.hcOn = true
+        hcMsg.setTextColor(Ui.MUTED); hcMsg.text = L.s("Reading Health Connect…")
+        val app = applicationContext
+        Thread {
+            val r = try { HealthRead.sync(app, if (st.hcLastRead == 0L) 30 else 7) } catch (e: Exception) { "⚠ " + (e.message ?: "Failed") }
+            runOnUiThread { hcMsg.setTextColor(if (r.startsWith("✓")) Ui.GOOD else Ui.WARN); hcMsg.text = L.s(r); renderHc(); renderBody(); renderFolds() }
+        }.start()
+    }
+
+    override fun onRequestPermissionsResult(req: Int, perms: Array<out String>, res: IntArray) {
+        super.onRequestPermissionsResult(req, perms, res)
+        if (req != HealthRead.REQ) return
+        if (HealthRead.granted(this).isEmpty()) {
+            hcMsg.setTextColor(Ui.WARN)
+            hcMsg.text = L.s("No permission given. Open Health Connect settings and allow Nova Glucose to read the data.")
+            renderHc(); return
+        }
+        st.hcOn = true
+        readWatch()
     }
 }

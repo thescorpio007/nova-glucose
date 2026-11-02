@@ -176,6 +176,34 @@ jobs:
             adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demotap true; sleep 4; shot 35-$LG-history
           done
           adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --es lang en; sleep 2
+          # build 29: watch data, height & weight, doctor reports, food
+          adb shell pm clear $P; adb shell pm grant $P android.permission.POST_NOTIFICATIONS || true
+          adb shell am start -W -n $P/.MainActivity --ez demowatch true; sleep 6; adb shell input keyevent 4
+          adb shell am start -W -n $P/.HealthActivity; sleep 3; shot 40-activity-day; half; shot 40b-activity-day-2; half; shot 40c-activity-day-3
+          adb shell am start -W -n $P/.HealthActivity --ei days 14; sleep 3; shot 41-activity-14days; half; shot 41b-activity-14days-2; half; shot 41c-activity-14days-3; half; shot 41d-activity-14days-4
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Huawei watch data"; sleep 2; half; shot 42-settings-watch; half; shot 42b-settings-watch-2
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Profile and insulin"; sleep 2; half; shot 43-profile-height-weight; half; shot 43b-profile-2
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.AskActivity; sleep 2; shot 44-ask-food; half; shot 44b-ask-food-2; half; shot 44c-ask-food-3
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.AskActivity --ez fridge true; sleep 3; shot 45-fridge
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.RecipeBookActivity; sleep 2; shot 46-recipe-book
+          tapText "Chakchouka"; sleep 3; shot 47-recipe; half; shot 47b-recipe-2; half; shot 47c-recipe-3
+          adb shell input keyevent 4; adb shell input keyevent 4
+          adb shell am start -W -n $P/.MainActivity; sleep 2; scroll; shot 48-home-buttons; findTap "Share with doctor"; sleep 2; shot 49-report-choice; adb shell input keyevent 4
+          adb logcat -c; adb shell am start -W -n $P/.MainActivity --ez demoreport true; sleep 25
+          adb logcat -d -s NOVA_REPORT:I | tee report.txt
+          adb pull /sdcard/Android/data/$P/files/report-sum.pdf shots/report-summary.pdf || true
+          adb pull /sdcard/Android/data/$P/files/report-key.pdf shots/report-detailed-key-days.pdf || true
+          for LG in fr ar; do
+            adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --es lang $LG; sleep 3
+            adb shell am start -W -n $P/.HealthActivity; sleep 3; shot 50-$LG-activity
+            adb shell am start -W -n $P/.AskActivity; sleep 2; shot 51-$LG-ask-food
+          done
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --es lang en; sleep 2
           sleep 2
           adb logcat -d > logcat.txt
           if grep -q "FATAL EXCEPTION" logcat.txt; then grep -A 25 "FATAL EXCEPTION" logcat.txt | sed 's/^/::error::/'; exit 1; fi
@@ -201,6 +229,7 @@ jobs:
         run: |
           n=$(printf '%02d' "$NOVA_BUILD")
           ls shots/*.png >/dev/null 2>&1 && gh release upload "build-$n" shots/*.png --clobber --repo "$GITHUB_REPOSITORY" || true
+          ls shots/*.pdf >/dev/null 2>&1 && gh release upload "build-$n" shots/*.pdf --clobber --repo "$GITHUB_REPOSITORY" || true
 
       - uses: actions/upload-artifact@v4
         if: always()

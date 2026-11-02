@@ -118,7 +118,45 @@ class Store(c: Context) {
     var settingsOpen: String get() = s("settings_open"); set(v) = put("settings_open", v)
     /** Short line for AI prompts. */
     fun aboutLine(): String = listOfNotNull(
-        "age $age", gender.takeIf { it.isNotBlank() }, aboutHer.takeIf { it.isNotBlank() }).joinToString(", ")
+        "age $age", gender.takeIf { it.isNotBlank() }, bodyLine().takeIf { it.isNotBlank() }, aboutHer.takeIf { it.isNotBlank() }).joinToString(", ")
+
+    // ---------------------------------------------------------------- height & weight (latest of the growth history, cached)
+    val heightCm: Double get() = s("body_h").toDoubleOrNull() ?: 0.0
+    val weightKg: Double get() = s("body_w").toDoubleOrNull() ?: 0.0
+    val bodyTs: Long get() = sp.getLong("body_ts", 0)
+    /** "height 158 cm, weight 46.5 kg (measured 2 Nov 2026)" or "". */
+    fun bodyLine(): String {
+        if (heightCm <= 0 && weightKg <= 0) return ""
+        val parts = listOfNotNull(if (heightCm > 0) "height ${num(heightCm)} cm" else null, if (weightKg > 0) "weight ${num(weightKg)} kg" else null)
+        return parts.joinToString(", ") + if (bodyTs > 0) " (measured ${java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.US).format(java.util.Date(bodyTs))})" else ""
+    }
+    private fun num(v: Double) = if (v % 1.0 == 0.0) v.toInt().toString() else "%.1f".format(java.util.Locale.US, v)
+    /** Latest height and latest weight (each from the newest entry that has it). */
+    fun bodyChanged(db: Db) {
+        val l = db.bodies()
+        val h = l.firstOrNull { it.height > 0 }; val w = l.firstOrNull { it.weight > 0 }
+        sp.edit().putString("body_h", (h?.height ?: 0.0).toString()).putString("body_w", (w?.weight ?: 0.0).toString())
+            .putLong("body_ts", maxOf(h?.ts ?: 0L, w?.ts ?: 0L)).apply()
+    }
+
+    // ---------------------------------------------------------------- Huawei watch data through Health Connect
+    /** Health Connect permissions were given on this phone (it reads the watch). */
+    var hcOn: Boolean get() = b("hc_on", false); set(v) = putb("hc_on", v)
+    var hcLastRead: Long get() = sp.getLong("last_hc_read", 0); set(v) = sp.edit().putLong("last_hc_read", v).apply()
+    /** Newest watch sample seen (on any phone of the family). */
+    var hcLastData: Long get() = sp.getLong("last_hc_data", 0); set(v) = sp.edit().putLong("last_hc_data", v).apply()
+    /** Data types received, e.g. "steps,ex,sleep,hr,rhr,spo2". */
+    var hcGot: String get() = s("last_hc_got"); set(v) = put("last_hc_got", v)
+    var hcSources: String get() = s("last_hc_src"); set(v) = put("last_hc_src", v)
+    var hcInfo: String get() = s("last_hc_info"); set(v) = put("last_hc_info", v)
+    var hcShare: Boolean get() = b("hc_share", true); set(v) = putb("hc_share", v)
+    var hcAi: Boolean get() = b("hc_ai", true); set(v) = putb("hc_ai", v)
+    var hcReport: Boolean get() = b("hc_report", true); set(v) = putb("hc_report", v)
+    var hcBody: Boolean get() = b("hc_body", true); set(v) = putb("hc_body", v)
+
+    // ---------------------------------------------------------------- food ideas (Ask AI) options on this phone
+    var foodTime: Int get() = i("food_time", 0); set(v) = puti("food_time", v)
+    var foodPeople: Int get() = i("food_people", 4); set(v) = puti("food_people", v)
     var longName: String get() = s("long_name"); set(v) = put("long_name", v.trim())
     /** Numbers only (an autofilled email or text is ignored). */
     var longDose: String get() = s("long_dose").takeIf { it.replace(',', '.').toDoubleOrNull() != null } ?: ""
@@ -257,6 +295,6 @@ class Store(c: Context) {
         const val PREFS = "nova_glucose"
         /** Never copied as plain settings (secrets, per-phone state). */
         fun privateKey(k: String) = k in setOf("pw", "token", "token_exp", "account_id", "backup_pw", "folder_uri", "resume_asked", "folder_layout") ||
-            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_") || k.startsWith("sync_")
+            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_") || k.startsWith("sync_") || k == "hc_on" || k.startsWith("body_")
     }
 }
