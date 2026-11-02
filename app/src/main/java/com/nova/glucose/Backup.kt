@@ -332,18 +332,18 @@ object Backup {
             }
             var nw = 0
             d.optJSONArray("watch")?.let { a -> for (i in 0 until a.length()) a.getJSONObject(i).let { o ->
-                if (db.putWatch(o.getString("day"), o.optString("data"), o.optLong("upd"), share = false)) nw++ } } }
+                if (db.putWatch(o.getString("day"), o.optString("data"), o.optLong("upd"), share = false)) nw++ } }
             var nb = 0
             d.optJSONArray("body")?.let { a -> for (i in 0 until a.length()) a.getJSONObject(i).let { o ->
                 val g = o.optString("gid")
                 if ((g.isNotBlank() && db.byGid("body", g) != null) || db.findBody(o.getLong("ts")) != null) return@let
                 db.addBody(o.getLong("ts"), o.optDouble("h", 0.0), o.optDouble("w", 0.0), o.optString("src"), g.ifBlank { null },
-                    o.optLong("upd").takeIf { it > 0 }, who = o.optString("who")); nb++ } } }
+                    o.optLong("upd").takeIf { it > 0 }, who = o.optString("who")); nb++ } }
             var nr = 0
             d.optJSONArray("recipes")?.let { a -> for (i in 0 until a.length()) a.getJSONObject(i).let { o ->
                 if (db.findRecipe(o.optString("title")) != null) return@let
                 db.addRecipe(Db.Recipe(0, o.optLong("ts"), o.optString("title"), o.optString("cat"), o.optString("cuisine"), o.optInt("carbs"),
-                    o.optInt("minutes"), o.optInt("serves"), o.optString("descr"), o.optString("body"))); nr++ } } }
+                    o.optInt("minutes"), o.optInt("serves"), o.optString("descr"), o.optString("body"))); nr++ } }
             dataNote = " · ${ra.length()} readings · $nm meals · $nd doses" + (if (ni > 0) " · $ni incidents" else "") +
                 (if (nw > 0) " · $nw watch days" else "") + (if (nb > 0) " · $nb height/weight" else "") + (if (nr > 0) " · $nr recipes" else "")
         }
