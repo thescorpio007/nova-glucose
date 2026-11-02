@@ -99,7 +99,7 @@ class HealthActivity : BaseActivity() {
             L.s("Sleep: dark = deep · light · pale = REM · orange = awake") + "  · M = " + L.s("meal") + " · I = " + L.s("rapid insulin"), 11f, Ui.MUTED)
             .apply { setPadding(Ui.dp(context, 8), Ui.dp(context, 4), Ui.dp(context, 8), 0) })
         body.addView(cc, Ui.lp(top = Ui.dp(this, 10)))
-        chart.ex.firstOrNull()?.let { e -> chart.showAt(minOf(e.b + 20 * 60_000L, end)) }
+        chart.ex.firstOrNull()?.let { e -> chart.showAt(minOf(e.b + 20 * 60_000L, end, System.currentTimeMillis())) }
 
         val s = WatchData.sum(this, day, st)
         val card = Ui.card(this)

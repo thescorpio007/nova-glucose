@@ -147,11 +147,24 @@ class DayChart(c: Context) : View(c) {
         }
     }
 
+    private var downX = 0f; private var downY = 0f; private var dragging = false
+    private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop
+
+    /** Sideways drag or a tap moves the crosshair; an up/down swipe still scrolls the page. */
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        when (e.action) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> { parent?.requestDisallowInterceptTouchEvent(true); touchX = e.x.coerceIn(left, right); invalidate() }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { parent?.requestDisallowInterceptTouchEvent(false) }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; dragging = false }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = kotlin.math.abs(e.x - downX); val dy = kotlin.math.abs(e.y - downY)
+                if (!dragging && dx > slop && dx > dy) { dragging = true; parent?.requestDisallowInterceptTouchEvent(true) }
+                if (dragging) { touchX = e.x.coerceIn(left, right); invalidate() }
+            }
+            MotionEvent.ACTION_UP -> {
+                if (!dragging && kotlin.math.abs(e.x - downX) < slop && kotlin.math.abs(e.y - downY) < slop) { touchX = e.x.coerceIn(left, right); invalidate() }
+                dragging = false; parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            MotionEvent.ACTION_CANCEL -> { dragging = false; parent?.requestDisallowInterceptTouchEvent(false) }
         }
         return true
     }

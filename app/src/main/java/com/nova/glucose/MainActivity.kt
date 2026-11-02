@@ -81,6 +81,13 @@ class MainActivity : BaseActivity() {
                 for (m in listOf("sum", "key")) try {
                     val f = DoctorReport.make(app, 14, m)
                     if (out != null) f.copyTo(java.io.File(out, "report-$m.pdf"), overwrite = true)
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {         // readable by the test in Download/
+                        val v = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "nova-report-$m.pdf")
+                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf") }
+                        contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v)?.let { u ->
+                            contentResolver.openOutputStream(u)?.use { o -> f.inputStream().use { it.copyTo(o) } } }
+                    }
                     android.util.Log.i("NOVA_REPORT", "$m OK ${f.length()} bytes")
                 } catch (e: Exception) { android.util.Log.i("NOVA_REPORT", "$m FAIL ${e.message}") }
             }.start()
@@ -88,6 +95,7 @@ class MainActivity : BaseActivity() {
         build()
         if (intent?.getBooleanExtra("demoinc", false) == true)
             Db.get(this).incidents().firstOrNull()?.let { IncidentActivity.open(this, it.id) }
+        if (intent?.getBooleanExtra("demopick", false) == true) window.decorView.postDelayed({ DoctorReport.pick(this) }, 1200)
         if (intent?.getBooleanExtra("demotap", false) == true)
             Db.get(this).meals(1).firstOrNull()?.let { m -> window.decorView.postDelayed({ MarkHistory.show(this, m.ts) }, 1500) }
         askPermissions()
