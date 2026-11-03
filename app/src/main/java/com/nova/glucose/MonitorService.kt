@@ -207,10 +207,10 @@ class MonitorService : Service() {
         val body = when (kind) {
             "urgent_low", "low" -> "Have ${st.lowTreatG} g fast sugar now: $tip. Recheck in 15 min." +
                 if (kind == "urgent_low") " Tell an adult." else ""
-            "high" -> "Drink water and choose low-carb food (e.g. $tip). Follow her high plan."
+            "high" -> "Drink water and choose low-carb food (e.g. $tip). Follow the high plan."
             "very_high" -> "Drink water, check ketones as advised. Low-carb food: $tip."
             else -> "Last reading ${r!!.mg} ${Libre.trendArrow(r.trend)} at ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(r.ts))}. " +
-                "Check her phone is online, the Libre app is open and the sensor is working."
+                "Check the patient's phone is online, the Libre app is open and the sensor is working."
         }
         val title = when (kind) {
             "stale" -> "No glucose signal for ${(now - r!!.ts) / 60_000} min"

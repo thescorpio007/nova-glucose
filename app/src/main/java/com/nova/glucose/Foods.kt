@@ -21,7 +21,7 @@ data class Advice(
  * Standard guidance only — every number is editable in Settings once her care team gives her own plan.
  */
 object Foods {
-    const val CARE_NOTE = "Food ideas only, standard guidance — check with her diabetes care team. This app never suggests insulin doses."
+    const val CARE_NOTE = "Food ideas only, standard guidance — check with the diabetes care team. This app never suggests insulin doses."
 
     fun level(st: Store, r: Reading?, now: Long = System.currentTimeMillis()): Level {
         if (r == null) return Level.NO_DATA
@@ -48,10 +48,10 @@ object Foods {
         val g = st.lowTreatG
         val seed = System.currentTimeMillis() / (60 * 60_000)   // choices change every hour
         return when (lv) {
-            Level.NO_DATA -> Advice(lv, "No reading yet", "Connect LibreLinkUp in Settings to see her glucose here.",
+            Level.NO_DATA -> Advice(lv, "No reading yet", "Connect LibreLinkUp in Settings to see the glucose here.",
                 Ui.MUTED, emptyList(), "", emptyList())
             Level.STALE -> Advice(lv, "Reading is old",
-                "No new reading for over 15 minutes. Check that her phone is online, the Libre app is open and the sensor is working.",
+                "No new reading for over 15 minutes. Check that the patient's phone is online, the Libre app is open and the sensor is working.",
                 Ui.WARN, listOf("Check with a finger-prick test before treating or eating based on an old reading."), "", emptyList())
             Level.URGENT_LOW -> Advice(lv, "Urgent low — treat now",
                 "Glucose is below ${st.urgentLow} mg/dL.", Ui.BAD,
@@ -59,7 +59,7 @@ object Foods {
                     "Have $g g of fast sugar now (choose one below).",
                     "Tell an adult right away. Don't exercise or drive.",
                     "Recheck in 15 minutes. If still below ${st.low}, repeat.",
-                    "If she can't swallow safely or is not responding: use glucagon if prescribed and call 998 (UAE ambulance)."
+                    "If the patient can't swallow safely or is not responding: use glucagon if prescribed and call 998 (UAE ambulance)."
                 ), "Fast sugar ($g g)", fast(g))
             Level.LOW -> Advice(lv, "Low — have fast sugar",
                 "Glucose is below ${st.low} mg/dL.", Ui.BAD,
@@ -71,7 +71,7 @@ object Foods {
                 ), "Fast sugar ($g g)", fast(g))
             Level.DROPPING -> Advice(lv, "Dropping — watch it",
                 "${r!!.mg} mg/dL and ${Libre.trendText(r.trend)}.", Ui.WARN,
-                listOf("A small snack may help prevent a low — follow her care plan.",
+                listOf("A small snack may help prevent a low — follow the care plan.",
                     "Check again in 15–20 minutes."),
                 "Small snack (~${st.snackMin} g)", pick(snacks, 4, seed))
             Level.IN_RANGE -> {
@@ -85,12 +85,12 @@ object Foods {
             Level.HIGH -> Advice(lv, "High",
                 "${r!!.mg} mg/dL, ${Libre.trendText(r.trend)}.", Ui.WARN,
                 listOf("Drink water.", "Choose low-carb food until it comes down.",
-                    "Follow her care team's plan for highs."),
+                    "Follow the care team's plan for highs."),
                 "Low-carb choices", pick(lowCarb, 4, seed))
             Level.VERY_HIGH -> Advice(lv, "Very high",
                 "${r!!.mg} mg/dL, above ${st.veryHigh}.", Ui.BAD,
-                listOf("Drink water.", "Check ketones as her care team advised.",
-                    "Ketones moderate/large, vomiting or tummy pain → call her diabetes team or 998 straight away.",
+                listOf("Drink water.", "Check ketones as the care team advised.",
+                    "Ketones moderate/large, vomiting or tummy pain → call the diabetes team or 998 straight away.",
                     "Choose low-carb food until it comes down."),
                 "Low-carb choices", pick(lowCarb, 4, seed))
         }
@@ -166,10 +166,10 @@ object Foods {
         "Photo estimates are approximate — they can be noticeably off with mixed dishes, sauces, hidden sugar and portion size.",
         "Treat the number as a starting point. Use the food label or a kitchen scale whenever you can.",
         "Take 1–2 photos: one from the top and one from the side, or a short video around the plate.",
-        "Use a normal-size plate and put a fork or her hand next to it for scale.",
+        "Use a normal-size plate and put a fork or a hand next to it for scale.",
         "Add a short note like \"large portion\" or \"with honey\" — hidden sugar and sauces matter.",
         "Tap any item to fix its portion or carbs, and add anything the photo can't show (juice, sauce).",
-        "The app shows carbs only, not an insulin dose — convert carbs to units with her doctor's carb ratio, as you do now.",
-        "For the first few weeks, ask her diabetes team to check the estimates against your usual counting."
+        "The app shows carbs only, not an insulin dose — convert carbs to units with the doctor's carb ratio, as you do now.",
+        "For the first few weeks, ask the diabetes team to check the estimates against your usual counting."
     )
 }

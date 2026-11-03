@@ -20,7 +20,7 @@ class AiReviewActivity : BaseActivity() {
     private var busy = false
 
     private val system = """
-You review the glucose data of a child with type 1 diabetes for her family, to prepare the next talk with her diabetes care team.
+You review the glucose data of a person with type 1 diabetes (a child or teenager — see the profile), to prepare the next talk with their diabetes care team.
 Write in plain text for a phone screen, with exactly these two headings:
 What the AI noticed
 (4 to 8 short bullets "• …": when highs and lows happen (time of day, after which meals or foods), nights, sick days or other incidents,
@@ -48,7 +48,7 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         head.addView(lb, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
         head.addView(Ui.smallButton(this, "Close") { finish() })
         root.addView(head)
-        root.addView(Ui.text(this, "AI: ${st.current().label} · " + L.s("looks at her profile ({0}), readings, meals, insulin times, incidents and watch data (activity, sleep, heart rate)")
+        root.addView(Ui.text(this, "AI: ${st.current().label} · " + L.s("looks at the patient's profile ({0}), readings, meals, insulin times, incidents and watch data (activity, sleep, heart rate)")
             .replace("{0}", listOfNotNull("age ${st.age}", st.heightCm.takeIf { it > 0 }?.let { "${it.fmt()} cm" }, st.weightKg.takeIf { it > 0 }?.let { "${it.fmt()} kg" }).joinToString(", ")), 13f, Ui.MUTED))
         chips = Ui.row(this)
         root.addView(chips, Ui.lp(top = Ui.dp(this, 10)))
@@ -62,7 +62,7 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         actions.addView(Ui.button(this, "📤 Share") { share() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
         actions.addView(Ui.button(this, "📄 Doctor report") { DoctorReport.pick(this) }, Ui.lp(0, weight = 1f))
         card.addView(actions, Ui.lp(top = Ui.dp(this, 12)))
-        card.addView(Ui.text(this, "AI review, not medical advice. It never suggests insulin doses — discuss changes with her diabetes care team. " +
+        card.addView(Ui.text(this, "AI review, not medical advice. It never suggests insulin doses — discuss changes with the diabetes care team. " +
             "The last review is added to the doctor report.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
         root.addView(card, Ui.lp(top = Ui.dp(this, 10)))
         root.addView(Ui.signature(this))
@@ -98,7 +98,7 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too li
         val app = applicationContext; val d = days; val lg = revLang()
         Thread {
             try {
-                val a = Providers.ask(st, p, system + (if (lg != "en") "\nWrite the whole review in ${L.name(lg)}, including the two headings." else ""), AiData.period(app, d)) { s -> runOnUiThread { status.text = s } }
+                val a = Providers.ask(st, p, system + "\n" + AiData.audience(st) + (if (lg != "en") "\nWrite the whole review in ${L.name(lg)}, including the two headings." else ""), AiData.period(app, d)) { s -> runOnUiThread { status.text = s } }
                 val txt = a.replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").replace(Regex("(?m)^#{1,6}\\s*"), "").replace(Regex("(?m)^\\s*[*-]\\s+"), "• ").trim()
                 st.aiReview = txt; st.aiReviewTs = System.currentTimeMillis(); st.aiReviewDays = d; st.aiReviewDoneLang = lg
                 runOnUiThread { status.setTextColor(Ui.MUTED); showSaved() }

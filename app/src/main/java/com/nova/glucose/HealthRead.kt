@@ -52,7 +52,7 @@ object HealthRead {
     /** Read now if due (every 15 minutes) — from the monitor and when the app opens. */
     fun maybe(c: Context, force: Boolean = false) {
         val st = Store(c)
-        if (!supported() || !st.hcOn || granted(c).isEmpty()) return
+        if (!supported() || st.isFamily || !st.hcOn || granted(c).isEmpty()) return
         if (!force && System.currentTimeMillis() - st.hcLastRead < 15 * 60_000L) return
         val app = c.applicationContext
         Thread { try { sync(app, if (st.hcLastRead == 0L) 30 else 2) } catch (_: Exception) { } }.start()

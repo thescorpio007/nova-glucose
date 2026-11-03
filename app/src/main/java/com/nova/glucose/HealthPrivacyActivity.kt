@@ -15,7 +15,7 @@ class HealthPrivacyActivity : BaseActivity() {
         val c = Ui.card(this)
         listOf(
             "Nova Glucose reads (never writes) steps, exercise sessions, sleep, heart rate, resting heart rate, SpO2, height and weight from Health Connect.",
-            "It uses them only to show them next to her glucose (Activity & sleep page), for the AI review and tips, and in the doctor report.",
+            "It uses them only to show them next to the glucose (Activity & sleep page), for the AI review and tips, and in the doctor report.",
             "The data stays on the phone, in the encrypted backup and — if family sync is on — end-to-end encrypted on the family's phones. It is never sold or shared with anyone else.",
             "The AI provider you chose in Settings receives a short summary when you ask for a review or a tip.",
             "You can stop it at any time in Health Connect or in Settings → Huawei watch data."

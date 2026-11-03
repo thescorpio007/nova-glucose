@@ -42,7 +42,7 @@ class CompareActivity : BaseActivity() {
         head.addView(Ui.title(this, "Compare models"), Ui.lp(0, weight = 1f))
         head.addView(Ui.smallButton(this, "Close") { finish() })
         root.addView(head)
-        root.addView(Ui.text(this, "Each model gets the same test: a fixed meal (known ≈ 93 g carbs) and, if saved, her last meal photo " +
+        root.addView(Ui.text(this, "Each model gets the same test: a fixed meal (known ≈ 93 g carbs) and, if saved, the last meal photo " +
             "scored against your count. Score 10 = exact. ★ = best balance of accuracy and speed. Tap a model to use it.", 13f, Ui.MUTED))
         val (csv, row) = Ui.chipRow(this)
         chips = row

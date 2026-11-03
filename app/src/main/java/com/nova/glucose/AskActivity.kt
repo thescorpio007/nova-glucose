@@ -46,7 +46,7 @@ class AskActivity : BaseActivity() {
     private var captureFile: File? = null
 
     private val groups = listOf(
-        "Now" to listOf("What to eat now" to "What should she eat now?", "Treat a low" to "Her glucose is low: what to take now, and what after the recheck?",
+        "Now" to listOf("What to eat now" to "What should the patient eat now?", "Treat a low" to "The glucose is low: what to take now, and what after the recheck?",
             "Before bed" to "A good snack before bed for the night"),
         "Meals" to listOf("Breakfast" to "Breakfast ideas", "Lunch" to "Lunch ideas", "Dinner" to "Dinner ideas",
             "Plan today" to "Plan today's meals and snacks", "Plan the week" to "Plan the week's dinners (7 days)"),
@@ -125,7 +125,7 @@ class AskActivity : BaseActivity() {
         pr.addView(peopleTxt, Ui.lp(Ui.dp(this, 40), -2))
         pr.addView(Ui.smallButton(this, "+") { st.foodPeople = (st.foodPeople + 1).coerceAtMost(12); renderOptions() })
         oc.addView(pr)
-        oc.addView(Ui.text(this, L.s("Carbs per portion: meals {0}–{1} g · snacks {2}–{3} g (her plan)").replace("{0}", "${st.mealMin}").replace("{1}", "${st.mealMax}")
+        oc.addView(Ui.text(this, L.s("Carbs per portion: meals {0}–{1} g · snacks {2}–{3} g (the patient's plan)").replace("{0}", "${st.mealMin}").replace("{1}", "${st.mealMax}")
             .replace("{2}", "${st.snackMin}").replace("{3}", "${st.snackMax}"), 12.5f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
         if (st.foodNotes.isNotBlank()) oc.addView(Ui.text(this, L.s("Food notes (always respected): {0}").replace("{0}", st.foodNotes), 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
         root.addView(oc, Ui.lp(top = Ui.dp(this, 12)))
@@ -205,7 +205,7 @@ class AskActivity : BaseActivity() {
         val opts = buildString {
             append("Options: cuisine ${if (cz == "Any") "any (mix Tunisian, Mediterranean and international)" else cz}")
             if (st.foodTime > 0) append(", ready in ${st.foodTime} minutes or less")
-            append(", cooking for ${st.foodPeople} people (carbs always for her portion).\n")
+            append(", cooking for ${st.foodPeople} people (carbs always for the patient's portion).\n")
         }
         val history = turns.dropLast(1).takeLast(8).joinToString("\n") { t -> (if (t.you) "Family: " else "AI: ") + t.text.take(1500) }
         Thread {

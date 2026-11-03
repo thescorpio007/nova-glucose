@@ -12,10 +12,17 @@ object AiData {
     private val dhm = SimpleDateFormat("EEE d MMM HH:mm", Locale.US)
 
     const val NO_DOSE = "NEVER suggest insulin doses or units, and never say to inject more or less or to change the ratio or correction: " +
-        "for any dose question, say to follow her diabetes care team. Food, timing, patterns and questions for the doctor only. " +
-        "Height and weight are background only: never comment on her weight, body shape or BMI, and never suggest losing or gaining weight."
+        "for any dose question, say to follow the diabetes care team. Food, timing, patterns and questions for the doctor only. " +
+        "Height and weight are background only: never comment on weight, body shape or BMI, and never suggest losing or gaining weight."
 
-    fun limits(st: Store) = "Her limits (mg/dL): urgent low below ${st.urgentLow}, low below ${st.low}, target ${st.low}–${st.high}, " +
+    /** Who reads the answer: the patient on their own phone, or the family. */
+    fun audience(st: Store) = if (st.isPatient)
+        "You are talking directly to the person with diabetes, on their own phone (see the profile for age and gender). Address them as \"you\", " +
+            "in simple, friendly and encouraging words suited to their age."
+    else "You are talking to a parent or caregiver, on the family's phone, about the person with diabetes (\"the patient\"; see the profile for age " +
+        "and gender, and use matching pronouns)."
+
+    fun limits(st: Store) = "The patient's limits (mg/dL): urgent low below ${st.urgentLow}, low below ${st.low}, target ${st.low}–${st.high}, " +
         "high above ${st.high}, very high above ${st.veryHigh}."
 
     private fun units(u: Double) = if (u % 1.0 == 0.0) u.toInt().toString() else u.toString()
@@ -61,7 +68,7 @@ object AiData {
             val doses = db.doses(minOf(a, now - hours * 3600_000L)).sortedBy { it.ts }
             if (doses.isNotEmpty()) append("Insulin given (as entered by the family; for timing only — never comment on doses): " + doses.joinToString("; ") {
                 "${hm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long-acting"}" } + "\n")
-            if (st.eatAt > now) append("An eat timer is running: she should start eating at ${hm.format(Date(st.eatAt))}.\n")
+            if (st.eatAt > now) append("An eat timer is running: the patient should start eating at ${hm.format(Date(st.eatAt))}.\n")
             append(Incidents.context(c))
             append(WatchData.aiNow(c))
         }
@@ -78,7 +85,7 @@ object AiData {
         return buildString {
             append("Period: last $days day(s), ${df.format(Date(start))} to today ${hm.format(Date(now))}.\n")
             append(limits(st)).append("\n")
-            append("About her: ${st.aboutLine()}.\n")
+            append("About the patient: ${st.aboutLine()}.\n")
             if (s != null) append("Whole period: in range ${s.inRange}%, below ${st.low}: ${s.below}%, above ${st.high}: ${s.above}%, average ${s.avg}, " +
                 "lowest ${s.min}, highest ${s.max}, low episodes ${s.lowEpisodes}.\n")
             append("Hourly glucose per day (hour:average[min-max]):\n")
@@ -109,10 +116,10 @@ object AiData {
 
     // ---------------------------------------------------------------- AI tip after an alert
     private val TIP_SYSTEM = """
-You add ONE short food tip (2 sentences at most, under 40 words) to a glucose alert for a child with type 1 diabetes, for the family's phone.
+You add ONE short food tip (2 sentences at most, under 40 words) to a glucose alert for a person with type 1 diabetes (a child or teenager — see the profile).
 Use the readings, meals and incidents given. Practical food or drink only, from Tunisian, Gulf or international food.
 $NO_DOSE
-If glucose is low: the fast-sugar treatment from her plan comes first (already shown); you may add what to eat after the recheck.
+If glucose is low: the fast-sugar treatment from the plan comes first (already shown); you may add what to eat after the recheck.
 Plain text, no title, no emoji at the start.
 """.trimIndent()
 
@@ -123,7 +130,7 @@ Plain text, no title, no emoji at the start.
         if (st.key(p).isBlank()) return null
         val what = when (kind) { "urgent_low" -> "URGENT LOW"; "low" -> "LOW"; "high" -> "HIGH"; "very_high" -> "VERY HIGH"; else -> return null }
         return try {
-            Providers.ask(st, p, TIP_SYSTEM + "\n" + L.aiLine(), "Alert: $what.\n" + picture(c, 6) + "Food notes: ${st.foodNotes}\nAbout her: ${st.aboutLine()}")
+            Providers.ask(st, p, TIP_SYSTEM + "\n" + audience(st) + "\n" + L.aiLine(), "Alert: $what.\n" + picture(c, 6) + "Food notes: ${st.foodNotes}\nAbout the patient: ${st.aboutLine()}")
                 .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1").trim().take(300)
         } catch (_: Exception) { null }
     }

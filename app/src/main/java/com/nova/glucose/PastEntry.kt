@@ -58,7 +58,7 @@ object PastEntry {
         root.addView(carbs)
         root.addView(Ui.text(a, "Note (optional)", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 4)) })
         root.addView(note)
-        root.addView(Ui.text(a, "Her glucose at that time is filled in from the readings.", 12f, Ui.MUTED).apply {
+        root.addView(Ui.text(a, "The glucose at that time is filled in from the readings.", 12f, Ui.MUTED).apply {
             setPadding(0, Ui.dp(a, 10), 0, 0) })
 
         fun renderChips() {

@@ -139,6 +139,13 @@ class Store(c: Context) {
             .putLong("body_ts", maxOf(h?.ts ?: 0L, w?.ts ?: 0L)).apply()
     }
 
+    // ---------------------------------------------------------------- who uses this phone (this phone only)
+    /** "patient", "family" or "" (not chosen yet). */
+    var role: String get() = s("phone_role"); set(v) = put("phone_role", v)
+    val isPatient get() = role == "patient"
+    val isFamily get() = role == "family"
+    fun roleName(r: String = role) = when (r) { "patient" -> "Patient's phone"; "family" -> "Family phone"; else -> "Not chosen yet" }
+
     // ---------------------------------------------------------------- Huawei watch data through Health Connect
     /** Health Connect permissions were given on this phone (it reads the watch). */
     var hcOn: Boolean get() = b("hc_on", false); set(v) = putb("hc_on", v)
@@ -295,6 +302,6 @@ class Store(c: Context) {
         const val PREFS = "nova_glucose"
         /** Never copied as plain settings (secrets, per-phone state). */
         fun privateKey(k: String) = k in setOf("pw", "token", "token_exp", "account_id", "backup_pw", "folder_uri", "resume_asked", "folder_layout") ||
-            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_") || k.startsWith("sync_") || k == "hc_on" || k.startsWith("body_")
+            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_") || k.startsWith("sync_") || k == "hc_on" || k == "phone_role" || k.startsWith("body_")
     }
 }

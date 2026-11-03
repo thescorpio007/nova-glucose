@@ -270,7 +270,7 @@ If the photo shows no food, return an empty items list and explain in notes.
             append("Estimate the carbohydrates in this meal (${images.size} image(s)).")
             if (note.text.isNotBlank()) append("\nNote from the family: ${note.text}")
             if (st.foodNotes.isNotBlank()) append("\nFamily food notes: ${st.foodNotes}")
-            append("\nAbout her: ${st.aboutLine()}")
+            append("\nAbout the patient: ${st.aboutLine()}")
             append(Training.context(this@CarbActivity))
         }
         Thread {
@@ -361,7 +361,7 @@ If the photo shows no food, return an empty items list and explain in notes.
 
         if (aiNotes.isNotBlank()) result.addView(Ui.text(this, "AI note: $aiNotes", 13f, Ui.TEXT).apply {
             setPadding(0, Ui.dp(context, 10), 0, 0) })
-        result.addView(Ui.text(this, "Approximate — carbs only, not an insulin dose. Use her doctor's carb ratio; check labels or weigh when you can.",
+        result.addView(Ui.text(this, "Approximate — carbs only, not an insulin dose. Use the doctor's carb ratio; check labels or weigh when you can.",
             12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         result.addView(Ui.button(this, "💾 Save to logbook", true) { saveMeal() }, Ui.lp(top = Ui.dp(this, 10)))
     }

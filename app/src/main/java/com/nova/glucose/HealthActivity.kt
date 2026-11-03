@@ -11,7 +11,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** ⌚ Activity & sleep: her watch data next to her glucose — one day, or links over 7 / 14 days. */
+/** ⌚ Activity & sleep: her watch data next to the glucose — one day, or links over 7 / 14 days. */
 class HealthActivity : BaseActivity() {
     private lateinit var st: Store
     private lateinit var body: LinearLayout
@@ -59,7 +59,7 @@ class HealthActivity : BaseActivity() {
         val f = SimpleDateFormat("HH:mm", L.loc())
         val fd = SimpleDateFormat("d MMM HH:mm", L.loc())
         sub.text = when {
-            !WatchData.hasAny(this) -> L.s("No watch data yet. On Aycha's phone: Settings → Huawei watch data → Connect.")
+            !WatchData.hasAny(this) -> L.s("No watch data yet. On the patient's phone: Settings → Huawei watch data → Connect.")
             st.hcLastData > 0 -> L.s("Huawei watch · via Health Connect · last data {0}").replace("{0}",
                 if (System.currentTimeMillis() - st.hcLastData < 20 * 3600_000L) f.format(Date(st.hcLastData)) else fd.format(Date(st.hcLastData)))
             else -> L.s("Huawei watch · via Health Connect")
@@ -126,7 +126,7 @@ class HealthActivity : BaseActivity() {
     private fun periodView() {
         val ds = WatchData.period(this, days)
         val k = WatchData.compare(this, ds)
-        body.addView(Ui.text(this, L.s("Links between the watch and her glucose · last {0} days").replace("{0}", "$days"), 13f, Ui.MUTED)
+        body.addView(Ui.text(this, L.s("Links between the watch and the glucose · last {0} days").replace("{0}", "$days"), 13f, Ui.MUTED)
             .apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
         if (ds.none { it.hasWatch }) {
             body.addView(Ui.card(this).apply { addView(Ui.text(context, "No watch data in this period yet.", 14f, Ui.MUTED)) }, Ui.lp(top = Ui.dp(this, 10)))
@@ -198,7 +198,7 @@ class HealthActivity : BaseActivity() {
         }
         c5.addView(Ui.text(this, "Tap a day to open it.", 11f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
         body.addView(c5, Ui.lp(top = Ui.dp(this, 10)))
-        body.addView(Ui.text(this, "These are links seen in the data, not causes. Discuss any change with her diabetes care team.", 12f, Ui.MUTED)
+        body.addView(Ui.text(this, "These are links seen in the data, not causes. Discuss any change with the diabetes care team.", 12f, Ui.MUTED)
             .apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
     }
 

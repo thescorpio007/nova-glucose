@@ -113,7 +113,7 @@ class RecipeActivity : BaseActivity() {
         val app = applicationContext; val n = people
         Thread {
             try {
-                val user = FoodAi.context(app) + "Cuisine: ${if (cuisine == "Any") "any" else cuisine}. Cooking for $n people (carbs for her portion).\n" +
+                val user = FoodAi.context(app) + "Cuisine: ${if (cuisine == "Any") "any" else cuisine}. Cooking for $n people (carbs for the patient's portion).\n" +
                     "Dish: ${idea.name}" + (if (idea.descr.isNotBlank()) " — ${idea.descr}" else "") + (if (idea.carbs > 0) " (about ${idea.carbs} g carbs for her portion)" else "")
                 val raw = Providers.ask(st, p, FoodAi.recipeSystem(app), user) { s -> runOnUiThread { status.text = L.s(s) } }
                 val r = FoodAi.parseRecipe(raw, idea.name, n)
@@ -140,7 +140,7 @@ class RecipeActivity : BaseActivity() {
             if (n.isNotBlank()) b.addView(Ui.text(this, n, 11.5f, Ui.MUTED))
             tiles.addView(b, Ui.lp(0, -1, weight = 1f, end = if (last) 0 else Ui.dp(this, 8)))
         }
-        tile("Carbs / portion", if (r.carbs > 0) "≈ ${r.carbs} g" else "–", "her portion", Ui.ACCENT)
+        tile("Carbs / portion", if (r.carbs > 0) "≈ ${r.carbs} g" else "–", "patient's portion", Ui.ACCENT)
         tile("Time", if (r.minutes > 0) "${r.minutes} min" else "–", "")
         tile("Serves", "${r.serves}", "people", last = true)
         body.addView(tiles, Ui.lp(top = Ui.dp(this, 10)))
@@ -176,8 +176,8 @@ class RecipeActivity : BaseActivity() {
         val r = recipe
         Thread {
             try {
-                val sys = "You answer a family's question about a home recipe for their daughter with type 1 diabetes. Short, practical, plain text, " +
-                    "carb numbers for her portion as estimates. ${AiData.NO_DOSE}\n" + L.aiLine()
+                val sys = "You answer a question about a home recipe for a person with type 1 diabetes. " + AiData.audience(st) + "  Short, practical, plain text, " +
+                    "carb numbers for the patient's portion as estimates. ${AiData.NO_DOSE}\n" + L.aiLine()
                 val user = FoodAi.context(app) + "Recipe: ${idea.name}\n" + (r?.let { "Ingredients: ${it.ings.joinToString("; ")}\nSteps: ${it.steps.joinToString(" / ")}\n" } ?: "") +
                     "Question: $qq"
                 val a = Providers.ask(st, p, sys, user) { s -> runOnUiThread { askOut.text = L.s(s) } }

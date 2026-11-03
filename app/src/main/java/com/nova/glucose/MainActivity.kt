@@ -156,6 +156,25 @@ class MainActivity : BaseActivity() {
         head.addView(Ui.smallButton(this, "⚙") { startActivity(Intent(this, SettingsActivity::class.java)) }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 36)))
         root.addView(head)
 
+        // First start: who uses this phone? (patient or family) — until chosen
+        if (st.role.isBlank()) {
+            val rc = Ui.card(this).apply { background = Ui.round(Ui.CARD, Ui.dp(c(), 16).toFloat(), Ui.dp(c(), 1), Ui.ACCENT) }
+            rc.addView(Ui.text(c(), "💙 Who uses this phone?", 18f, Ui.TEXT, true))
+            rc.addView(Ui.text(c(), "Everything is set up for that person. You can change it later in Settings → This phone.", 13f, Ui.MUTED))
+            fun choice(id: String, title: String, sub: String) = Ui.col(c(), 14).apply {
+                background = Ui.round(Ui.CARD2, Ui.dp(c(), 14).toFloat(), Ui.dp(c(), 1), 0x553A4152)
+                addView(Ui.text(c(), title, 16f, Ui.TEXT, true)); addView(Ui.text(c(), sub, 12.5f, Ui.MUTED))
+                setOnClickListener {
+                    st.role = id; if (st.syncName.isBlank()) st.syncName = st.roleName(id)
+                    rc.visibility = View.GONE; Ui.toast(c(), st.roleName(id))
+                }
+            }
+            rc.addView(choice("patient", "🧑 Patient's phone", "The person with diabetes uses this phone · reads their watch · the AI talks to them directly · settings can be locked with the parent PIN"),
+                Ui.lp(top = Ui.dp(this, 10)))
+            rc.addView(choice("family", "👨‍👩‍👧 Family phone", "Parent or caregiver · watch data comes from the patient's phone (nothing to set up) · the AI talks to you about the patient"),
+                Ui.lp(top = Ui.dp(this, 8)))
+            root.addView(rc, Ui.lp(top = Ui.dp(this, 12)))
+        }
         folderCard = Ui.card(this).apply {
             addView(Ui.text(c(), "📁 Download/NovaGlucose folder", 17f, Ui.TEXT, true))
             folderText = Ui.text(c(), "", 14f, Ui.MUTED)
@@ -166,7 +185,7 @@ class MainActivity : BaseActivity() {
 
         connectCard = Ui.card(this).apply {
             addView(Ui.text(c(), "Connect LibreLinkUp", 17f, Ui.TEXT, true))
-            addView(Ui.text(c(), "Sign in with the LibreLinkUp follower account you use to see her readings.", 14f, Ui.MUTED))
+            addView(Ui.text(c(), "Sign in with the LibreLinkUp follower account you use to see the patient's readings.", 14f, Ui.MUTED))
             addView(Ui.button(c(), "Open Settings", true) { startActivity(Intent(c(), SettingsActivity::class.java)) }, Ui.lp(top = Ui.dp(c(), 10)))
         }
         root.addView(connectCard, Ui.lp(top = Ui.dp(this, 12)))

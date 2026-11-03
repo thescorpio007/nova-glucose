@@ -87,6 +87,10 @@ class SettingsActivity : BaseActivity() {
     private lateinit var hcStatus: TextView
     private lateinit var hcTypes: LinearLayout
     private lateinit var hcMsg: TextView
+    private lateinit var roleRow: LinearLayout
+    private lateinit var roleInfo: TextView
+    private val patientOnly = mutableListOf<View>()
+    private lateinit var hcFamilyNote: TextView
     private var penFile: java.io.File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -150,10 +154,20 @@ class SettingsActivity : BaseActivity() {
         }
         root.addView(lockBanner, Ui.lp(top = Ui.dp(this, 8)))
 
+        // ---------------------------------------------------------- This phone (patient or family)
+        root.addView(Ui.section(this, "This phone"))
+        val rc = Ui.card(this)
+        rc.addView(Ui.text(this, "Who uses this phone?", 14f, Ui.TEXT, true))
+        roleRow = Ui.row(this); rc.addView(roleRow, Ui.lp(top = Ui.dp(this, 8)))
+        roleInfo = Ui.text(this, "", 13.5f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, 0) }
+        rc.addView(roleInfo)
+        root.addView(rc)
+        renderRole()
+
         // ---------------------------------------------------------- LibreLinkUp
         root.addView(Ui.section(this, "LibreLinkUp connection"))
         val lc = Ui.card(this)
-        lc.addView(Ui.text(this, "Use the LibreLinkUp follower login (the account that sees her readings).", 13f, Ui.MUTED))
+        lc.addView(Ui.text(this, "Use the LibreLinkUp follower login (the account that sees the patient's readings).", 13f, Ui.MUTED))
         email = Ui.input(this, "Email", multi = false).apply {
             setText(st.email); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
         }
@@ -248,14 +262,14 @@ class SettingsActivity : BaseActivity() {
         weightE = decRow(pc, "Weight (kg)", st.weightKg)
         bodyInfo = Ui.text(this, "", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
         pc.addView(bodyInfo)
-        pc.addView(check("Also take height and weight from Health Connect (if her Huawei app records them)", st.hcBody)
+        pc.addView(check("Also take height and weight from Health Connect (if the patient's Huawei app records them)", st.hcBody)
             .apply { setOnCheckedChangeListener { _, v -> st.hcBody = v } }, Ui.lp(top = Ui.dp(this, 6)))
         val gh = Ui.col(this, 12).apply { background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat()) }
         gh.addView(Ui.text(this, "📈 Growth history", 14f, Ui.TEXT, true))
         bodyList = Ui.col(this); gh.addView(bodyList)
         pc.addView(gh, Ui.lp(top = Ui.dp(this, 8)))
         renderBody()
-        pc.addView(Ui.text(this, "About her (brief, used by the AI — never for doses)", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
+        pc.addView(Ui.text(this, "About the patient (brief, used by the AI — never for doses)", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
         aboutE = Ui.input(this, "e.g. type 1 since 2019, swims Mon/Wed 5 pm, school lunch 12:30, loves couscous, no nuts", minLines = 3).apply { setText(st.aboutHer) }
         pc.addView(aboutE)
         pc.addView(Ui.text(this, "Long-acting insulin", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
@@ -274,7 +288,7 @@ class SettingsActivity : BaseActivity() {
         pc.addView(numRow("target_mg", "Target glucose (mg/dL)", st.targetMg))
         pc.addView(numRow("corr_factor", "Prescribed correction: 1 unit lowers … mg/dL", st.corrFactor))
         pc.addView(Ui.text(this, "Age, gender, height and weight go to the AI full picture, AI review and AI tips as background, and into the doctor report. " +
-            "The AI never calculates doses and never comments on her weight or body.", 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+            "The AI never calculates doses and never comments on weight or body.", 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         pc.addView(Ui.text(this, "Kept as reference in the logbook and daily report, and as background for the AI. " +
             "The app never calculates or suggests a dose.", 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         penStatus = Ui.text(this, "", 12f, Ui.MUTED)
@@ -284,7 +298,7 @@ class SettingsActivity : BaseActivity() {
         // ---------------------------------------------------------- Carb plan
         root.addView(Ui.section(this, "Carb plan (grams)"))
         val cc = Ui.card(this)
-        cc.addView(Ui.text(this, "Standard guidance. Replace with her care team's numbers when you have them.", 13f, Ui.MUTED))
+        cc.addView(Ui.text(this, "Standard guidance. Replace with the care team's numbers when you have them.", 13f, Ui.MUTED))
         cc.addView(numRow("low_treat", "Fast sugar to treat a low", st.lowTreatG))
         cc.addView(numRow("meal_min", "Meal carbs from", st.mealMin))
         cc.addView(numRow("meal_max", "Meal carbs up to", st.mealMax))
@@ -381,23 +395,27 @@ class SettingsActivity : BaseActivity() {
         val hc = Ui.card(this)
         hcStatus = Ui.text(this, "", 15f, Ui.GOOD, true)
         hc.addView(hcStatus)
-        hc.addView(Ui.text(this, "Reads Aycha's watch data from Health Connect every 15 minutes: Huawei Health → Health Sync → Health Connect → Nova Glucose. " +
+        hc.addView(Ui.text(this, "Reads the patient's watch data from Health Connect every 15 minutes: Huawei Health → Health Sync → Health Connect → Nova Glucose. " +
             "The data is added to the Activity & sleep page, the AI review and the doctor report.", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) })
+        hcFamilyNote = Ui.text(this, "This is a family phone: the watch is read on the patient's phone and shared with the family. Nothing to set up here.",
+            13f, Ui.MUTED).apply { setPadding(0, 0, 0, Ui.dp(context, 6)) }
+        hc.addView(hcFamilyNote)
         hcTypes = Ui.col(this); hc.addView(hcTypes)
-        hc.addView(switch("Share with the family", st.hcShare).apply { setOnCheckedChangeListener { _, v -> st.hcShare = v; if (v) Db.get(context).queueAll() } },
-            Ui.lp(top = Ui.dp(this, 8)))
+        hc.addView(switch("Share with the family", st.hcShare).apply { setOnCheckedChangeListener { _, v -> st.hcShare = v; if (v) Db.get(context).queueAll() }
+            patientOnly += this }, Ui.lp(top = Ui.dp(this, 8)))
         hc.addView(switch("Use in AI review, full picture and tips", st.hcAi).apply { setOnCheckedChangeListener { _, v -> st.hcAi = v } })
         hc.addView(switch("Add to the doctor report", st.hcReport).apply { setOnCheckedChangeListener { _, v -> st.hcReport = v } })
         val hb = Ui.row(this)
         hb.addView(Ui.button(this, "🔐 Connect / permissions") { HealthRead.ask(this) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
         hb.addView(Ui.button(this, "⟳ Read now", true) { readWatch() }, Ui.lp(0, weight = 1f))
-        hc.addView(hb, Ui.lp(top = Ui.dp(this, 8)))
+        hc.addView(hb, Ui.lp(top = Ui.dp(this, 8))); patientOnly += hb
         hcMsg = Ui.text(this, "", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
         hc.addView(hcMsg)
         hc.addView(Ui.button(this, "⌚ Open Activity & sleep") { startActivity(Intent(this, HealthActivity::class.java)) }, Ui.lp(top = Ui.dp(this, 8)))
         hc.addView(Ui.text(this, "Needs Huawei Health and Health Sync on the phone paired with the watch (Android 14 or newer), with Health Sync set to " +
-            "write to Health Connect. On the other family phones this section only shows the shared data.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
-        hc.addView(Ui.smallButton(this, "Health Connect settings") { HealthRead.openSettings(this) }.apply { tag = "free" }, Ui.lp(-2, Ui.dp(this, 36), top = Ui.dp(this, 8)))
+            "write to Health Connect. On the other family phones this section only shows the shared data.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0)
+            patientOnly += this })
+        hc.addView(Ui.smallButton(this, "Health Connect settings") { HealthRead.openSettings(this) }.apply { tag = "free"; patientOnly += this }, Ui.lp(-2, Ui.dp(this, 36), top = Ui.dp(this, 8)))
         root.addView(hc)
         renderHc()
 
@@ -595,7 +613,7 @@ class SettingsActivity : BaseActivity() {
                 runOnUiThread {
                     if (list.isEmpty()) {
                         loginStatus.setTextColor(Ui.WARN)
-                        loginStatus.text = "Signed in, but this account doesn't follow anyone. Accept her invitation in LibreLinkUp first."
+                        loginStatus.text = "Signed in, but this account doesn't follow anyone. Accept the patient's invitation in LibreLinkUp first."
                         return@runOnUiThread
                     }
                     if (list.none { it.id == st.patientId }) { st.patientId = list[0].id; st.patientName = list[0].name }
@@ -851,7 +869,7 @@ class SettingsActivity : BaseActivity() {
                 setOnCheckedChangeListener { _, on -> st.syncOwnAi = on }
             })
             famBox.addView(Ui.text(this, "Tip: one LibreLinkUp login on several phones can be signed out or locked by Abbott. If that happens, " +
-                "turn this on and use a separate follower invitation from her LibreLink app for this phone.", 12f, Ui.MUTED))
+                "turn this on and use a separate follower invitation from the patient's LibreLink app for this phone.", 12f, Ui.MUTED))
             val sr = Ui.row(this)
             sr.addView(Ui.button(this, "🔄 Sync now", true) { famWork("Syncing…") { FamilySync.run(it) } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
             sr.addView(Ui.button(this, "Leave") {
@@ -1026,6 +1044,7 @@ class SettingsActivity : BaseActivity() {
                 "urgent low".takeIf { st.urgUrgentLow }, "low".takeIf { st.urgLow }, "high".takeIf { st.urgHigh },
                 "very high".takeIf { st.urgVeryHigh }, "no signal".takeIf { st.urgNoSignal }).joinToString(", ")
             t.startsWith("HUAWEI") -> hcSummary()
+            t.startsWith("THIS PHONE") -> st.roleName() + if (st.syncName.isNotBlank()) " · ${st.syncName}" else ""
             t.startsWith("PROFILE") -> listOfNotNull("Age ${st.age}", st.gender.ifBlank { null },
                 st.heightCm.takeIf { it > 0 }?.let { "${fmtD(it)} cm" }, st.weightKg.takeIf { it > 0 }?.let { "${fmtD(it)} kg" },
                 st.rapidName.ifBlank { null }, st.longName.ifBlank { null }).joinToString(" · ")
@@ -1320,7 +1339,7 @@ class SettingsActivity : BaseActivity() {
         if (!::bodyList.isInitialized) return
         val f = java.text.SimpleDateFormat("EEE d MMM yyyy", L.loc())
         bodyInfo.text = if (st.bodyTs > 0) L.s("Last updated {0} · saved with the date each time it changes").replace("{0}", f.format(java.util.Date(st.bodyTs)))
-            else L.s("Enter her height and weight; each change is saved with its date.")
+            else L.s("Enter the patient's height and weight; each change is saved with its date.")
         bodyList.removeAllViews()
         val l = Db.get(this).bodies()
         if (l.isEmpty()) { bodyList.addView(Ui.text(this, "No entries yet.", 12f, Ui.MUTED)); return }
@@ -1344,6 +1363,8 @@ class SettingsActivity : BaseActivity() {
 
     // ================================================================ Huawei watch data
     private fun hcSummary(): String = when {
+        st.isFamily -> if (WatchData.hasAny(this)) "Shared by the patient's phone" + if (st.hcLastData > 0) " · last data " +
+            java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(java.util.Date(st.hcLastData)) else "" else "Family phone: nothing to set up"
         st.hcOn && HealthRead.granted(this).isNotEmpty() -> "Connected" + if (st.hcLastData > 0) " · last data " +
             java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(java.util.Date(st.hcLastData)) else ""
         WatchData.hasAny(this) -> "Shared by the family" + if (st.hcLastData > 0) " · last data " +
@@ -1355,10 +1376,13 @@ class SettingsActivity : BaseActivity() {
         val g = HealthRead.granted(this)
         val f = java.text.SimpleDateFormat("d MMM HH:mm", L.loc())
         hcStatus.setTextColor(if (g.isNotEmpty() || WatchData.hasAny(this)) Ui.GOOD else Ui.MUTED)
+        patientOnly.forEach { it.visibility = if (st.isFamily) View.GONE else View.VISIBLE }
+        hcFamilyNote.visibility = if (st.isFamily) View.VISIBLE else View.GONE
         hcStatus.text = when {
+            st.isFamily -> if (WatchData.hasAny(this)) L.s("Shared by the patient's phone") + lastData(f) else L.s("Waiting for the patient's phone to share the watch data")
             !HealthRead.supported() && WatchData.hasAny(this) -> L.s("Shared by the family") + lastData(f)
             !HealthRead.supported() -> L.s("This phone can't read the watch (needs Android 14 or newer). It shows the data shared by the family.")
-            g.isEmpty() -> L.s("Not connected — tap Connect on Aycha's phone")
+            g.isEmpty() -> L.s("Not connected — tap Connect on the patient's phone")
             else -> L.s("Connected") + lastData(f) + (st.hcSources.takeIf { it.isNotBlank() }?.let { " · " + L.s("from") + " " + it } ?: "")
         }
         hcTypes.removeAllViews()
@@ -1404,5 +1428,34 @@ class SettingsActivity : BaseActivity() {
         }
         st.hcOn = true
         readWatch()
+    }
+
+    // ================================================================ this phone: patient or family
+    private fun renderRole() {
+        roleRow.removeAllViews()
+        listOf("patient" to "🧑 Patient", "family" to "👨‍👩‍👧 Family").forEach { (id, l) ->
+            roleRow.addView(Ui.chip(this, l, st.role == id) { chooseRole(id) }.apply { tag = "free"; textSize = 15f },
+                Ui.lp(0, -2, weight = 1f, end = if (id == "patient") Ui.dp(this, 8) else 0))
+        }
+        roleInfo.text = when (st.role) {
+            "patient" -> L.s("✓ Reads the patient's watch through Health Connect") + "\n" + L.s("✓ Ask AI, AI tips and AI review talk to the patient directly, in simple words") +
+                "\n" + L.s("✓ Settings can be locked with the parent PIN") + "\n" + L.s("• Alerts are the same on every phone") + "\n" +
+                L.s("Changing this on the patient's phone needs the parent PIN.")
+            "family" -> L.s("✓ Watch data comes from the patient's phone (nothing to set up here)") + "\n" +
+                L.s("✓ Ask AI, AI tips and AI review talk to you about the patient") + "\n" + L.s("• Alerts are the same on every phone")
+            else -> L.s("Choose who uses this phone. Everything is set up for that person.")
+        }
+    }
+
+    private fun chooseRole(id: String) {
+        if (id == st.role) return
+        val apply = {
+            st.role = id
+            if (st.syncName.isBlank()) st.syncName = st.roleName(id)
+            renderRole(); renderHc(); renderFolds()
+            if (uiLocked) renderLock()
+            Ui.toast(this, st.roleName(id))
+        }
+        if (st.isPatient && Parent.enabled(st)) Parent.ask(this, L.s("Enter the PIN to change who uses this phone.")) { apply() } else apply()
     }
 }

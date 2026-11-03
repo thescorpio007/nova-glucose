@@ -224,6 +224,13 @@ jobs:
           adb logcat -d -s NOVA_REPORT:I | tee report.txt
           adb pull /sdcard/Download/nova-report-sum.pdf shots/report-summary.pdf || true
           adb pull /sdcard/Download/nova-report-key.pdf shots/report-detailed-key-days.pdf || true
+          # patient / family phone
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity; sleep 3; shot 52-home-role-card
+          tapText "Family phone"; sleep 2
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "This phone"; sleep 2; shot 53-settings-this-phone-family
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Huawei watch data"; sleep 2; half; shot 54-family-watch-section
+          adb shell input keyevent 4
           for LG in fr ar; do
             adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --es lang $LG; sleep 3
             adb shell am start -W -n $P/.HealthActivity; sleep 3; shot 50-$LG-activity

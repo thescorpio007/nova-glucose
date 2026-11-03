@@ -43,19 +43,20 @@ object FoodAi {
             append(AiData.picture(c, 24))
             append("Carb plan: meals ${st.mealMin}–${st.mealMax} g, snacks ${st.snackMin}–${st.snackMax} g, low treatment ${st.lowTreatG} g fast sugar.\n")
             if (st.foodNotes.isNotBlank()) append("Family food notes (likes, dislikes, allergies — always respect): ${st.foodNotes}\n")
-            append("About her: ${st.aboutLine()}\n")
+            append("About the patient: ${st.aboutLine()}\n")
             val ins = listOfNotNull(st.longName.takeIf { it.isNotBlank() }?.let { "long-acting $it" }, st.rapidName.takeIf { it.isNotBlank() }?.let { "rapid $it" })
-            if (ins.isNotEmpty()) append("Her insulins: ${ins.joinToString(", ")}.\n")
+            if (ins.isNotEmpty()) append("Insulins: ${ins.joinToString(", ")}.\n")
         }
     }
 
     private fun base(st: Store) = """
-You help a family choose food for their daughter (age ${st.age}) who has type 1 diabetes and uses rapid insulin before meals.
+You help choose food for a person with type 1 diabetes (age ${st.age}, see the profile) who uses rapid insulin before meals.
+${AiData.audience(st)}
 Rules:
 - ${AiData.NO_DOSE}
 - If glucose is low (below her low limit): first say to have the fast-sugar treatment from her plan and recheck in 15 minutes; only then other food.
-- If glucose is very high: mention water and checking ketones as her care team advised, and prefer lower-carb choices.
-- Respect the family food notes (allergies, dislikes) strictly. Carb numbers are for HER portion and are estimates.
+- If glucose is very high: mention water and checking ketones as the care team advised, and prefer lower-carb choices.
+- Respect the family food notes (allergies, dislikes) strictly. Carb numbers are for the PATIENT's portion and are estimates.
 - If watch data shows sport today or planned, take it into account (e.g. a slow-carb snack before sport, a balanced dinner after).
 - Use the numbers given; do not invent readings.
 """.trimIndent()
@@ -63,7 +64,7 @@ Rules:
     fun ideasSystem(c: Context): String = base(Store(c)) + "\n" + """
 Reply in exactly this format and nothing else (keep the words INTRO, IDEA and NOTE in English, write the rest in the answer language):
 INTRO: <one or two short sentences>
-IDEA: <dish name> | <what is in it and her portion> | <carbs in grams for her portion, a number> | <total minutes to make it, a number>
+IDEA: <dish name> | <what is in it and the patient's portion> | <carbs in grams for the patient's portion, a number> | <total minutes to make it, a number>
 (2 to 4 IDEA lines. For a question that is not asking for dishes, write only INTRO and NOTE lines.)
 NOTE: <optional, one short line>
 """.trimIndent() + "\n" + L.aiLine().let { if (it.isNotBlank()) "Answer language: " + it.removePrefix("Answer in ").removeSuffix(".") + "." else "" }
@@ -73,7 +74,7 @@ Write a home recipe for the dish asked. Reply in exactly this format and nothing
 TITLE: <dish name>
 SERVES: <number of people>
 TIME: <total minutes, a number>
-CARBS: <carbs in grams for her portion, a number>
+CARBS: <carbs in grams for the patient's portion, a number>
 CARBS_NOTE: <short breakdown of where the carbs come from>
 ING: <one ingredient with its quantity for the number of people>   (one ING line per ingredient)
 STEP: <one clear step>   (one STEP line per step, in order, 4 to 9 steps)
@@ -173,16 +174,16 @@ TIP: <optional short tip, e.g. how to make it lower in carbs>
         return id
     }
 
-    /** Saves it as a meal now (carbs of her portion; the family can change them). */
+    /** Saves it as a meal now (carbs of the patient's portion; the family can change them). */
     fun logMeal(a: Activity, name: String, carbs: Int) {
         val root = Ui.col(a, 18)
         root.addView(Ui.text(a, "Meal name", 13f, Ui.MUTED))
         val title = Ui.input(a, "Meal name", multi = false).apply { setText(name) }
         root.addView(title)
-        root.addView(Ui.text(a, "Carbs eaten (g) — her portion", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 4)) })
+        root.addView(Ui.text(a, "Carbs eaten (g) — the patient's portion", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 4)) })
         val cb = Ui.input(a, "g", multi = false).apply { setText(if (carbs > 0) carbs.toString() else ""); inputType = InputType.TYPE_CLASS_NUMBER }
         root.addView(cb)
-        root.addView(Ui.text(a, "Saved now, with her current glucose. You can edit it later from the chart or the logbook.", 12f, Ui.MUTED)
+        root.addView(Ui.text(a, "Saved now, with the current glucose. You can edit it later from the chart or the logbook.", 12f, Ui.MUTED)
             .apply { setPadding(0, Ui.dp(a, 8), 0, 0) })
         val d = Tr.Builder(a).setTitle("📝 Log meal").setView(root).setPositiveButton("Save", null).setNegativeButton("Cancel", null).create()
         d.setOnShowListener {
