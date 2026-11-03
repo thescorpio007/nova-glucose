@@ -396,7 +396,8 @@ class SettingsActivity : BaseActivity() {
         hcStatus = Ui.text(this, "", 15f, Ui.GOOD, true)
         hc.addView(hcStatus)
         hc.addView(Ui.text(this, "Reads the patient's watch data from Health Connect every 15 minutes: Huawei Health → Health Sync → Health Connect → Nova Glucose. " +
-            "The data is added to the Activity & sleep page, the AI review and the doctor report.", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) })
+            "The data is added to the Activity & sleep page, the AI review and the doctor report.", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, Ui.dp(context, 6))
+            patientOnly += this })
         hcFamilyNote = Ui.text(this, "This is a family phone: the watch is read on the patient's phone and shared with the family. Nothing to set up here.",
             13f, Ui.MUTED).apply { setPadding(0, 0, 0, Ui.dp(context, 6)) }
         hc.addView(hcFamilyNote)
@@ -1044,7 +1045,7 @@ class SettingsActivity : BaseActivity() {
                 "urgent low".takeIf { st.urgUrgentLow }, "low".takeIf { st.urgLow }, "high".takeIf { st.urgHigh },
                 "very high".takeIf { st.urgVeryHigh }, "no signal".takeIf { st.urgNoSignal }).joinToString(", ")
             t.startsWith("HUAWEI") -> hcSummary()
-            t.startsWith("THIS PHONE") -> st.roleName() + if (st.syncName.isNotBlank()) " · ${st.syncName}" else ""
+            t.startsWith("THIS PHONE") -> st.roleName() + if (st.syncName.isNotBlank() && st.syncName != st.roleName()) " · ${st.syncName}" else ""
             t.startsWith("PROFILE") -> listOfNotNull("Age ${st.age}", st.gender.ifBlank { null },
                 st.heightCm.takeIf { it > 0 }?.let { "${fmtD(it)} cm" }, st.weightKg.takeIf { it > 0 }?.let { "${fmtD(it)} kg" },
                 st.rapidName.ifBlank { null }, st.longName.ifBlank { null }).joinToString(" · ")
