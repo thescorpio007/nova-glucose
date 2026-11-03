@@ -39,7 +39,7 @@ object SelfTest {
                 check(row("pt").locked && !row("pt").canRemove) { "patient's phone not protected" }
                 check(!row("act").canRemove && row("act").name == "Mum") { "active phone removable or rename lost" }
                 check(row("old").canRemove && !row("me").canRemove) { "old patient install / this phone rule" }
-                check(Members.rows(c, list.map { if (it.uid == "gone") FamilySync.Member("gone", it.name, now0, false) else it }).second == 0) { "removed phone didn't come back" }
+                check(Members.rows(c, list.map { if (it.uid == "gone") FamilySync.Member("gone", it.name, System.currentTimeMillis() + 60_000, false) else it }).second == 0) { "removed phone didn't come back" }
             }
             // 1. Fill settings, secrets and data
             st.email = "test@example.com"; st.password = "LluPass!1"
