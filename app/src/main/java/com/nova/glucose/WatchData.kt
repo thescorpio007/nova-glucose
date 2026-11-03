@@ -75,6 +75,18 @@ object WatchData {
 
     fun hasAny(c: Context) = Db.get(c).watchCount() > 0
 
+    /** Data types present in the last 7 days received (for family phones, which don't read the watch themselves). */
+    fun typesSeen(c: Context): Set<String> {
+        val out = mutableSetOf<String>()
+        val today = dayStart(System.currentTimeMillis())
+        Db.get(c).watchDays(dayKey(addDays(today, -7)), dayKey(today)).forEach { (k, s) ->
+            val w = WatchDay.parse(k, s)
+            if (w.totalSteps > 0) out += "steps"; if (w.hr.any { it > 0 }) out += "hr"; if (w.sleep.isNotEmpty()) out += "sleep"
+            if (w.ex.isNotEmpty()) out += "ex"; if (w.rhr > 0) out += "rhr"; if (w.spo2 > 0) out += "spo2"
+        }
+        return out
+    }
+
     /** Sleep pieces of the night ending on this day (from 18:00 the day before to 14:00). */
     fun night(c: Context, dayStartMs: Long): List<Seg> {
         val a = dayStartMs - 6 * 3600_000L; val b = dayStartMs + 14 * 3600_000L

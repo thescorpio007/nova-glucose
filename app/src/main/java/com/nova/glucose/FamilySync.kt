@@ -365,6 +365,8 @@ object FamilySync {
         val db = Db.get(c)
         if (kind == "set") return JSONObject().put("t", "set").put("g", "settings").put("u", Store(c).syncSetU).put("s", settingsPayload(c))
         if (kind == "eat") { val st = Store(c); return JSONObject().put("t", "eat").put("g", "eat").put("u", st.syncEatU).put("at", st.eatAt) }
+        if (kind == "hcreq") { val st = Store(c); return JSONObject().put("t", "hcreq").put("g", "hcreq").put("u", st.hcReq).put("by", st.syncName) }
+        if (kind == "hcst") return WatchRequest.status(c)
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
         db.byGid("incidents", gid)?.let { return Incidents.item(c, it.first) }
@@ -450,6 +452,14 @@ object FamilySync {
             "del" -> {
                 db.byGid("meals", g)?.let { (id, _) -> db.meal(id)?.photo?.takeIf { p -> p.isNotBlank() }?.let { p -> java.io.File(p).delete() } }
                 return if (db.applyDelete(g, if (u > 0) u else System.currentTimeMillis())) "del" else ""
+            }
+            "hcreq" -> return WatchRequest.received(c, u)
+            "hcst" -> {
+                val st = Store(c)
+                if (u <= st.hcPeerU) return ""
+                st.hcPeerU = u; st.hcPeer = item.toString()
+                val d = item.optLong("data"); if (d > st.hcLastData && d < System.currentTimeMillis() + 3600_000L) st.hcLastData = d
+                return "hcst"
             }
             "eat" -> {
                 val st = Store(c)

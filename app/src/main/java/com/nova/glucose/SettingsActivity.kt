@@ -91,6 +91,10 @@ class SettingsActivity : BaseActivity() {
     private lateinit var roleInfo: TextView
     private val patientOnly = mutableListOf<View>()
     private lateinit var hcFamilyNote: TextView
+    private lateinit var hcPeerBox: LinearLayout
+    private lateinit var hcPeerLine: TextView
+    private lateinit var hcReqLine: TextView
+    private val hcTick = android.os.Handler(android.os.Looper.getMainLooper())
     private var penFile: java.io.File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,7 +103,7 @@ class SettingsActivity : BaseActivity() {
         build()
     }
 
-    override fun onPause() { Sounds.stop(); save(false); FamilySync.kick(this); lockTick.removeCallbacksAndMessages(null); super.onPause() }
+    override fun onPause() { Sounds.stop(); save(false); FamilySync.kick(this); lockTick.removeCallbacksAndMessages(null); hcTick.removeCallbacksAndMessages(null); super.onPause() }
 
     override fun finish() { save(false); Parent.lock(); super.finish() }
 
@@ -401,6 +405,15 @@ class SettingsActivity : BaseActivity() {
         hcFamilyNote = Ui.text(this, "This is a family phone: the watch is read on the patient's phone and shared with the family. Nothing to set up here.",
             13f, Ui.MUTED).apply { setPadding(0, 0, 0, Ui.dp(context, 6)) }
         hc.addView(hcFamilyNote)
+        hcPeerBox = Ui.col(this)
+        hcPeerLine = Ui.text(this, "", 13f, Ui.TEXT)
+        hcPeerBox.addView(hcPeerLine)
+        hcPeerBox.addView(Ui.button(this, "⟳ Ask the patient's phone to read the watch now", true) {
+            if (st.syncFam.isBlank()) { Ui.toast(this, "Family sync is off"); return@button }
+            WatchRequest.ask(this); renderHc(); watchRequest() }.apply { tag = "free" }, Ui.lp(top = Ui.dp(this, 8)))
+        hcReqLine = Ui.text(this, "", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, Ui.dp(context, 6)) }
+        hcPeerBox.addView(hcReqLine)
+        hc.addView(hcPeerBox)
         hcTypes = Ui.col(this); hc.addView(hcTypes)
         hc.addView(switch("Share with the family", st.hcShare).apply { setOnCheckedChangeListener { _, v -> st.hcShare = v; if (v) Db.get(context).queueAll() }
             patientOnly += this }, Ui.lp(top = Ui.dp(this, 8)))
@@ -1379,6 +1392,9 @@ class SettingsActivity : BaseActivity() {
         hcStatus.setTextColor(if (g.isNotEmpty() || WatchData.hasAny(this)) Ui.GOOD else Ui.MUTED)
         patientOnly.forEach { it.visibility = if (st.isFamily) View.GONE else View.VISIBLE }
         hcFamilyNote.visibility = if (st.isFamily) View.VISIBLE else View.GONE
+        hcPeerBox.visibility = if (st.isFamily) View.VISIBLE else View.GONE
+        hcPeerLine.text = WatchRequest.peerLine(this)
+        hcReqLine.text = WatchRequest.requestLine(this)
         hcStatus.text = when {
             st.isFamily -> if (WatchData.hasAny(this)) L.s("Shared by the patient's phone") + lastData(f) else L.s("Waiting for the patient's phone to share the watch data")
             !HealthRead.supported() && WatchData.hasAny(this) -> L.s("Shared by the family") + lastData(f)
@@ -1387,7 +1403,7 @@ class SettingsActivity : BaseActivity() {
             else -> L.s("Connected") + lastData(f) + (st.hcSources.takeIf { it.isNotBlank() }?.let { " · " + L.s("from") + " " + it } ?: "")
         }
         hcTypes.removeAllViews()
-        val got = st.hcGot.split(',').toSet()
+        val got = st.hcGot.split(',').toSet() + if (st.isFamily || !HealthRead.supported()) WatchData.typesSeen(this) else emptySet()
         listOf("steps" to "Steps", "ex" to "Exercise sessions", "sleep" to "Sleep and stages", "hr" to "Heart rate",
             "rhr" to "Resting heart rate", "spo2" to "SpO2 (if Health Sync sends it)").forEach { (k, l) ->
             val r = Ui.row(this).apply { setPadding(0, Ui.dp(context, 5), 0, Ui.dp(context, 5)) }
@@ -1458,5 +1474,17 @@ class SettingsActivity : BaseActivity() {
             Ui.toast(this, st.roleName(id))
         }
         if (st.isPatient && Parent.enabled(st)) Parent.ask(this, L.s("Enter the PIN to change who uses this phone.")) { apply() } else apply()
+    }
+
+    /** While a request is waiting: refresh the lines every 5 seconds (up to 10 minutes). */
+    private fun watchRequest() {
+        hcTick.removeCallbacksAndMessages(null)
+        hcTick.postDelayed(object : Runnable {
+            override fun run() {
+                if (isFinishing) return
+                renderHc(); renderFolds()
+                if (WatchRequest.pending(this@SettingsActivity)) hcTick.postDelayed(this, 5_000)
+            }
+        }, 5_000)
     }
 }

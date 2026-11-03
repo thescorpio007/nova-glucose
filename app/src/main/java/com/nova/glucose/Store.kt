@@ -157,6 +157,12 @@ class Store(c: Context) {
     var hcSources: String get() = s("last_hc_src"); set(v) = put("last_hc_src", v)
     var hcInfo: String get() = s("last_hc_info"); set(v) = put("last_hc_info", v)
     var hcShare: Boolean get() = b("hc_share", true); set(v) = putb("hc_share", v)
+    /** Family phone: when it last asked the patient's phone to read the watch. Patient phone: the newest request it handled. */
+    var hcReq: Long get() = sp.getLong("last_hc_req", 0); set(v) = sp.edit().putLong("last_hc_req", v).apply()
+    var hcReqDone: Long get() = sp.getLong("last_hc_req_done", 0); set(v) = sp.edit().putLong("last_hc_req_done", v).apply()
+    /** Status of the patient's phone, as shared with the family (JSON) and its time. */
+    var hcPeer: String get() = s("last_hc_peer"); set(v) = put("last_hc_peer", v)
+    var hcPeerU: Long get() = sp.getLong("last_hc_peer_u", 0); set(v) = sp.edit().putLong("last_hc_peer_u", v).apply()
     var hcAi: Boolean get() = b("hc_ai", true); set(v) = putb("hc_ai", v)
     var hcReport: Boolean get() = b("hc_report", true); set(v) = putb("hc_report", v)
     var hcBody: Boolean get() = b("hc_body", true); set(v) = putb("hc_body", v)

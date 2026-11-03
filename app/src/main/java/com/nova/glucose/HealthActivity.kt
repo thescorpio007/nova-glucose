@@ -19,6 +19,10 @@ class HealthActivity : BaseActivity() {
     private lateinit var sub: TextView
     private var days = 1
     private var day = 0L
+    private lateinit var famBox: LinearLayout
+    private lateinit var famPeer: TextView
+    private lateinit var famReq: TextView
+    private val tick = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +37,16 @@ class HealthActivity : BaseActivity() {
         root.addView(head)
         sub = Ui.text(this, "", 13f, Ui.MUTED)
         root.addView(sub)
+        // Family phone: the patient's phone status, and "read now"
+        famBox = Ui.col(this, 12).apply { background = Ui.round(Ui.CARD, Ui.dp(context, 14).toFloat()) }
+        famPeer = Ui.text(this, "", 12.5f, Ui.TEXT)
+        famBox.addView(famPeer)
+        famReq = Ui.text(this, "", 12.5f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) }
+        famBox.addView(famReq)
+        famBox.addView(Ui.smallButton(this, "⟳ Ask the patient's phone to read the watch now") {
+            if (st.syncFam.isBlank()) { Ui.toast(this, "Family sync is off"); return@smallButton }
+            WatchRequest.ask(this); renderFam(); poll() }, Ui.lp(-2, Ui.dp(this, 36), top = Ui.dp(this, 8)))
+        root.addView(famBox, Ui.lp(top = Ui.dp(this, 8)))
         chips = Ui.row(this)
         root.addView(chips, Ui.lp(top = Ui.dp(this, 10)))
         body = Ui.col(this)
@@ -45,6 +59,31 @@ class HealthActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         HealthRead.maybe(this)
+        if (WatchRequest.autoAsk(this)) Ui.toast(this, "Asked the patient's phone for fresh watch data…")
+        renderFam(); poll()
+    }
+
+    override fun onPause() { tick.removeCallbacksAndMessages(null); super.onPause() }
+
+    private fun renderFam() {
+        famBox.visibility = if (st.isFamily) android.view.View.VISIBLE else android.view.View.GONE
+        famPeer.text = WatchRequest.peerLine(this)
+        famReq.text = WatchRequest.requestLine(this)
+        famReq.visibility = if (famReq.text.isNullOrBlank()) android.view.View.GONE else android.view.View.VISIBLE
+    }
+
+    /** While waiting for the patient's phone: refresh every 5 s; redraw the page when the answer arrives. */
+    private fun poll() {
+        tick.removeCallbacksAndMessages(null)
+        if (!WatchRequest.pending(this)) return
+        tick.postDelayed(object : Runnable {
+            override fun run() {
+                if (isFinishing) return
+                val waiting = WatchRequest.pending(this@HealthActivity)
+                renderFam()
+                if (waiting) tick.postDelayed(this, 5_000) else render()
+            }
+        }, 5_000)
     }
 
     private fun renderChips() {

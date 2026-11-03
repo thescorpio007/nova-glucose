@@ -115,8 +115,10 @@ object HealthRead {
             val first = WatchData.addDays(WatchData.dayStart(now), -(days - 1))
             val from = Instant.ofEpochMilli(first - 24 * 3600_000L); val to = Instant.ofEpochMilli(now)
             val got = mutableSetOf<String>(); val src = mutableSetOf<String>()
+            var err: String? = null
             fun <T : android.health.connect.datatypes.Record> rd(p: String, cls: Class<T>): List<T> =
-                if ("android.permission.health.$p" !in ok) emptyList() else try { best(read(m, cls, from, to)).also { l -> l.forEach { src += origin(it) } } } catch (_: Exception) { emptyList() }
+                if ("android.permission.health.$p" !in ok) emptyList() else try { best(read(m, cls, from, to)).also { l -> l.forEach { src += origin(it) } } }
+                catch (e: Exception) { if (err == null) err = (e.message ?: e.javaClass.simpleName); emptyList() }
 
             val steps = rd("READ_STEPS", android.health.connect.datatypes.StepsRecord::class.java)
             val hr = rd("READ_HEART_RATE", android.health.connect.datatypes.HeartRateRecord::class.java)
@@ -185,8 +187,14 @@ object HealthRead {
             st.hcSources = src.filter { it.isNotBlank() }.joinToString(", ")
             if (newest > st.hcLastData) st.hcLastData = newest
             st.hcLastRead = System.currentTimeMillis()
-            st.hcInfo = if (got.isEmpty()) "No watch data found in Health Connect yet" else "✓ $changed day(s) updated" + if (nb > 0) " · $nb height/weight" else ""
-            if (changed > 0 || nb > 0) FamilySync.kick(c)
+            st.hcInfo = when {
+                got.isEmpty() && err != null && !background(c) -> "⚠ Could not read in the background: in Health Connect, allow \"Access data in background\" for Nova Glucose"
+                got.isEmpty() && err != null -> "⚠ Health Connect: $err"
+                got.isEmpty() -> "No watch data found in Health Connect yet"
+                else -> "✓ $changed day(s) updated" + if (nb > 0) " · $nb height/weight" else ""
+            }
+            Db.get(c).queue("hcstatus", "hcst", kick = false)
+            FamilySync.kick(c)
             return st.hcInfo
         }
     }
