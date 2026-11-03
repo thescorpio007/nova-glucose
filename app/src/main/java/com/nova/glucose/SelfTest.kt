@@ -24,6 +24,23 @@ object SelfTest {
             check(Carbs.ai(um) == "meal eaten, carbs not recorded" && um.carbText == "? g") { "unknown meal text" }
             check(!Sounds.patientMay(st, "urgent_low") && !Sounds.patientMay(st, "low") && !Sounds.patientMay(st, "very_high") &&
                 Sounds.patientMay(st, "eat") && Sounds.patientMay(st, "tip")) { "locked notification lines" }
+            // 0b. Family phone list: the patient's phone and active phones are protected, a removed old phone is hidden
+            kotlin.run {
+                val now0 = System.currentTimeMillis(); val day = 24 * 3600_000L
+                val list = listOf(FamilySync.Member("me", "Papa", now0, true), FamilySync.Member("pt", "Patient", now0 - 3 * day, false),
+                    FamilySync.Member("old", "Patient", now0 - 9 * day, false), FamilySync.Member("act", "Mama", now0 - 2 * day, false),
+                    FamilySync.Member("gone", "Old tablet", now0 - 20 * day, false))
+                Members.receivedWho(c, org.json.JSONObject().put("uid", "pt").put("r", "patient").put("u", 1))
+                Members.receivedWho(c, org.json.JSONObject().put("uid", "old").put("r", "patient").put("u", 1))
+                Members.edit(c, "gone", remove = true); Members.edit(c, "act", name = "Mum")
+                val (rows, hidden) = Members.rows(c, list)
+                fun row(u: String) = rows.first { it.m.uid == u }
+                check(hidden == 1 && rows.none { it.m.uid == "gone" }) { "removed phone not hidden" }
+                check(row("pt").locked && !row("pt").canRemove) { "patient's phone not protected" }
+                check(!row("act").canRemove && row("act").name == "Mum") { "active phone removable or rename lost" }
+                check(row("old").canRemove && !row("me").canRemove) { "old patient install / this phone rule" }
+                check(Members.rows(c, list.map { if (it.uid == "gone") FamilySync.Member("gone", it.name, now0, false) else it }).second == 0) { "removed phone didn't come back" }
+            }
             // 1. Fill settings, secrets and data
             st.email = "test@example.com"; st.password = "LluPass!1"
             Providers.all.forEachIndexed { k, p -> st.setKey(p, "KEY-${p.id}-$k") }
@@ -88,7 +105,7 @@ object SelfTest {
             eq("watch steps", w2.totalSteps, 27600); eq("watch RHR", w2.rhr, 62); eq("watch sport", w2.ex.firstOrNull()?.title, "Swimming")
             eq("height", st.heightCm, 157.5); eq("weight", st.weightKg, 45.9); eq("growth entries", db.bodies().size, 1)
             eq("recipe", db.recipes().firstOrNull()?.title, "Chakchouka"); eq("recipe steps", FoodAi.Recipe.from(db.recipes().first()).steps.size, 2)
-            return "PASS · $v · carbs rules (0 = correction, empty = not recorded) ✓ · watch data, height/weight and recipe book ✓ · sounds and notification choices ✓ · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
+            return "PASS · $v · carbs rules (0 = correction, empty = not recorded) ✓ · family phone list protection ✓ · watch data, height/weight and recipe book ✓ · sounds and notification choices ✓ · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
         } catch (e: Throwable) {
             return "FAIL · ${e.message}"
         } finally {

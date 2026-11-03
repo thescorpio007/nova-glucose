@@ -861,20 +861,10 @@ class SettingsActivity : BaseActivity() {
                 .apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
             famBox.addView(Ui.text(this, (if (st.syncLast > 0) "Last sync ${f.format(java.util.Date(st.syncLast))}  " else "") + st.syncInfo, 13f, Ui.MUTED)
                 .apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
-            val members = Ui.text(this, "Phones: loading…", 13f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
+            val members = Ui.col(this).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
+            members.addView(Ui.text(this, "Phones: loading…", 13f, Ui.TEXT))
             famBox.addView(members)
-            val app = applicationContext
-            Thread {
-                val txt = try {
-                    val now = System.currentTimeMillis()
-                    "Phones in the family:\n" + FamilySync.members(app).joinToString("\n") { (n, seen, me) ->
-                        val ago = if (seen <= 0) "" else ((now - seen) / 60_000).let { m -> when {
-                            m < 2 -> " · active now"; m < 60 -> " · seen $m min ago"; m < 48 * 60 -> " · seen ${m / 60} h ago"; else -> " · seen ${m / 1440} days ago" } }
-                        "•  $n${if (me) " (this phone)" else ""}$ago"
-                    }
-                } catch (e: Exception) { "Phones: couldn't load (${e.message})" }
-                runOnUiThread { if (!isFinishing) members.text = txt }
-            }.start()
+            renderMembers(members)
             famBox.addView(Switch(this).apply {
                 text = "This phone uses its own LibreLinkUp login (don't share it)"; isChecked = st.syncOwnLibre
                 setTextColor(Ui.TEXT); textSize = 14f; setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 4))
@@ -888,7 +878,7 @@ class SettingsActivity : BaseActivity() {
             famBox.addView(Ui.text(this, "Tip: one LibreLinkUp login on several phones can be signed out or locked by Abbott. If that happens, " +
                 "turn this on and use a separate follower invitation from the patient's LibreLink app for this phone.", 12f, Ui.MUTED))
             val sr = Ui.row(this)
-            sr.addView(Ui.button(this, "🔄 Sync now", true) { famWork("Syncing…") { FamilySync.run(it) } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+            sr.addView(Ui.button(this, "🔄 Sync now", true) { famWork("Syncing…") { FamilySync.run(it) } }.apply { tag = "free" }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
             sr.addView(Ui.button(this, "Leave") {
                 Tr.Builder(this).setTitle("Leave the family?")
                     .setMessage("This phone stops syncing. Everything already on it stays here, and the other phones keep their data.")
@@ -901,6 +891,57 @@ class SettingsActivity : BaseActivity() {
     }
 
     /** Runs a family-sync action in the background, then refreshes the section. */
+    /** Phones in the family, with ✏️ rename and 🗑 remove (shared with all phones; locked on the patient's phone until the PIN). */
+    private fun renderMembers(box: LinearLayout) {
+        val app = applicationContext
+        Thread {
+            val res = try { Result.success(FamilySync.memberDocs(app)) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                box.removeAllViews()
+                res.onFailure { box.addView(Ui.text(this, L.s("Phones: couldn't load") + " (${it.message})", 13f, Ui.TEXT)) }
+                res.onSuccess { list ->
+                    val now = System.currentTimeMillis()
+                    val (rows, hidden) = Members.rows(this, list)
+                    box.addView(Ui.text(this, "Phones in the family:", 13f, Ui.TEXT, true))
+                    rows.forEach { r ->
+                        val m = r.m
+                        val ago = if (m.seen <= 0) "" else ((now - m.seen) / 60_000).let { x -> when {
+                            x < 2 -> L.s(" · active now"); x < 60 -> L.s(" · seen $x min ago"); x < 48 * 60 -> L.s(" · seen ${x / 60} h ago"); else -> L.s(" · seen ${x / 1440} days ago") } }
+                        val line = Ui.row(this).apply { gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0, Ui.dp(context, 2), 0, Ui.dp(context, 2)) }
+                        val label = (if (r.locked) "🔒 " else "•  ") + r.name + (if (r.patient) " · " + L.s("patient's phone") else "") +
+                            (if (m.me) " " + L.s("(this phone)") else "") + ago
+                        line.addView(Ui.text(this, label, 13f, if (m.seen > 0 && now - m.seen > Members.INACTIVE_MS) Ui.MUTED else Ui.TEXT), Ui.lp(0, weight = 1f))
+                        line.addView(Ui.smallButton(this, "✏️") { renameMember(r, box) }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 34), end = Ui.dp(this, 4)))
+                        if (!m.me) line.addView(Ui.smallButton(this, "🗑") { removeMember(r, box) }.apply { alpha = if (r.canRemove) 1f else 0.4f },
+                            Ui.lp(Ui.dp(this, 44), Ui.dp(this, 34), end = Ui.dp(this, 4)))
+                        box.addView(line)
+                    }
+                    if (hidden > 0) box.addView(Ui.text(this, L.s("{0} removed phone(s) hidden — they come back if they sync again.").replace("{0}", "$hidden"), 12f, Ui.MUTED))
+                    box.addView(Ui.text(this, "✏️ rename · 🗑 remove a phone not seen for 7 days (old install, formatted phone). The patient's phone 🔒 and active phones can't be removed.",
+                        12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
+                }
+                if (::allViews.isInitialized && uiLocked) renderLock()
+            }
+        }.start()
+    }
+
+    private fun renameMember(r: Members.Row, box: LinearLayout) {
+        val e = Ui.input(this, r.m.name, multi = false).apply { setText(r.name) }
+        Tr.Builder(this).setTitle("✏️ Rename this phone in the list").setView(Ui.col(this, 18).apply {
+            addView(e); addView(Ui.text(context, "Shown on all family phones. Leave empty to use the phone's own name.", 12f, Ui.MUTED)) })
+            .setPositiveButton("Save") { _, _ -> Members.edit(this, r.m.uid, name = e.text.toString().trim().takeIf { it != r.m.name } ?: ""); renderMembers(box) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun removeMember(r: Members.Row, box: LinearLayout) {
+        if (!r.canRemove) { Ui.toast(this, L.s(r.why) + if (r.why.startsWith("Active")) " — " + L.s("can be removed after 7 days without syncing") else ""); return }
+        Tr.Builder(this).setTitle("🗑 Remove \"${r.name}\" from the list?")
+            .setMessage("It disappears from the list on all family phones. Its data stays. If this phone syncs again, it comes back by itself.")
+            .setPositiveButton("Remove") { _, _ -> Members.edit(this, r.m.uid, remove = true); renderMembers(box) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
     private fun famWork(busy: String, showCode: Boolean = false, job: (android.content.Context) -> String) {
         famNote(busy)
         val app = applicationContext

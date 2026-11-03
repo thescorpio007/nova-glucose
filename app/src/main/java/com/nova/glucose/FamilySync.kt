@@ -253,13 +253,18 @@ object FamilySync {
     fun rawItems(s: Session, fam: String): String = call(s, "GET", "$BASE/families/$fam/items?pageSize=50")
 
     /** Phones in the family: (name, last seen ms, is this phone). */
-    fun members(s: Session, fam: String, key: ByteArray): List<Triple<String, Long, Boolean>> {
+    fun members(s: Session, fam: String, key: ByteArray): List<Triple<String, Long, Boolean>> = memberDocs(s, fam, key).map { Triple(it.name, it.seen, it.me) }
+
+    /** A phone in the family list. */
+    class Member(val uid: String, val name: String, val seen: Long, val me: Boolean)
+
+    fun memberDocs(s: Session, fam: String, key: ByteArray): List<Member> {
         val o = JSONObject(call(s, "GET", "$BASE/families/$fam/members?pageSize=50"))
         val a = o.optJSONArray("documents") ?: return emptyList()
         return (0 until a.length()).map { i ->
             val d = a.getJSONObject(i); val f = d.getJSONObject("fields")
             val name = try { open(key, "name", f.getJSONObject("n").getString("stringValue")) } catch (_: Exception) { "?" }
-            Triple(name, parseTs(f.optJSONObject("seen")?.optString("timestampValue") ?: ""), d.getString("name").endsWith("/${s.uid}"))
+            Member(d.getString("name").substringAfterLast('/'), name, parseTs(f.optJSONObject("seen")?.optString("timestampValue") ?: ""), d.getString("name").endsWith("/${s.uid}"))
         }
     }
 
@@ -367,6 +372,8 @@ object FamilySync {
         if (kind == "eat") { val st = Store(c); return JSONObject().put("t", "eat").put("g", "eat").put("u", st.syncEatU).put("at", st.eatAt) }
         if (kind == "hcreq") { val st = Store(c); return JSONObject().put("t", "hcreq").put("g", "hcreq").put("u", st.hcReq).put("by", st.syncName) }
         if (kind == "hcst") return WatchRequest.status(c)
+        if (kind == "mem") return Members.item(c, gid)
+        if (kind == "who") return Members.whoItem(c)
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
         db.byGid("incidents", gid)?.let { return Incidents.item(c, it.first) }
@@ -454,6 +461,8 @@ object FamilySync {
                 return if (db.applyDelete(g, if (u > 0) u else System.currentTimeMillis())) "del" else ""
             }
             "hcreq" -> return WatchRequest.received(c, u)
+            "mem" -> return Members.received(c, item)
+            "who" -> return Members.receivedWho(c, item)
             "hcst" -> {
                 val st = Store(c)
                 if (u <= st.hcPeerU) return ""
@@ -536,6 +545,12 @@ object FamilySync {
 
     private fun queueEat(c: Context) { if (Store(c).syncEatU > 0) Db.get(c).queue("eat", "eat", kick = false) }
 
+    fun memberDocs(c: Context): List<Member> {
+        val st = Store(c)
+        if (st.syncFam.isBlank()) return emptyList()
+        return memberDocs(session(c), st.syncFam, key(st))
+    }
+
     fun members(c: Context): List<Triple<String, Long, Boolean>> {
         val st = Store(c)
         if (st.syncFam.isBlank()) return emptyList()
@@ -601,6 +616,7 @@ object FamilySync {
         if (p.since.isNotBlank() && p.since > st.syncSince) st.syncSince = p.since
         // the twin rule may have queued items: send them next time
         // 3. "last seen" for the member list (every 30 min)
+        Members.announce(c)
         if (System.currentTimeMillis() - st.syncSeen > 30 * 60_000L) {
             try { retry { writeMember(it, fam, key, st.syncName.ifBlank { "Phone" }) }; st.syncSeen = System.currentTimeMillis() } catch (_: Exception) { }
         }
