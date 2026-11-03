@@ -269,7 +269,7 @@ object Updater {
     /** Why it should not install right now (null = fine). */
     fun blockReason(c: Context): String? {
         val st = Store(c)
-        if (AlarmPlayer.kind.isNotEmpty()) return "Not now: an alarm is ringing. Install after it stops."
+        if (AlarmPlayer.playing) return "Not now: an alarm is ringing. Install after it stops."
         if (st.lastTs > 0 && System.currentTimeMillis() - st.lastTs < 20 * 60_000L && st.lastMg in 1 until st.low)
             return "Not now: the glucose is low (${st.lastMg} mg/dL). Install when it is back in range."
         return null
