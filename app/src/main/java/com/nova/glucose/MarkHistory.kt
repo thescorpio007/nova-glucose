@@ -112,13 +112,13 @@ object MarkHistory {
         when (e) {
             is Entry.M -> {
                 val m = e.m
-                letter(head, "M"); head.append("  ${hm.format(Date(m.ts))} · ${m.title} · " + L.s("${m.carbs} g carbs"))
+                letter(head, "M"); head.append("  ${hm.format(Date(m.ts))} · ${m.title} · " + if (m.known) L.s("${m.carbs} g carbs") else L.s("? g · carbs unknown"))
                 try {
                     val arr = JSONArray(m.itemsJson)
                     if (arr.length() > 1) more += (0 until arr.length()).joinToString("\n") { k ->
                         arr.getJSONObject(k).let { o -> "•  ${o.optString("name")} ${o.optString("portion").let { p -> if (p.isNotBlank()) "($p) " else "" }}— ${o.optInt("carbs")} g" } }
                 } catch (_: Exception) { }
-                db.ai(m.id)?.let { (_, ai) -> more += if (ai == m.carbs) "AI said $ai g · kept by the family" else "AI said $ai g · family corrected to ${m.carbs} g" }
+                db.ai(m.id)?.let { (_, ai) -> more += if (!m.known) "AI said $ai g · carbs not recorded" else if (ai == m.carbs) "AI said $ai g · kept by the family" else "AI said $ai g · family corrected to ${m.carbs} g" }
                 listOfNotNull(if (m.mgAt > 0) "glucose then ${m.mgAt} mg/dL" else null,
                     db.who("meals", m.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") { x -> L.s(x) } }
                 if (m.note.isNotBlank()) more += "Note: ${m.note}"
@@ -128,7 +128,7 @@ object MarkHistory {
                 val name = if (d.kind == "rapid") st.rapidName.ifBlank { "Rapid insulin" } else st.longName.ifBlank { "Long-acting insulin" }
                 letter(head, if (d.kind == "rapid") "I" else "L")
                 head.append("  ${hm.format(Date(d.ts))} · ${L.s(name)} · ${units(d.units)} u" + if (d.waitMin > 0) L.s(" · eat after ${d.waitMin} min") else "")
-                listOfNotNull(if (d.carbs > 0) "for ${d.carbs} g carbs" else null, if (d.mgAt > 0) "glucose then ${d.mgAt} mg/dL" else null,
+                listOfNotNull(when { d.carbs > 0 -> "for ${d.carbs} g carbs"; d.correction -> "correction"; d.carbs == Carbs.UNKNOWN -> "meal, carbs unknown"; else -> null }, if (d.mgAt > 0) "glucose then ${d.mgAt} mg/dL" else null,
                     db.who("insulin", d.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") { x -> L.s(x) } }
                 if (d.note.isNotBlank()) more += "Note: ${d.note}"
             }
@@ -146,8 +146,8 @@ object MarkHistory {
         box.addView(TextView(a).apply { text = head; textSize = 15f; setTextColor(Ui.TEXT) })
         more.forEach { box.addView(Ui.text(a, it, 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 3), 0, 0) }) }
         when (e) {
-            is Entry.M -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.meal(a, e.m.id) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
-            is Entry.I -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.dose(a, e.d.id) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
+            is Entry.M -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.open(a, null, e.m.id) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
+            is Entry.I -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.open(a, e.d.id, null) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
             is Entry.X -> { }
         }
         return LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; addView(box); setPadding(0, 0, 0, Ui.dp(a, 8)) }
@@ -158,10 +158,11 @@ object MarkHistory {
         val sb = SpannableStringBuilder()
         val right: String
         when (e) {
-            is Entry.M -> { letter(sb, "M"); sb.append("  ${day(e.ts)} · ${e.m.title}"); right = "${e.m.carbs} g" }
+            is Entry.M -> { letter(sb, "M"); sb.append("  ${day(e.ts)} · ${e.m.title}"); right = e.m.carbText }
             is Entry.I -> {
                 letter(sb, if (e.d.kind == "rapid") "I" else "L")
                 sb.append("  ${day(e.ts)} · " + if (e.d.kind == "rapid") st.rapidName.ifBlank { L.s("Rapid insulin") } else st.longName.ifBlank { L.s("Long-acting insulin") })
+                if (e.d.correction) sb.append(" · " + L.s("correction"))
                 right = "${units(e.d.units)} u"
             }
             is Entry.X -> { letter(sb, "!"); sb.append("  ${day(e.ts)} · ${L.s(e.i.kind)}"); right = if (e.i.ongoing) L.s("ongoing") else "›" }

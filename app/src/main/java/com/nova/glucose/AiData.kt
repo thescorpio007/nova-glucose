@@ -13,7 +13,8 @@ object AiData {
 
     const val NO_DOSE = "NEVER suggest insulin doses or units, and never say to inject more or less or to change the ratio or correction: " +
         "for any dose question, say to follow the diabetes care team. Food, timing, patterns and questions for the doctor only. " +
-        "Height and weight are background only: never comment on weight, body shape or BMI, and never suggest losing or gaining weight."
+        "Height and weight are background only: never comment on weight, body shape or BMI, and never suggest losing or gaining weight. " +
+        "A meal marked \"carbs not recorded\" was eaten: never count it as 0 g. A \"correction only\" rapid dose had no meal."
 
     /** Who reads the answer: the patient on their own phone, or the family. */
     fun audience(st: Store) = if (st.isPatient)
@@ -40,7 +41,7 @@ object AiData {
             if (st.lastTs > 0) "Now ${st.lastMg} ${Libre.trendArrow(st.lastTrend)} · last 24 h: ${rs.groupBy { it.ts / 300_000 }.size} readings (every 5 min)" else "No current reading",
             s?.let { "In range ${it.inRange}% · average ${it.avg} · highest ${it.max} · lowest ${it.min}" },
             "Limits: urgent low ${st.urgentLow} · low ${st.low} · high ${st.high} · very high ${st.veryHigh}",
-            "Today: ${meals.size} meals (${meals.sumOf { it.carbs }} g) · ${doses.count { it.kind == "rapid" }} rapid doses (${units(doses.filter { it.kind == "rapid" }.sumOf { it.units })} u)" +
+            "Today: ${Carbs.counts(meals, doses)} · ${doses.count { it.kind == "rapid" }} rapid doses (${units(doses.filter { it.kind == "rapid" }.sumOf { it.units })} u)" +
                 (doses.firstOrNull { it.kind == "long" }?.let { " · long-acting ${units(it.units)} u" } ?: ""),
             inc.takeIf { it.isNotEmpty() }?.joinToString(" · ") { "Incident: ${it.kind}" + if (it.ongoing) " (ongoing)" else "" },
             "Profile: ${st.aboutLine()}".take(160),
@@ -64,10 +65,10 @@ object AiData {
             if (five.isNotEmpty()) append("Readings last $hours h, every 5 min (time mg/dL): " + five.joinToString(", ") { "${hm.format(Date(it.ts))} ${it.mg}" } + "\n")
             val meals = db.meals(300).filter { it.ts >= minOf(a, now - hours * 3600_000L) }.sortedBy { it.ts }
             if (meals.isNotEmpty()) append("Meals (time, food, carbs counted by the family): " + meals.joinToString("; ") {
-                "${hm.format(Date(it.ts))} ${it.title} ${it.carbs} g" + if (it.mgAt > 0) " (glucose ${it.mgAt} at the meal)" else "" } + "\n")
+                "${hm.format(Date(it.ts))} ${it.title} ${Carbs.ai(it)}" + if (it.mgAt > 0) " (glucose ${it.mgAt} at the meal)" else "" } + "\n")
             val doses = db.doses(minOf(a, now - hours * 3600_000L)).sortedBy { it.ts }
             if (doses.isNotEmpty()) append("Insulin given (as entered by the family; for timing only — never comment on doses): " + doses.joinToString("; ") {
-                "${hm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long-acting"}" } + "\n")
+                "${hm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long-acting"}" + if (it.correction) " (correction only, no meal)" else "" } + "\n")
             if (st.eatAt > now) append("An eat timer is running: the patient should start eating at ${hm.format(Date(st.eatAt))}.\n")
             append(Incidents.context(c))
             append(WatchData.aiNow(c))
@@ -101,13 +102,14 @@ object AiData {
                 meals.forEach { m ->
                     val after = db.near(m.ts + 2 * 3600_000L)?.mg
                     val ai = db.ai(m.id)?.second
-                    append("- ${dhm.format(Date(m.ts))} ${m.title}: ${m.carbs} g, ${if (m.mgAt > 0) m.mgAt else "?"} → ${after ?: "?"}" +
+                    append("- ${dhm.format(Date(m.ts))} ${m.title}: ${Carbs.ai(m)}, ${if (m.mgAt > 0) m.mgAt else "?"} → ${after ?: "?"}" +
                         (if (ai != null) ", AI said $ai g" else "") + "\n")
                 }
             }
             val doses = db.doses(start)
             if (doses.isNotEmpty()) append("Insulin times (for timing only): " + doses.sortedBy { it.ts }.joinToString("; ") {
-                "${dhm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long"}" } + "\n")
+                "${dhm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long"}" + if (it.correction) " (correction only, no meal)" else "" } + "\n")
+            append("Period totals: " + Carbs.counts(meals, doses) + "\n")
             val inc = db.incidents(start, now)
             if (inc.isNotEmpty()) append("Incidents: " + inc.joinToString("; ") { "${it.kind} ${Incidents.period(it)}" + if (it.details.isNotBlank()) " (${it.details})" else "" } + "\n")
             append(WatchData.aiPeriod(c, days))

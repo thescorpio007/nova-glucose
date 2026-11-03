@@ -16,7 +16,32 @@ data class Meal(
     val mgAt: Int,
     val photo: String,
     val note: String
-)
+) {
+    /** carbs < 0 = a meal was eaten but the carbs were not recorded (never counted as 0 g). */
+    val known get() = carbs >= 0
+    val carbText get() = if (known) "$carbs g" else "? g"
+}
+
+/** Carbs typed in a field: all zeros = correction only (no meal); empty = meal with unknown carbs; a number = grams. */
+object Carbs {
+    const val UNKNOWN = -1
+    const val CORRECTION = -2
+    fun parse(t: String): Int? { val s = t.trim(); return when {
+        s.isEmpty() -> UNKNOWN
+        s.all { it == '0' } -> CORRECTION
+        else -> s.toIntOrNull()?.takeIf { it in 1..500 } } }
+    fun field(v: Int) = if (v > 0) v.toString() else if (v == CORRECTION) "0" else ""
+    /** Sum of known carbs and the number of meals without carbs. */
+    fun sum(l: List<Meal>) = l.filter { it.known }.sumOf { it.carbs } to l.count { !it.known }
+    /** For AI and reports: meals with carbs, meals without carbs, corrections — counted separately. */
+    fun counts(meals: List<Meal>, doses: List<Dose>): String {
+        val (g, n) = sum(meals); val k = meals.size - n; val corr = doses.count { it.kind == "rapid" && it.correction }
+        return "$k meal(s) with carbs counted ($g g)" + (if (n > 0) ", $n meal(s) eaten with carbs not recorded" else "") +
+            (if (corr > 0) ", $corr correction-only rapid dose(s) (no meal)" else "")
+    }
+    fun ai(m: Meal) = if (m.known) "${m.carbs} g" else "meal eaten, carbs not recorded"
+    fun total(l: List<Meal>): String { val (g, n) = sum(l); return "$g g" + if (n > 0) " + $n " + L.s(if (n == 1) "meal without carbs" else "meals without carbs") else "" }
+}
 
 /** Incident: kind (e.g. "Flu / cold"), start, end (0 = still ongoing), details, medicines (prescription text), photo path. */
 data class Incident(
@@ -29,7 +54,11 @@ data class Incident(
 data class Dose(
     val id: Long = 0, val ts: Long, val kind: String, val units: Double,
     val carbs: Int = 0, val waitMin: Int = 0, val mgAt: Int = 0, val note: String = ""
-)
+) {
+    /** carbs: > 0 grams, -1 meal with unknown carbs, -2 correction only, 0 not said (older entries). */
+    val correction get() = carbs == Carbs.CORRECTION
+    val carbText get() = when { carbs > 0 -> "$carbs g carbs"; carbs == Carbs.UNKNOWN -> "? g · carbs unknown"; correction -> "correction"; else -> "" }
+}
 
 /** Readings history (kept 400 days) and the meal logbook, stored only on this phone. */
 class Db private constructor(c: Context) : SQLiteOpenHelper(c, "nova_glucose.db", null, 7) {

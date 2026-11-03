@@ -54,8 +54,9 @@ object PastEntry {
         val carbs = num("g (approx)", false)
         val note = Ui.input(a, "Note, e.g. school lunch", multi = false)
         root.addView(unitsL); root.addView(units)
-        root.addView(Ui.text(a, "Carbs eaten (approx)", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 4)) })
-        root.addView(carbs)
+        val carbsL = Ui.text(a, "Carbs eaten (approx)", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 4)) }
+        val carbsH = Ui.text(a, "", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 4), 0, 0) }
+        root.addView(carbsL); root.addView(carbs); root.addView(carbsH)
         root.addView(Ui.text(a, "Note (optional)", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 4)) })
         root.addView(note)
         root.addView(Ui.text(a, "The glucose at that time is filled in from the readings.", 12f, Ui.MUTED).apply {
@@ -70,6 +71,9 @@ object PastEntry {
             unitsL.visibility = if (ins) android.view.View.VISIBLE else android.view.View.GONE
             units.visibility = unitsL.visibility
             if (kind == "long" && units.text.isBlank()) units.setText(st.longDose)
+            val cv = if (kind == "long") android.view.View.GONE else android.view.View.VISIBLE
+            carbsL.visibility = cv; carbs.visibility = cv; carbsH.visibility = cv
+            carbsH.text = L.s(if (kind == "meal") "Empty = meal eaten, carbs not recorded" else "0 = correction only, no meal · empty = meal eaten, carbs not recorded")
         }
         renderChips()
 
@@ -81,15 +85,16 @@ object PastEntry {
                 val ts = cal.timeInMillis
                 if (ts > System.currentTimeMillis() + 60_000) { Ui.toast(a, "Time is in the future"); return@setOnClickListener }
                 val u = units.text.toString().replace(',', '.').toDoubleOrNull()
-                val c = carbs.text.toString().toIntOrNull() ?: 0
+                val c = if (kind == "long") 0 else Carbs.parse(carbs.text.toString())
                 val n = note.text.toString().trim()
-                if (kind != "meal" && (u == null || u <= 0 || u > 100)) { units.error = "Enter the units injected"; return@setOnClickListener }
-                if (kind == "meal" && c <= 0) { carbs.error = "Enter the carbs eaten"; return@setOnClickListener }
+                if (kind != "meal" && (u == null || u <= 0 || u > 100)) { units.error = L.s("Enter the units injected"); return@setOnClickListener }
+                if (c == null) { carbs.error = L.s("Grams 1–500, 0 for a correction, or empty if not known"); return@setOnClickListener }
+                if (kind == "meal" && c == Carbs.CORRECTION) { carbs.error = L.s("0 means a correction: choose Rapid, or leave empty if the carbs are not known"); return@setOnClickListener }
                 val db = Db.get(a)
                 val mg = db.near(ts)?.mg ?: 0
                 if (kind != "meal") db.addDose(Dose(0, ts, kind, u!!, if (kind == "rapid") c else 0, 0, mg, "entered later" + if (n.isNotBlank()) ": $n" else ""))
-                if (c > 0 && kind != "long") {
-                    val title = n.ifBlank { "Meal (entered later)" }
+                if (kind != "long" && c != Carbs.CORRECTION) {
+                    val title = n.ifBlank { L.s(if (c < 0) "Meal (carbs not recorded)" else "Meal (entered later)") }
                     db.addMeal(Meal(0, ts, title, JSONArray().put(JSONObject().put("name", title).put("portion", "").put("carbs", c)).toString(),
                         c, c, c, mg, "", "entered later"))
                 }

@@ -57,6 +57,7 @@ class InsulinActivity : BaseActivity() {
         carbs = num("Meal carbs (g)")
         recentMealCarbs()?.let { carbs.setText(it.toString()) }
         rc.addView(label("Meal carbs (g) — from the last photo estimate, edit if needed")); rc.addView(carbs)
+        rc.addView(Ui.text(this, "0 = correction only, no meal · empty = meal eaten, carbs not recorded", 11f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 3), 0, 0) })
 
         // Split row: units injected (left) · reference box (right, no units calculated)
         val split = Ui.row(this).apply { gravity = android.view.Gravity.TOP; setPadding(0, Ui.dp(context, 12), 0, 0) }
@@ -160,9 +161,9 @@ class InsulinActivity : BaseActivity() {
     /** Reference box: prescription and glucose against target. Never a number of units. */
     private fun refLines(): List<Pair<String, Int>> {
         val out = mutableListOf<Pair<String, Int>>()
-        val c = carbs.text.toString().toIntOrNull()
+        val c = Carbs.parse(carbs.text.toString())
         out += "Reference (as prescribed)" to Ui.MUTED
-        out += ("Carbs ${c?.let { "$it g" } ?: "–"}" + if (st.carbRatio > 0) " · ratio 1 u / ${st.carbRatio} g" else " · ratio not set") to Ui.TEXT
+        out += (when (c) { Carbs.CORRECTION -> L.s("Correction only, no meal"); Carbs.UNKNOWN -> L.s("Meal, carbs not recorded"); null -> "Carbs –"; else -> "Carbs $c g" } + if (st.carbRatio > 0) " · ratio 1 u / ${st.carbRatio} g" else " · ratio not set") to Ui.TEXT
         val mg = mgNow()
         if (mg > 0) {
             val d = mg - st.targetMg
@@ -205,17 +206,29 @@ class InsulinActivity : BaseActivity() {
     private fun mgNow() = if (System.currentTimeMillis() - st.lastTs < 15 * 60_000) st.lastMg else 0
 
     private fun recentMealCarbs(): Int? =
-        Db.get(this).meals(1).firstOrNull()?.takeIf { System.currentTimeMillis() - it.ts < 45 * 60_000 }?.carbs
+        Db.get(this).meals(1).firstOrNull()?.takeIf { System.currentTimeMillis() - it.ts < 45 * 60_000 && it.known }?.carbs
 
     private fun saveRapid() {
         val u = units.text.toString().replace(',', '.').toDoubleOrNull()
         if (u == null || u <= 0 || u > 50) { Ui.toast(this, "Enter the units given"); return }
-        val w = wait.text.toString().toIntOrNull()
-        if (w == null || w < 0 || w > 90) { Ui.toast(this, "Enter the wait before eating (0–90 min)"); return }
-        val c = carbs.text.toString().toIntOrNull() ?: 0
+        val corrNow = Carbs.parse(carbs.text.toString()) == Carbs.CORRECTION
+        val w0 = wait.text.toString().toIntOrNull() ?: if (corrNow) 0 else -1
+        if (w0 < 0 || w0 > 90) { Ui.toast(this, "Enter the wait before eating (0–90 min)"); return }
+        val c = Carbs.parse(carbs.text.toString())
+        if (c == null) { carbs.error = L.s("Grams 1–500, 0 for a correction, or empty if not known"); return }
+        val corr = c == Carbs.CORRECTION
+        val w = if (corr) 0 else w0
         val now = System.currentTimeMillis()
         val note = calcNote.takeIf { it.endsWith("= ${Calc.fmt(u)}") } ?: ""
-        Db.get(this).addDose(Dose(0, now, "rapid", u, c, w, mgNow(), note))
+        val db = Db.get(this)
+        db.addDose(Dose(0, now, "rapid", u, c, w, mgNow(), note))
+        // meal eaten but carbs not recorded: put it in the logbook (unless a meal was just logged)
+        if (c == Carbs.UNKNOWN && db.meals(1).firstOrNull()?.takeIf { now - it.ts < 45 * 60_000 } == null) {
+            val t = L.s("Meal (carbs not recorded)")
+            db.addMeal(Meal(0, now, t, org.json.JSONArray().put(org.json.JSONObject().put("name", t).put("portion", "").put("carbs", c)).toString(),
+                c, c, c, mgNow(), "", ""))
+        }
+        if (corr) { renderHistory(); exportLater(); Ui.toast(this, "Saved · correction only"); units.setText(""); calcNote = ""; renderRef(); return }
         calcNote = ""; units.setText(""); renderRef()
         if (st.eatWait == 0 || st.eatWait != w) {
             Tr.Builder(this).setMessage("Use $w minutes as the usual wait before eating?")
@@ -240,7 +253,7 @@ class InsulinActivity : BaseActivity() {
             }
             val name = if (d.kind == "long") st.longName.ifBlank { "Long-acting" } else st.rapidName.ifBlank { "Rapid" }
             val extra = listOfNotNull(
-                d.carbs.takeIf { it > 0 }?.let { "$it g carbs" },
+                d.carbText.takeIf { it.isNotBlank() },
                 d.waitMin.takeIf { d.kind == "rapid" && it > 0 }?.let { "wait $it min" },
                 d.mgAt.takeIf { it > 0 }?.let { "glucose $it" },
                 d.note.takeIf { it.startsWith("calc:") }?.removePrefix("calc: ")).joinToString(" · ")
@@ -249,7 +262,7 @@ class InsulinActivity : BaseActivity() {
             if (extra.isNotBlank()) col.addView(Ui.text(this, extra, 13f, Ui.TEXT))
             row.addView(col, Ui.lp(0, weight = 1f))
             row.addView(Ui.text(this, "${fmt(d.units)} u", 17f, Ui.ACCENT, true))
-            row.setOnClickListener { EditEntry.dose(this, d.id) { renderHistory(); exportLater() } }
+            row.setOnClickListener { EditEntry.open(this, d.id, null) { renderHistory(); exportLater() } }
             row.setOnLongClickListener {
                 Parent.guard(this, "Enter the PIN to delete a dose.") {
                     Tr.Builder(this).setMessage("Delete this dose?")

@@ -24,12 +24,12 @@ data class DayStats(
 /**
  * The Download/NovaGlucose folder:
  *   Readings/2026-11/readings-2026-11-01.csv     one file per day
- *   Daily/2026-11/Aycha-Daily-2026-11-01.pdf     daily report: graph, assessment, meals with photos, insulin
+ *   Daily/2026-11/Patient-Daily-2026-11-01.pdf     daily report: graph, assessment, meals with photos, insulin
  *   Meals/meals.csv · meals.json · Photos/
  *   Insulin/insulin.csv · insulin.json
  *   Alerts/alerts-2026-11.csv
  *   AI-Training/corrections.csv                  what the AI estimated vs what the family counted
- *   Backup/Aycha-Glucose-Backup-2026-11-01-0843.novaglucose   (newest 7 kept)
+ *   Backup/Patient-Glucose-Backup-2026-11-01-0843.novaglucose   (newest 7 kept)
  * The user picks the folder once; after a reinstall, picking it again lets the app resume everything.
  */
 object Vault {
@@ -203,7 +203,7 @@ object Vault {
                 .put("photo", photoName).put("note", m.note)
                 .apply { if (ai != null) { put("aiItems", JSONArray(ai.first)); put("aiCarbs", ai.second) } })
             val after = db.near(m.ts + 2 * 3600_000L)?.mg?.toString() ?: ""
-            csv.append("${tf.format(Date(m.ts))},${q(m.title)},${m.carbs},${m.low},${m.high},${ai?.second ?: ""}," +
+            csv.append("${tf.format(Date(m.ts))},${q(m.title)},${if (m.known) m.carbs else "unknown"},${if (m.known) m.low else ""},${if (m.known) m.high else ""},${ai?.second ?: ""}," +
                 "${if (m.mgAt > 0) m.mgAt else ""},$after,$photoName,${q(m.note)}\n")
         }
         write(c, file(d, "meals.json", "application/json"), arr.toString(1))
@@ -219,7 +219,7 @@ object Vault {
         val arr = JSONArray()
         list.forEach { x ->
             val name = if (x.kind == "long") st.longName else st.rapidName
-            csv.append("${tf.format(Date(x.ts))},${x.kind},${q(name)},${x.units},${if (x.carbs > 0) x.carbs else ""}," +
+            csv.append("${tf.format(Date(x.ts))},${x.kind},${q(name)},${x.units},${if (x.carbs > 0) x.carbs else if (x.correction) "correction" else if (x.carbs == Carbs.UNKNOWN) "unknown" else ""}," +
                 "${if (x.kind == "rapid") x.waitMin else ""},${if (x.mgAt > 0) x.mgAt else ""}\n")
             arr.put(JSONObject().put("ts", x.ts).put("kind", x.kind).put("units", x.units).put("carbs", x.carbs)
                 .put("wait", x.waitMin).put("mgAt", x.mgAt).put("note", x.note))

@@ -108,7 +108,7 @@ class LogbookActivity : BaseActivity() {
             col.addView(Ui.text(this, fmt.format(Date(m.ts)), 12f, Ui.MUTED))
             col.addView(Ui.text(this, m.title.ifBlank { "Meal" }, 15f, Ui.TEXT, true))
             val range = if (m.high > m.low) "  (${m.low}–${m.high})" else ""
-            col.addView(Ui.text(this, "${m.carbs} g carbs$range", 15f, Ui.ACCENT, true))
+            col.addView(Ui.text(this, if (m.known) "${m.carbs} g carbs$range" else L.s("? g · carbs unknown"), 15f, Ui.ACCENT, true))
             top.addView(col, Ui.lp(0, weight = 1f))
             card.addView(top)
 
@@ -134,7 +134,7 @@ class LogbookActivity : BaseActivity() {
             }
             if (m.note.isNotBlank()) card.addView(Ui.text(this, "Note: ${m.note}", 12f, Ui.MUTED))
 
-            card.setOnClickListener { EditEntry.meal(this, m.id) { render() } }
+            card.setOnClickListener { EditEntry.open(this, null, m.id) { render() } }
             card.setOnLongClickListener {
                 Parent.guard(this, "Enter the PIN to delete a meal.") { Tr.Builder(this).setMessage("Delete this meal?")
                     .setPositiveButton("Delete") { _, _ ->

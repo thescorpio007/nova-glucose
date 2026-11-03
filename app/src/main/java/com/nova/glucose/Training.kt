@@ -40,7 +40,7 @@ object Training {
     /** Text added to the photo prompt: the family's recent corrections and the overall tendency. */
     fun context(c: Context): String {
         val db = Db.get(c)
-        val recent = db.meals(40).mapNotNull { m -> db.ai(m.id)?.let { m to it } }
+        val recent = db.meals(40).filter { it.known }.mapNotNull { m -> db.ai(m.id)?.let { m to it } }
         if (recent.isEmpty()) return ""
         val sb = StringBuilder("\nThis family's past corrections of your estimates (learn from them):\n")
         val rs = rows(c, 40).filter { it.change != "kept" }.takeLast(25)

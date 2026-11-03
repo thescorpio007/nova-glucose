@@ -102,6 +102,11 @@ class MainActivity : BaseActivity() {
         if (intent?.getBooleanExtra("demopick", false) == true) window.decorView.postDelayed({ DoctorReport.pick(this) }, 1200)
         if (intent?.getBooleanExtra("demotap", false) == true)
             Db.get(this).meals(1).firstOrNull()?.let { m -> window.decorView.postDelayed({ MarkHistory.show(this, m.ts) }, 1500) }
+        if (intent?.getBooleanExtra("demopast", false) == true) window.decorView.postDelayed({ PastEntry.show(this) { } }, 1200)
+        if (intent?.getBooleanExtra("democorr", false) == true)       // automatic test: the combined editor on a correction
+            Db.get(this).doses().firstOrNull { it.correction }?.let { d -> window.decorView.postDelayed({ EditEntry.open(this, d.id, null) { } }, 1200) }
+        if (intent?.getBooleanExtra("demounk", false) == true)
+            Db.get(this).meals(50).firstOrNull { !it.known }?.let { m -> window.decorView.postDelayed({ EditEntry.open(this, null, m.id) { } }, 1200) }
         askPermissions()
     }
 

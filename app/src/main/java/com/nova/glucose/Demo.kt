@@ -20,10 +20,15 @@ object Demo {
         db.setAi(a, "[{\"name\":\"Msemen\",\"portion\":\"1 piece\",\"carbs\":35},{\"name\":\"Tea with sugar\",\"portion\":\"1 cup\",\"carbs\":10}]", 45)
         db.addDose(Dose(0, m1 - 13 * 60_000L, "rapid", 4.0, 52, 15, 170, "calc: 52 ÷ 12 = 4.3"), who = "Dad's phone")
         val b = db.addMeal(Meal(0, m2, "Couscous with chicken", "[{\"name\":\"Couscous with chicken\",\"portion\":\"1 plate\",\"carbs\":60}]",
-            60, 55, 65, 296, "", "school lunch"), who = "Aycha's phone")
+            60, 55, 65, 296, "", "school lunch"), who = "Patient's phone")
         db.setAi(b, "[{\"name\":\"Couscous with chicken\",\"portion\":\"1 plate\",\"carbs\":60}]", 60)
-        db.addDose(Dose(0, m2 - 8 * 60_000L, "rapid", 5.5, 60, 10, 290, "entered later"), who = "Aycha's phone")
+        db.addDose(Dose(0, m2 - 8 * 60_000L, "rapid", 5.5, 60, 10, 290, "entered later"), who = "Patient's phone")
         db.addDose(Dose(0, now - 19 * 3600_000L, "long", 18.0, note = ""), who = "Dad's phone")
+        // a correction only (carbs "0") and a meal whose carbs were not recorded (carbs left empty)
+        db.addDose(Dose(0, now - 3 * 3600_000L, "rapid", 1.5, Carbs.CORRECTION, 0, 245, ""), who = "Mum's phone")
+        val u = now - 8 * 3600_000L
+        db.addDose(Dose(0, u - 10 * 60_000L, "rapid", 3.0, Carbs.UNKNOWN, 10, 150, "entered later"), who = "Patient's phone")
+        db.addMeal(Meal(0, u, "Birthday cake at school", "[]", Carbs.UNKNOWN, Carbs.UNKNOWN, Carbs.UNKNOWN, 150, "", ""), who = "Patient's phone")
         db.addMeal(Meal(0, now - 20 * 3600_000L, "Rice, salad and fish", "[]", 55, 50, 60, 150, "", ""), who = "Mum's phone")
         // A sick day with a (drawn) prescription
         val bmp = android.graphics.Bitmap.createBitmap(700, 900, android.graphics.Bitmap.Config.ARGB_8888)

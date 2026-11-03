@@ -224,6 +224,17 @@ jobs:
           adb logcat -d -s NOVA_REPORT:I | tee report.txt
           adb pull /sdcard/Download/nova-report-sum.pdf shots/report-summary.pdf || true
           adb pull /sdcard/Download/nova-report-key.pdf shots/report-detailed-key-days.pdf || true
+          # combined insulin + meal edit, carbs rules (0 = correction, empty = not recorded), what stays open when Settings is locked
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez democorr true; sleep 4; shot 55-edit-correction
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demounk true; sleep 4; shot 56-edit-carbs-unknown
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demotap true; sleep 4; half; shot 57-history-correction-unknown
+          adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity --ez demopast true; sleep 3; shot 58-add-earlier
+          adb shell am force-stop $P; adb shell am start -W -n $P/.SettingsActivity --ez demolock true; sleep 2; shot 59-locked-settings
+          findTap "Urgent alarm"; sleep 2; findTap "Alert sounds"; half; shot 59b-locked-alert-sounds; half; shot 59c-locked-alert-sounds-2
+          adb shell input keyevent 4
+          adb shell am start -W -n $P/.SettingsActivity; sleep 2; findTap "Huawei watch data"; sleep 2; half; shot 60-locked-watch
+          adb shell input keyevent 4
+          adb shell am force-stop $P; adb shell am start -W -n $P/.SettingsActivity --ez demounlock true; sleep 2; adb shell input keyevent 4
           # patient / family phone
           adb shell am force-stop $P; adb shell am start -W -n $P/.MainActivity; sleep 3; shot 52-home-role-card
           tapText "Family phone"; sleep 2

@@ -29,6 +29,9 @@ object Sounds {
         "builtin:blip" -> R.raw.nova_blip; "builtin:medical" -> R.raw.nova_medical; "builtin:beep" -> R.raw.nova_beep; else -> null
     }?.let { Uri.parse("android.resource://${c.packageName}/$it") }
     /** Silent is never allowed for lows; for very high / no signal only when not urgent. */
+    /** Lines the patient may change while Settings is locked: never urgent low, low, very high, or a line made urgent. */
+    fun patientMay(st: Store, kind: String) = kind !in setOf("urgent_low", "low", "very_high") && !(kind in KINDS && st.urgentFor(kind))
+
     fun silentAllowed(st: Store, kind: String) = kind !in setOf("low", "urgent_low") && !(kind in KINDS && st.urgentFor(kind))
     fun current(st: Store, kind: String): String = st.soundFor(kind).ifBlank { defaultFor(kind) }
     fun displayName(st: Store, kind: String): String {

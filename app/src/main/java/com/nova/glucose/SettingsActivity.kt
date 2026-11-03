@@ -100,6 +100,9 @@ class SettingsActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         st = Store(this)
+        // automatic test only: lock Settings with a test PIN to show what stays changeable
+        if (intent?.getBooleanExtra("demolock", false) == true && st.pinHash.isBlank() && !st.loggedIn) { st.pinHash = Parent.hash("0000"); st.pinOn = true }
+        if (intent?.getBooleanExtra("demounlock", false) == true && Parent.hash("0000") == st.pinHash && !st.loggedIn) { st.pinOn = false; st.pinHash = "" }
         build()
     }
 
@@ -152,7 +155,7 @@ class SettingsActivity : BaseActivity() {
         head.addView(lockBtn, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
         head.addView(Ui.smallButton(this, "Done") { save(true); finish() }.apply { tag = "free" })
         root.addView(head)
-        lockBanner = Ui.text(this, "🔒 Locked by parent — view only. Ask a parent to change settings.", 14f, Ui.WARN).apply {
+        lockBanner = Ui.text(this, "🔒 Locked by parent — view only. Non-urgent alert sounds and the watch reading can still be changed.", 14f, Ui.WARN).apply {
             background = Ui.round(0x22FFB347, Ui.dp(context, 10).toFloat())
             setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
         }
@@ -420,12 +423,12 @@ class SettingsActivity : BaseActivity() {
         hc.addView(switch("Use in AI review, full picture and tips", st.hcAi).apply { setOnCheckedChangeListener { _, v -> st.hcAi = v } })
         hc.addView(switch("Add to the doctor report", st.hcReport).apply { setOnCheckedChangeListener { _, v -> st.hcReport = v } })
         val hb = Ui.row(this)
-        hb.addView(Ui.button(this, "🔐 Connect / permissions") { HealthRead.ask(this) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
-        hb.addView(Ui.button(this, "⟳ Read now", true) { readWatch() }, Ui.lp(0, weight = 1f))
+        hb.addView(Ui.button(this, "🔐 Connect / permissions") { HealthRead.ask(this) }.apply { tag = "free" }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        hb.addView(Ui.button(this, "⟳ Read now", true) { readWatch() }.apply { tag = "free" }, Ui.lp(0, weight = 1f))
         hc.addView(hb, Ui.lp(top = Ui.dp(this, 8))); patientOnly += hb
         hcMsg = Ui.text(this, "", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
         hc.addView(hcMsg)
-        hc.addView(Ui.button(this, "⌚ Open Activity & sleep") { startActivity(Intent(this, HealthActivity::class.java)) }, Ui.lp(top = Ui.dp(this, 8)))
+        hc.addView(Ui.button(this, "⌚ Open Activity & sleep") { startActivity(Intent(this, HealthActivity::class.java)) }.apply { tag = "free" }, Ui.lp(top = Ui.dp(this, 8)))
         hc.addView(Ui.text(this, "Needs Huawei Health and Health Sync on the phone paired with the watch (Android 14 or newer), with Health Sync set to " +
             "write to Health Connect. On the other family phones this section only shows the shared data.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0)
             patientOnly += this })
@@ -1096,6 +1099,7 @@ class SettingsActivity : BaseActivity() {
         if (::genRows.isInitialized) { genRows.removeAllViews()
             Sounds.volumeNote(this).takeIf { it.isNotBlank() }?.let { genRows.addView(Ui.text(this, "⚠ " + L.s(it), 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }) }
             Sounds.GENERAL.forEach { k -> genRows.addView(soundBox(k), Ui.lp(top = Ui.dp(this, 8))) } }
+        if (::allViews.isInitialized && uiLocked) renderLock()
     }
 
     private fun soundBox(k: String): View {
@@ -1104,6 +1108,8 @@ class SettingsActivity : BaseActivity() {
             setPadding(Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
         }
         val urgent = k in Sounds.KINDS && st.urgentFor(k)
+        // non-urgent lines stay editable when Settings is locked (sound incl. Silent, vibrate, pop-up)
+        if (Sounds.patientMay(st, k)) box.tag = "free"
         val h = Ui.row(this)
         h.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true), Ui.lp(0, weight = 1f))
         if (urgent) h.addView(Ui.text(this, "URGENT", 10f, 0xFFFF8A8D.toInt(), true))
@@ -1132,6 +1138,7 @@ class SettingsActivity : BaseActivity() {
             setOnCheckedChangeListener { _, v -> st.setPop(k, v) }
         }, Ui.lp(0, weight = 1f))
         box.addView(r2, Ui.lp(top = Ui.dp(this, 4)))
+        if (Sounds.patientMay(st, k) && Parent.enabled(st)) box.addView(Ui.text(this, "🔓 Can be changed even when Settings is locked.", 11f, Ui.MUTED))
         if (urgent) box.addView(Ui.text(this, "Urgent: full screen, rings through silent until Stop — can't be silent.", 11f, Ui.MUTED))
         else if (!Sounds.silentAllowed(st, k)) box.addView(Ui.text(this, "Lows are never silent.", 11f, Ui.MUTED))
         return box

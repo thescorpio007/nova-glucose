@@ -237,7 +237,9 @@ object DoctorReport {
                 "Target ${st.targetMg} mg/dL"),
             listOf("Rapid logged", "${rapids.size} doses" + (if (rapids.isNotEmpty()) " · avg ${fmt(rapids.map { it.units }.average())} u" else ""),
                 "Avg wait before eating: " + (rapids.filter { it.waitMin > 0 }.map { it.waitMin }.average().takeIf { !it.isNaN() }?.let { "${it.toInt()} min" } ?: "–"),
-                "Meals logged: ${meals.size}" + (if (meals.isNotEmpty()) " · avg ${meals.map { it.carbs }.average().toInt()} g" else ""))),
+                "Meals logged: ${meals.size}" + (meals.filter { it.known }.takeIf { it.isNotEmpty() }?.let { k -> " · avg ${k.map { it.carbs }.average().toInt()} g" } ?: "") +
+                    (meals.count { !it.known }.takeIf { it > 0 }?.let { " · $it without carbs" } ?: "") +
+                    (rapids.count { it.correction }.takeIf { it > 0 }?.let { " · $it corrections" } ?: ""))),
             listOf(80f, 140f, 170f, 133f), Color.WHITE)
 
         h2(doc, "By meal (average over the period)")
@@ -249,7 +251,7 @@ object DoctorReport {
             val ins = ms.mapNotNull { m -> rapids.filter { kotlin.math.abs(it.ts - m.ts) < 60 * 60_000L }.minByOrNull { kotlin.math.abs(it.ts - m.ts) }?.units }
             val before = ms.mapNotNull { m -> db.near(m.ts)?.mg }; val after = ms.mapNotNull { m -> db.near(m.ts + 2 * 3600_000L)?.mg }
             val b = before.average().takeIf { !it.isNaN() }?.toInt(); val a = after.average().takeIf { !it.isNaN() }?.toInt()
-            rowsM += listOf(k, "${ms.size}", "${ms.map { it.carbs }.average().toInt()} g",
+            rowsM += listOf(k, "${ms.size}", ms.filter { it.known }.map { it.carbs }.average().takeIf { !it.isNaN() }?.let { "${it.toInt()} g" + (ms.count { m -> !m.known }.takeIf { n -> n > 0 }?.let { n -> " (+$n ?)" } ?: "") } ?: "? g",
                 if (ins.isEmpty()) "–" else "${fmt(ins.average())} u", b?.toString() ?: "–", a?.toString() ?: "–",
                 if (a != null && b != null) (if (a - b >= 0) "+" else "") + (a - b) else "–")
         }
@@ -308,7 +310,7 @@ object DoctorReport {
             if (dayR.isEmpty()) continue
             val ds = Vault.stats(st, dayR)!!
             dRows += listOf(ddf.format(Date(a)), "${ds.avg}", "${ds.inRange}%", "${ds.min}", "${ds.max}",
-                "${meals.filter { it.ts in a..b }.sumOf { it.carbs }} g", "${fmt(rapids.filter { it.ts in a..b }.sumOf { it.units })} u")
+                Carbs.sum(meals.filter { it.ts in a..b }).let { (g, n) -> "$g g" + if (n > 0) " +$n ?" else "" }, "${fmt(rapids.filter { it.ts in a..b }.sumOf { it.units })} u")
         }
         table(doc, dRows, listOf(90f, 60f, 60f, 60f, 60f, 95f, 98f), Color.rgb(238, 237, 254))
         doc.y += 10
@@ -504,7 +506,7 @@ object DoctorReport {
             doses.forEach { x -> ev += x.ts to listOf(hmf.format(Date(x.ts)), if (x.kind == "rapid") "I" else "L",
                 "${if (x.kind == "rapid") st.rapidName.ifBlank { "Rapid insulin" } else st.longName.ifBlank { "Long-acting" }} ${fmt(x.units)} u" +
                     (if (x.waitMin > 0) " · eat after ${x.waitMin} min" else "")) }
-            meals.forEach { m -> ev += m.ts to listOf(hmf.format(Date(m.ts)), "M", "${m.title} · ${m.carbs} g" + if (m.mgAt > 0) " · glucose ${m.mgAt}" else "") }
+            meals.forEach { m -> ev += m.ts to listOf(hmf.format(Date(m.ts)), "M", "${m.title} · ${m.carbText}" + if (m.mgAt > 0) " · glucose ${m.mgAt}" else "") }
             ex.forEach { e -> ev += e.a to listOf(hmf.format(Date(e.a)), "Sport", "${WatchData.exName(e.type, e.title)} ${(e.b - e.a) / 60_000} min" +
                 (w.hr.toList().subList(((e.a - a) / 300_000).toInt().coerceIn(0, 287), ((e.b - a) / 300_000).toInt().coerceIn(1, 288)).maxOrNull()?.takeIf { it > 0 }?.let { " · max HR $it" } ?: "")) }
             var inLow = false

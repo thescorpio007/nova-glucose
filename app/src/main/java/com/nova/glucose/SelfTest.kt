@@ -15,6 +15,15 @@ object SelfTest {
         val st = Store(c); val db = Db.get(c)
         val pw = "Backup#2026"
         try {
+            // 0. Carbs rules: all zeros = correction, empty = meal with carbs not recorded, never 0 g
+            for (z in listOf("0", "00", "0000")) check(Carbs.parse(z) == Carbs.CORRECTION) { "'$z' is not a correction" }
+            check(Carbs.parse("") == Carbs.UNKNOWN && Carbs.parse(" ") == Carbs.UNKNOWN) { "empty carbs not 'unknown'" }
+            check(Carbs.parse("45") == 45 && Carbs.parse("abc") == null && Carbs.parse("900") == null) { "carbs number rule" }
+            val um = Meal(0, 1, "x", "[]", Carbs.UNKNOWN, -1, -1, 0, "", "")
+            check(Carbs.sum(listOf(um, um.copy(carbs = 30))) == (30 to 1)) { "unknown meal counted as grams" }
+            check(Carbs.ai(um) == "meal eaten, carbs not recorded" && um.carbText == "? g") { "unknown meal text" }
+            check(!Sounds.patientMay(st, "urgent_low") && !Sounds.patientMay(st, "low") && !Sounds.patientMay(st, "very_high") &&
+                Sounds.patientMay(st, "eat") && Sounds.patientMay(st, "tip")) { "locked notification lines" }
             // 1. Fill settings, secrets and data
             st.email = "test@example.com"; st.password = "LluPass!1"
             Providers.all.forEachIndexed { k, p -> st.setKey(p, "KEY-${p.id}-$k") }
@@ -79,7 +88,7 @@ object SelfTest {
             eq("watch steps", w2.totalSteps, 27600); eq("watch RHR", w2.rhr, 62); eq("watch sport", w2.ex.firstOrNull()?.title, "Swimming")
             eq("height", st.heightCm, 157.5); eq("weight", st.weightKg, 45.9); eq("growth entries", db.bodies().size, 1)
             eq("recipe", db.recipes().firstOrNull()?.title, "Chakchouka"); eq("recipe steps", FoodAi.Recipe.from(db.recipes().first()).steps.size, 2)
-            return "PASS · $v · watch data, height/weight and recipe book ✓ · sounds and notification choices ✓ · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
+            return "PASS · $v · carbs rules (0 = correction, empty = not recorded) ✓ · watch data, height/weight and recipe book ✓ · sounds and notification choices ✓ · wrong password refused ✓ · damaged file refused ✓ · no readable text inside ✓ · restore: $r"
         } catch (e: Throwable) {
             return "FAIL · ${e.message}"
         } finally {

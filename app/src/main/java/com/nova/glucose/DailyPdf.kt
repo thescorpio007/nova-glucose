@@ -106,14 +106,14 @@ object DailyPdf {
         doses.forEach { x ->
             val name = if (x.kind == "long") st.longName.ifBlank { "Long-acting" } else st.rapidName.ifBlank { "Rapid" }
             text(doc, "${hm.format(Date(x.ts))}  $name  ${fmt(x.units)} u" +
-                (if (x.carbs > 0) " · meal ${x.carbs} g" else "") +
+                (if (x.carbs > 0) " · meal ${x.carbs} g" else if (x.correction) " · correction" else if (x.carbs == Carbs.UNKNOWN) " · meal, carbs unknown" else "") +
                 (if (x.kind == "rapid" && x.waitMin > 0) " · waited ${x.waitMin} min" else "") +
                 (if (x.mgAt > 0) " · glucose ${x.mgAt}" else ""), paint(11f))
         }
         doc.y += 8
 
         // ---------------------------------------------------------- meals
-        text(doc, "Meals (${meals.sumOf { it.carbs }} g carbs logged)", paint(14f, bold = true))
+        text(doc, L.s("Meals") + " (" + Carbs.total(meals) + ")", paint(14f, bold = true))
         if (meals.isEmpty()) text(doc, "No meals logged.", paint(11f, muted))
         for (m in meals) {
             doc.need(150f)
@@ -129,7 +129,7 @@ object DailyPdf {
             text(doc, "${hm.format(Date(m.ts))} · ${m.title}", paint(12f, bold = true), x, w)
             val range = if (m.high > m.low) " (likely ${m.low}–${m.high})" else ""
             val ai = db.ai(m.id)
-            text(doc, "Carbs counted: ${m.carbs} g$range" + (ai?.let { " · AI first estimate ${it.second} g" } ?: ""), paint(11f, teal, true), x, w)
+            text(doc, (if (m.known) "Carbs counted: ${m.carbs} g$range" else "Carbs: ? g · not recorded") + (ai?.let { " · AI first estimate ${it.second} g" } ?: ""), paint(11f, teal, true), x, w)
             text(doc, "Glucose ${if (m.mgAt > 0) m.mgAt else "–"} → ${after ?: "–"} mg/dL after 2 h", paint(11f), x, w)
             try {
                 val arr = JSONArray(m.itemsJson)
