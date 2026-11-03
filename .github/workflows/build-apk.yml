@@ -60,16 +60,34 @@ jobs:
           name: apk
           path: app/build/outputs/apk/release/*.apk
 
-      - name: Release
+      - name: Checksums signed with the app's own key (the apps check them before updating)
+        env:
+          KP: ${{ secrets.NOVA_GLUCOSE_KEY }}
+        run: |
+          set -e
+          cd app/build/outputs/apk/release
+          sha256sum *.apk > SHA256SUMS.txt
+          keytool -importkeystore -noprompt -srckeystore "$GITHUB_WORKSPACE/keystore/nova-glucose.jks" -srcalias novaglucose \
+            -srcstorepass:env KP -srckeypass:env KP -destkeystore /tmp/k.p12 -deststoretype PKCS12 -deststorepass:env KP -destkeypass:env KP
+          openssl pkcs12 -in /tmp/k.p12 -nocerts -nodes -passin env:KP -out /tmp/k.pem
+          openssl pkcs12 -in /tmp/k.p12 -nokeys -clcerts -passin env:KP | openssl x509 -pubkey -noout > /tmp/pub.pem
+          openssl dgst -sha256 -sign /tmp/k.pem -out SHA256SUMS.sig SHA256SUMS.txt
+          openssl dgst -sha256 -verify /tmp/pub.pem -signature SHA256SUMS.sig SHA256SUMS.txt
+          rm -f /tmp/k.p12 /tmp/k.pem
+          cat SHA256SUMS.txt
+          echo "::notice title=Checksums::SHA256SUMS.txt signed and verified"
+
+      - name: Release (marked pre-release until the emulator test passes)
         env:
           GH_TOKEN: ${{ github.token }}
           NOVA_BUILD: ${{ github.run_number }}
         run: |
           n=$(printf '%02d' "$NOVA_BUILD")
-          gh release create "build-$n" app/build/outputs/apk/release/*.apk \
+          cd app/build/outputs/apk/release
+          gh release create "build-$n" *.apk SHA256SUMS.txt SHA256SUMS.sig \
             --title "Nova Glucose 1.0 · build $n" \
             --notes "Nova Glucose 1.0 · build $n — tap the .apk below to download and install. Designed by A.HAMROUNI" \
-            --latest
+            --prerelease
 
   smoke-test:
     needs: build
@@ -110,6 +128,12 @@ jobs:
           sleep 2; shot 00b-sync-selftest; cat synctest.txt
           grep -q "PASS" synctest.txt || { echo "::error title=Family sync self-test::$(grep NOVA_SYNCTEST synctest.txt | tail -1 | cut -c1-600)"; exit 1; }
           echo "::notice title=Family sync self-test::$(grep NOVA_SYNCTEST synctest.txt | tail -1 | cut -c1-600)"
+          adb shell input keyevent 4; adb shell am force-stop $P
+          adb logcat -c
+          adb shell am start -W -n $P/.MainActivity --es updtest "build-$(printf '%02d' ${{ github.run_number }})"
+          for i in $(seq 1 24); do sleep 5; adb logcat -d -s NOVA_UPDTEST:I > updtest.txt; grep -q "PASS\|FAIL" updtest.txt && break; done; cat updtest.txt
+          grep -q "PASS" updtest.txt || { echo "::error title=Update self-test::$(grep NOVA_UPDTEST updtest.txt | tail -1 | cut -c1-400)"; exit 1; }
+          echo "::notice title=Update self-test::$(grep NOVA_UPDTEST updtest.txt | tail -1 | cut -c1-400)"
           adb shell input keyevent 4; adb shell am force-stop $P
           adb shell am start -W -n $P/.MainActivity; sleep 3; adb shell input keyevent 4; adb shell am start -W -n $P/.MainActivity
           tapText() { adb shell uiautomator dump /sdcard/u.xml >/dev/null; adb pull /sdcard/u.xml u.xml >/dev/null; b=$(grep -io "text=\"[^\"]*$1[^\"]*\"[^>]*bounds=\"[^\"]*\"" u.xml | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9][0-9]*' | tr '\n' ' '); set -- $b; [ -n "$4" ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); }
@@ -240,3 +264,16 @@ jobs:
           path: |
             logcat.txt
             shots/
+
+  publish:
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test passed — publish for the apps' automatic updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOVA_BUILD: ${{ github.run_number }}
+        run: |
+          n=$(printf '%02d' "$NOVA_BUILD")
+          gh release edit "build-$n" --prerelease=false --latest -R "$GITHUB_REPOSITORY"
+          echo "::notice title=Published::build-$n is now the latest release (phones will update to it)"

@@ -478,6 +478,10 @@ class SettingsActivity : BaseActivity() {
         val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "" }
         ab.addView(Ui.text(this, "Nova Glucose $ver", 15f, Ui.TEXT, true))
         ab.addView(Ui.text(this, Foods.CARE_NOTE, 13f, Ui.MUTED))
+        ab.addView(Ui.text(this, Updater.status(this).ifBlank { "Updates: checked once a day from GitHub (signature, SHA-256 and signing key verified before installing)." },
+            12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
+        ab.addView(Ui.button(this, "⬆ Check for updates") { startActivity(Intent(this, UpdateActivity::class.java)) }.apply { tag = "free" },
+            Ui.lp(top = Ui.dp(this, 6)))
         ab.addView(Ui.text(this, "Language", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 4)) })
         val lr = Ui.row(this)
         L.LANGS.forEach { (code, nm) ->

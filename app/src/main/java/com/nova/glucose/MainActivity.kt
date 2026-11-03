@@ -69,6 +69,10 @@ class MainActivity : BaseActivity() {
                 runOnUiThread { Tr.Builder(this).setTitle("Family sync self-test").setMessage(r.replace(" · ", "\n")).setPositiveButton("OK", null).show() }
             }.start()
         }
+        intent?.getStringExtra("updtest")?.let { tag ->                  // automatic test: this build's release passes the update checks
+            val app = applicationContext
+            Thread { android.util.Log.i("NOVA_UPDTEST", Updater.selfTest(app, tag)) }.start()
+        }
         intent?.getStringExtra("lang")?.let { lg ->                    // used by the automatic screenshots
             if (lg != st.lang) { st.lang = lg; L.set(this, lg); startActivity(Intent(this, MainActivity::class.java)); finish(); return }
         }
@@ -112,6 +116,7 @@ class MainActivity : BaseActivity() {
         graph.showCard()
         FamilySync.kick(this)
         try { HealthRead.maybe(this) } catch (_: Exception) { }
+        try { Updater.maybe(this); Updater.offerOnOpen(this) } catch (_: Exception) { }
     }
 
     override fun onPause() {
