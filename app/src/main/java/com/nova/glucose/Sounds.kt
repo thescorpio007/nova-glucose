@@ -23,16 +23,30 @@ object Sounds {
     val GENERAL = listOf("eat", "tip", "other")
     const val SILENT = "silent"
     /** Sounds built into the app (same on every phone). */
-    val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep")
-    fun defaultFor(kind: String) = if (kind == "low" || kind == "urgent_low") "builtin:medical" else "builtin:blip"
+    val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep",
+        "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s")
+    fun defaultFor(kind: String) = when (kind) {
+        "low", "urgent_low" -> "builtin:medical"; "very_high", "stale" -> "builtin:blip5"; "eat" -> "builtin:beep5"; else -> "builtin:blip" }
+
+    /** The family's sound plan, applied again at every app update (each line can still be changed in between). */
+    private val ON_UPDATE = listOf("urgent_low" to "builtin:medical", "very_high" to "builtin:blip5", "stale" to "builtin:blip5", "eat" to "builtin:beep5")
+    fun applyOnUpdate(c: Context) {
+        val st = Store(c); val b = Updater.current(c)
+        if (b <= 0 || st.raw.getInt("last_snd_build", -1) == b) return
+        ON_UPDATE.forEach { (k, v) -> setBuiltin(c, k, v) }
+        st.urgNoSignal = true
+        st.raw.edit().putInt("last_snd_build", b).apply()
+    }
     fun builtinUri(c: Context, v: String): Uri? = when (v) {
-        "builtin:blip" -> R.raw.nova_blip; "builtin:medical" -> R.raw.nova_medical; "builtin:beep" -> R.raw.nova_beep; else -> null
+        "builtin:blip" -> R.raw.nova_blip; "builtin:medical" -> R.raw.nova_medical; "builtin:beep" -> R.raw.nova_beep
+        "builtin:blip5" -> R.raw.nova_blip5; "builtin:beep5" -> R.raw.nova_beep5; else -> null
     }?.let { Uri.parse("android.resource://${c.packageName}/$it") }
     /** Silent is never allowed for lows; for very high / no signal only when not urgent. */
     /** Lines the patient may change while Settings is locked: never urgent low, low, very high, or a line made urgent. */
     fun patientMay(st: Store, kind: String) = kind !in setOf("urgent_low", "low", "very_high") && !(kind in KINDS && st.urgentFor(kind))
 
-    fun silentAllowed(st: Store, kind: String) = kind !in setOf("low", "urgent_low") && !(kind in KINDS && st.urgentFor(kind))
+    /** Silent is allowed on every line that is not an urgent alarm (lows included when not urgent). */
+    fun silentAllowed(st: Store, kind: String) = !(kind in KINDS && st.urgentFor(kind))
     fun current(st: Store, kind: String): String = st.soundFor(kind).ifBlank { defaultFor(kind) }
     fun displayName(st: Store, kind: String): String {
         val v = current(st, kind)
@@ -64,7 +78,7 @@ object Sounds {
         return u
     }
     @Volatile private var appCtx: Context? = null
-    fun init(c: Context) { appCtx = c.applicationContext }
+    fun init(c: Context) { appCtx = c.applicationContext; try { applyOnUpdate(c) } catch (_: Exception) { } }
 
     fun isSilent(st: Store, kind: String) = current(st, kind) == SILENT && silentAllowed(st, kind)
 
@@ -190,7 +204,10 @@ object Sounds {
     }
 
     /** General notifications (eat timer, AI tips, other): notification volume, respects silent mode. */
-    fun playGeneral(c: Context, kind: String) { if (!quiet(c)) play(c, kind, AudioAttributes.USAGE_NOTIFICATION, 15_000) }
+    fun playGeneral(c: Context, kind: String) {
+        if (kind == "eat") { play(c, kind, AudioAttributes.USAGE_ALARM, 15_000); return }      // time to eat: alarm volume, even on silent
+        if (!quiet(c)) play(c, kind, AudioAttributes.USAGE_NOTIFICATION, 15_000)
+    }
 
     /** Settings › ▶ Test (tap again to stop). Returns what played. */
     /** Settings › ▶ Test: always out loud (alarm volume), whatever the phone's mode. Tap again to stop. */
@@ -245,7 +262,7 @@ object Sounds {
     /** After posting a notification: the chosen sound and vibration for that line. */
     fun after(c: Context, kind: String) {
         if (kind in KINDS) playOnce(c, kind) else playGeneral(c, kind)
-        if (Store(c).vibFor(kind)) vibrate(c, lowKind(kind))
+        if (Store(c).vibFor(kind)) vibrate(c, lowKind(kind) || kind == "eat")
     }
 
     @Suppress("DEPRECATION")

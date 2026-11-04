@@ -1181,7 +1181,7 @@ class SettingsActivity : BaseActivity() {
         box.addView(r2, Ui.lp(top = Ui.dp(this, 4)))
         if (Sounds.patientMay(st, k) && Parent.enabled(st)) box.addView(Ui.text(this, "🔓 Can be changed even when Settings is locked.", 11f, Ui.MUTED))
         if (urgent) box.addView(Ui.text(this, "Urgent: full screen, rings through silent until Stop — can't be silent.", 11f, Ui.MUTED))
-        else if (!Sounds.silentAllowed(st, k)) box.addView(Ui.text(this, "Lows are never silent.", 11f, Ui.MUTED))
+        if (k == "eat") box.addView(Ui.text(this, "Plays once at the alarm volume, even when the phone is on silent.", 11f, Ui.MUTED))
         return box
     }
 
@@ -1196,7 +1196,7 @@ class SettingsActivity : BaseActivity() {
         pm.setOnMenuItemClickListener { item ->
             soundKind = k
             when (item.itemId) {
-                in 0..2 -> { Sounds.setBuiltin(this, k, Sounds.BUILTIN[item.itemId].first); renderSounds(); renderLock(); Sounds.test(this, k) }
+                in Sounds.BUILTIN.indices -> { Sounds.setBuiltin(this, k, Sounds.BUILTIN[item.itemId].first); renderSounds(); renderLock(); Sounds.test(this, k) }
                 10 -> phoneSounds()
                 11 -> pickAudio()
                 12 -> { Sounds.setSilent(this, k); renderSounds(); renderLock() }
