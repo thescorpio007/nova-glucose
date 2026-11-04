@@ -60,6 +60,9 @@ object AlarmPlayer {
         main.post {
             stopSound(app)
             if (notify) notifyFullScreen(app)
+            // with "Display over other apps" allowed, open the alarm screen directly too (more reliable on Xiaomi/Redmi)
+            if (notify && Build.VERSION.SDK_INT >= 23 && android.provider.Settings.canDrawOverlays(app))
+                try { app.startActivity(Intent(app, AlarmActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { }
             ring(app)
         }
     }

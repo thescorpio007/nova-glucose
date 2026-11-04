@@ -130,7 +130,8 @@ class DayChart(c: Context) : View(c) {
             val asleep = sleep.firstOrNull { t in it.a until it.b && WatchData.asleep(it) }
             val lines = listOfNotNull(
                 hm.format(Date(t)) + (r?.let { " · ${it.mg} mg/dL" } ?: ""),
-                listOfNotNull(hr?.let { L.s("HR {0} bpm".replace("{0}", "$it")) }, "%,d".format(Locale.US, w.steps[h]) + " " + L.s("steps this hour")).joinToString(" · "),
+                hr?.let { L.s("HR {0} bpm".replace("{0}", "$it")) },
+                "%,d".format(Locale.US, w.steps[h]) + " " + L.s("steps this hour"),
                 when {
                     during != null -> L.s("During sport")
                     after != null -> L.s("{0} min after sport".replace("{0}", "${(t - after.b) / 60_000}"))
@@ -140,7 +141,9 @@ class DayChart(c: Context) : View(c) {
             r?.let { p.color = if (it.mg < low) Ui.WARN else Ui.TEXT; cv.drawCircle(touchX, gy(it.mg), dp(4f), p) }
             val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(11.5f); color = Ui.TEXT }
             val bw2 = lines.maxOf { tp.measureText(it) } + dp(16f); val bh = lines.size * dp(15f) + dp(10f)
-            val bx = if (touchX + bw2 + dp(8f) < right) touchX + dp(8f) else touchX - bw2 - dp(8f)
+            // beside the line when it fits, otherwise moved inward: always fully on screen
+            val bx = (if (touchX + bw2 + dp(8f) < right) touchX + dp(8f) else touchX - bw2 - dp(8f))
+                .coerceAtMost(width - bw2 - dp(2f)).coerceAtLeast(dp(2f))
             val by = gTop + dp(4f)
             p.color = 0xEE222836.toInt(); cv.drawRoundRect(RectF(bx, by, bx + bw2, by + bh), dp(8f), dp(8f), p)
             lines.forEachIndexed { i, s -> tp.isFakeBoldText = i == 0; cv.drawText(s, bx + dp(8f), by + dp(17f) + i * dp(15f), tp) }

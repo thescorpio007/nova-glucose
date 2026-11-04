@@ -89,6 +89,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var hcMsg: TextView
     private lateinit var roleRow: LinearLayout
     private lateinit var roleInfo: TextView
+    private lateinit var guardBox: LinearLayout
     private val patientOnly = mutableListOf<View>()
     private lateinit var hcFamilyNote: TextView
     private lateinit var hcPeerBox: LinearLayout
@@ -168,6 +169,8 @@ class SettingsActivity : BaseActivity() {
         roleRow = Ui.row(this); rc.addView(roleRow, Ui.lp(top = Ui.dp(this, 8)))
         roleInfo = Ui.text(this, "", 13.5f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 10), 0, 0) }
         rc.addView(roleInfo)
+        guardBox = Ui.col(this).apply { setPadding(0, Ui.dp(context, 10), 0, 0) }
+        rc.addView(guardBox)
         root.addView(rc)
         renderRole()
 
@@ -256,6 +259,7 @@ class SettingsActivity : BaseActivity() {
         pr2.addView(Ui.button(this, "Exact timers") { openExactPerm() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
         pr2.addView(Ui.button(this, "Battery: no limits") { openBatteryPerm() }, Ui.lp(0, weight = 1f))
         uc.addView(pr2, Ui.lp(top = Ui.dp(this, 6)))
+        uc.addView(Ui.button(this, "Display over other apps") { openOverlayPerm() }, Ui.lp(top = Ui.dp(this, 6)))
         uc.addView(Ui.text(this, brandTip(), 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
         root.addView(uc)
 
@@ -812,6 +816,7 @@ class SettingsActivity : BaseActivity() {
         if (::permStatus.isInitialized) renderPerms()
         if (::soundRows.isInitialized) renderSounds()
         if (::hcStatus.isInitialized) renderHc()
+        if (::guardBox.isInitialized) renderGuard()
         if (::allViews.isInitialized) renderLock()
         lockTick.post(watch)
     }
@@ -1270,8 +1275,9 @@ class SettingsActivity : BaseActivity() {
         val dnd = android.os.Build.VERSION.SDK_INT < 23 || nm.isNotificationPolicyAccessGranted
         val exact = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
         val batt = android.os.Build.VERSION.SDK_INT < 23 || pm.isIgnoringBatteryOptimizations(packageName)
-        permStatus.text = "${mark(full)} Full-screen alarms   ${mark(dnd)} Do Not Disturb access\n${mark(exact)} Exact timers   ${mark(batt)} No battery limits"
-        permStatus.setTextColor(if (full && dnd && exact && batt) Ui.GOOD else Ui.WARN)
+        val over = android.os.Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(this)
+        permStatus.text = "${mark(full)} Full-screen alarms   ${mark(dnd)} Do Not Disturb access\n${mark(exact)} Exact timers   ${mark(batt)} No battery limits\n${mark(over)} " + L.s("Display over other apps")
+        permStatus.setTextColor(if (full && dnd && exact && batt && over) Ui.GOOD else Ui.WARN)
     }
 
     private fun openFullScreenPerm() {
@@ -1291,6 +1297,11 @@ class SettingsActivity : BaseActivity() {
             startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))); return
         } catch (_: Exception) { }
         Ui.toast(this, "Already allowed on this Android version")
+    }
+
+    private fun openOverlayPerm() {
+        try { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
+        catch (_: Exception) { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
     }
 
     @android.annotation.SuppressLint("BatteryLife")
@@ -1510,6 +1521,21 @@ class SettingsActivity : BaseActivity() {
                 L.s("✓ Ask AI, AI tips and AI review talk to you about the patient") + "\n" + L.s("• Alerts are the same on every phone")
             else -> L.s("Choose who uses this phone. Everything is set up for that person.")
         }
+        renderGuard()
+    }
+
+    /** Patient's phone: protection against uninstalling (device administrator). Family phones: the 2-hour warning. */
+    private fun renderGuard() {
+        guardBox.removeAllViews()
+        if (st.isPatient) {
+            val on = Guard.protected(this)
+            guardBox.addView(Ui.text(this, if (on) "🛡 Protected: Nova Glucose can't be uninstalled until this protection is turned off first."
+                else "🛡 Not protected: Nova Glucose can be uninstalled.", 13f, if (on) Ui.GOOD else Ui.WARN))
+            guardBox.addView(Ui.button(this, if (on) "Protection settings" else "🛡 Protect from uninstall", !on) {
+                if (on) Parent.ask(this, L.s("Enter the PIN to change the protection.")) { Guard.openAdminList(this) } else Guard.askProtect(this) },
+                Ui.lp(top = Ui.dp(this, 6)))
+        } else if (st.syncFam.isNotBlank())
+            guardBox.addView(Ui.text(this, "🔔 You get a notification if the patient's phone hasn't synced for 2 hours.", 12.5f, Ui.MUTED))
     }
 
     private fun chooseRole(id: String) {

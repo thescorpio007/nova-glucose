@@ -63,6 +63,12 @@ object Members {
         return "who"
     }
 
+    /** The patient's phone (the most recently seen phone that says it is the patient's). */
+    fun patient(c: Context, list: List<FamilySync.Member>): FamilySync.Member? {
+        val roles = json(c, ROLES)
+        return list.filter { (roles.optJSONObject(it.uid)?.optString("r") ?: "") == "patient" }.maxByOrNull { it.seen }
+    }
+
     /** One line of the list. */
     class Row(val m: FamilySync.Member, val name: String, val patient: Boolean, val locked: Boolean, val canRemove: Boolean, val why: String)
 
