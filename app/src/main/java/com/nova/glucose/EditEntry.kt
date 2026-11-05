@@ -133,7 +133,7 @@ object EditEntry {
             setText(when { m != null -> if (m.known) m.carbs.toString() else ""; d!!.carbs > 0 -> d.carbs.toString(); d.carbs == Carbs.UNKNOWN -> ""; else -> "0" })
             inputType = InputType.TYPE_CLASS_NUMBER }
         root.addView(carbs)
-        root.addView(Ui.text(a, "0 = correction only, no meal · empty = meal eaten, carbs not recorded", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 4), 0, 0) })
+        root.addView(Ui.text(a, "0 = correction only, no meal · empty = meal eaten, carbs not recorded · or write \"correction\" in the note", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 4), 0, 0) })
         m?.let { mm -> db.ai(mm.id)?.let { (_, ai) -> root.addView(Ui.text(a, "AI said $ai g — your number is kept as the family's count.", 12f, Ui.MUTED)
             .apply { setPadding(0, Ui.dp(a, 4), 0, 0) }) } }
         val mealBox = Ui.col(a)
@@ -151,15 +151,16 @@ object EditEntry {
         val note = Ui.input(a, "Note", multi = false).apply { setText(d?.note ?: m?.note ?: "") }
         root.addView(note)
         fun toggle() {
-            val corr = Carbs.parse(carbs.text.toString()) == Carbs.CORRECTION
+            val corr = Carbs.parse(carbs.text.toString(), note.text.toString()) == Carbs.CORRECTION
             mealBox.visibility = if (corr) android.view.View.GONE else android.view.View.VISIBLE
             corrNote.visibility = if (corr) android.view.View.VISIBLE else android.view.View.GONE
         }
-        carbs.addTextChangedListener(object : android.text.TextWatcher {
+        val tw = object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, x: Int, y: Int, z: Int) {}
             override fun onTextChanged(s: CharSequence?, x: Int, y: Int, z: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) { toggle() }
-        })
+        }
+        carbs.addTextChangedListener(tw); note.addTextChangedListener(tw)
         toggle()
         val dlg = Tr.Builder(a).setTitle("✏️ Edit insulin + meal").setView(ScrollView(a).apply { addView(root) })
             .setPositiveButton("Save", null).setNegativeButton("Cancel", null).create()
@@ -169,7 +170,7 @@ object EditEntry {
                 val u = ut.toDoubleOrNull()
                 if (ut.isNotEmpty() && (u == null || u <= 0 || u > 100)) { units.error = L.s("Enter the units injected"); return@setOnClickListener }
                 if (d != null && u == null) { units.error = L.s("Enter the units injected"); return@setOnClickListener }
-                val c = Carbs.parse(carbs.text.toString())
+                val c = Carbs.parse(carbs.text.toString(), note.text.toString())
                 if (c == null) { carbs.error = L.s("Grams 1–500, 0 for a correction, or empty if not known"); return@setOnClickListener }
                 if (c == Carbs.CORRECTION && u == null) { units.error = L.s("A correction needs the units injected"); return@setOnClickListener }
                 if (cal.timeInMillis > System.currentTimeMillis() + 60_000) { Ui.toast(a, "Time is in the future"); return@setOnClickListener }

@@ -73,7 +73,7 @@ object PastEntry {
             if (kind == "long" && units.text.isBlank()) units.setText(st.longDose)
             val cv = if (kind == "long") android.view.View.GONE else android.view.View.VISIBLE
             carbsL.visibility = cv; carbs.visibility = cv; carbsH.visibility = cv
-            carbsH.text = L.s(if (kind == "meal") "Empty = meal eaten, carbs not recorded" else "0 = correction only, no meal · empty = meal eaten, carbs not recorded")
+            carbsH.text = L.s(if (kind == "meal") "Empty = meal eaten, carbs not recorded" else "0 = correction only, no meal · empty = meal eaten, carbs not recorded · or write \"correction\" in the note")
         }
         renderChips()
 
@@ -85,7 +85,7 @@ object PastEntry {
                 val ts = cal.timeInMillis
                 if (ts > System.currentTimeMillis() + 60_000) { Ui.toast(a, "Time is in the future"); return@setOnClickListener }
                 val u = units.text.toString().replace(',', '.').toDoubleOrNull()
-                val c = if (kind == "long") 0 else Carbs.parse(carbs.text.toString())
+                val c = if (kind == "long") 0 else if (kind == "rapid") Carbs.parse(carbs.text.toString(), note.text.toString()) else Carbs.parse(carbs.text.toString())
                 val n = note.text.toString().trim()
                 if (kind != "meal" && (u == null || u <= 0 || u > 100)) { units.error = L.s("Enter the units injected"); return@setOnClickListener }
                 if (c == null) { carbs.error = L.s("Grams 1–500, 0 for a correction, or empty if not known"); return@setOnClickListener }

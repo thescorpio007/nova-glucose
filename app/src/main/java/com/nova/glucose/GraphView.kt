@@ -28,6 +28,7 @@ class GraphView(c: Context) : View(c) {
     private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop
     var meals: List<Long> = emptyList()
     var doses: List<Long> = emptyList()
+    var longs: List<Long> = emptyList()      // long-acting insulin: "LI"
     /** Tap on an M or I mark: time of the meal/dose. */
     var onMark: ((Long) -> Unit)? = null
     var incidents: List<Incident> = emptyList()
@@ -39,7 +40,7 @@ class GraphView(c: Context) : View(c) {
 
     private fun markAt(ex: Float, ey: Float): Long? {
         if (onMark == null || mode == "m" || ey > markBottom + 10 * d) return null
-        val hit = (meals + doses).filter { it in t0..t1 }.minByOrNull { kotlin.math.abs(xOf(it) - ex) } ?: return null
+        val hit = (meals + doses + longs).filter { it in t0..t1 }.minByOrNull { kotlin.math.abs(xOf(it) - ex) } ?: return null
         return if (kotlin.math.abs(xOf(hit) - ex) < 22 * d) hit else null
     }
 
@@ -230,6 +231,8 @@ class GraphView(c: Context) : View(c) {
         // Meal (M) and rapid insulin (I) marks
         meals.filter { it in t0..t1 }.forEach { cv.drawText("M", x(it) - 5 * d, top - 4 * d, mark) }
         doses.filter { it in t0..t1 }.forEach { cv.drawText("I", x(it) - 2 * d, top + 10 * d, mark) }
+        longs.filter { it in t0..t1 }.forEach { t -> val near = doses.any { kotlin.math.abs(x(it) - x(t)) < 12 * d }
+            cv.drawText("LI", x(t) - 5 * d + (if (near) 12 * d else 0f), top + 10 * d, mark) }
 
         val path = Path()
         var prev: Reading? = null

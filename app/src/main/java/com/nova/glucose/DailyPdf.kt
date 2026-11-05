@@ -91,7 +91,7 @@ object DailyPdf {
 
         // ---------------------------------------------------------- graph
         doc.need(190f)
-        drawGraph(doc.cv!!, RectF(M + 28f, doc.y, (W - M).toFloat(), doc.y + 170f), readings, a, b, st, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts })
+        drawGraph(doc.cv!!, RectF(M + 28f, doc.y, (W - M).toFloat(), doc.y + 170f), readings, a, b, st, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, doses.filter { it.kind == "long" }.map { it.ts })
         doc.y += 190f
 
         // ---------------------------------------------------------- insulin
@@ -171,7 +171,7 @@ object DailyPdf {
         BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = s })
     } catch (_: Exception) { null }
 
-    private fun drawGraph(cv: Canvas, r: RectF, rs: List<Reading>, t0: Long, t1: Long, st: Store, meals: List<Long>, rapid: List<Long>) {
+    private fun drawGraph(cv: Canvas, r: RectF, rs: List<Reading>, t0: Long, t1: Long, st: Store, meals: List<Long>, rapid: List<Long>, longs: List<Long> = emptyList()) {
         val maxV = maxOf(300, (rs.maxOfOrNull { it.mg } ?: 0) + 20); val minV = 40
         fun y(v: Int) = r.bottom - (v - minV).toFloat() / (maxV - minV) * r.height()
         fun x(t: Long) = r.left + (t - t0).toFloat() / (t1 - t0) * r.width()
@@ -187,6 +187,7 @@ object DailyPdf {
         val mark = paint(8f, teal, true)
         meals.forEach { cv.drawText("M", x(it) - 3, r.top + 8, mark) }
         rapid.forEach { cv.drawText("I", x(it) - 2, r.top + 18, paint(8f, Color.rgb(60, 80, 200), true)) }
+        longs.forEach { cv.drawText("LI", x(it) - 4, r.top + 28, paint(8f, Color.rgb(60, 80, 200), true)) }
         val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.4f; color = Color.rgb(25, 25, 25) }
         val path = Path(); var prev: Reading? = null
         for (p in rs) {
@@ -195,7 +196,7 @@ object DailyPdf {
         }
         cv.drawPath(path, line)
         cv.drawRect(r, Paint().apply { style = Paint.Style.STROKE; color = Color.argb(60, 0, 0, 0); strokeWidth = 0.6f })
-        cv.drawText("M = meal · I = rapid insulin", r.right - 110, r.bottom + 22, lab)
+        cv.drawText("M = meal · I = rapid insulin · LI = long-acting", r.right - 170, r.bottom + 22, lab)
         @Suppress("UNUSED_VARIABLE") val unused = Rect()
     }
 }

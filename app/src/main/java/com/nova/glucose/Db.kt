@@ -26,6 +26,9 @@ data class Meal(
 object Carbs {
     const val UNKNOWN = -1
     const val CORRECTION = -2
+    /** "correction" (or the French/Arabic word) in the note = correction only, when the carbs field is left empty. */
+    fun saysCorrection(note: String) = note.contains("correction", true) || note.contains("تصحيح")
+    fun parse(t: String, note: String): Int? = parse(t).let { if (it == UNKNOWN && saysCorrection(note)) CORRECTION else it }
     fun parse(t: String): Int? { val s = t.trim(); return when {
         s.isEmpty() -> UNKNOWN
         s.all { it == '0' } -> CORRECTION

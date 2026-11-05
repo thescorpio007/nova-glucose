@@ -365,7 +365,9 @@ class MainActivity : BaseActivity() {
         graph.low = snap?.targetLow ?: st.low; graph.high = snap?.targetHigh ?: st.high
         graph.lowLine = st.low; graph.highLine = st.high; graph.urgentLine = st.urgentLow; graph.veryHighLine = st.veryHigh
         graph.meals = db.meals(500).map { it.ts }
-        graph.doses = db.doses(a, b).filter { it.kind == "rapid" }.map { it.ts }
+        val allDoses = db.doses(a, b)
+        graph.doses = allDoses.filter { it.kind == "rapid" }.map { it.ts }
+        graph.longs = allDoses.filter { it.kind == "long" }.map { it.ts }
         graph.incidents = db.incidents(a, b)
         graph.set(mode, a, b, pts)
         chartLegend.text = when (mode) {

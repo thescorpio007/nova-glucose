@@ -499,7 +499,7 @@ object DoctorReport {
             val ex = (WatchData.get(c, WatchData.addDays(a, -1)).ex + w.ex).filter { it.b > a && it.a <= b }
             val meals = db.meals(100_000).filter { it.ts in a..b }.sortedBy { it.ts }
             val doses = db.doses(a, b).sortedBy { it.ts }
-            dayChart(d.cv!!, RectF(M + 24, d.y, W - M, d.y + 250), a, rs, w, WatchData.sleepIn(c, a, b + 1), ex, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, st)
+            dayChart(d.cv!!, RectF(M + 24, d.y, W - M, d.y + 250), a, rs, w, WatchData.sleepIn(c, a, b + 1), ex, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, st, doses.filter { it.kind == "long" }.map { it.ts })
             d.y += 268
             val rows = mutableListOf(listOf("Time", "", "Entry"))
             val ev = mutableListOf<Pair<Long, List<String>>>()
@@ -519,7 +519,7 @@ object DoctorReport {
         if (shown == 0) { d.newPage(); text(d, "Day pages: no " + (if (keyOnly) "key days (lows, highs above 250 or incidents)" else "days with data") + " in this period.", paint(10f, muted)) }
     }
 
-    private fun dayChart(cv: Canvas, r: RectF, start: Long, rs: List<Reading>, w: WatchDay, sleep: List<Seg>, ex: List<Ex>, meals: List<Long>, doses: List<Long>, st: Store) {
+    private fun dayChart(cv: Canvas, r: RectF, start: Long, rs: List<Reading>, w: WatchDay, sleep: List<Seg>, ex: List<Ex>, meals: List<Long>, doses: List<Long>, st: Store, longs: List<Long> = emptyList()) {
         val day = 24 * 3600_000f
         fun x(t: Long) = r.left + r.width() * ((t - start) / day).coerceIn(0f, 1f)
         val gTop = r.top; val gBot = r.top + 120
@@ -536,6 +536,7 @@ object DoctorReport {
         cv.drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.4f; color = Color.rgb(30, 30, 30) })
         val mk = paint(7.5f, Color.rgb(220, 60, 60), true)
         doses.forEach { cv.drawText("I", x(it) - 5, gy(st.low) + 10, mk) }
+        longs.forEach { cv.drawText("LI", x(it) - 5, gy(st.low) + 20, mk) }
         meals.forEach { cv.drawText("M", x(it) + 1, gy(st.low) + 10, mk) }
         // steps
         val sTop = gBot + 18; val sBot = sTop + 34

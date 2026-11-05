@@ -18,6 +18,8 @@ object SelfTest {
             // 0. Carbs rules: all zeros = correction, empty = meal with carbs not recorded, never 0 g
             for (z in listOf("0", "00", "0000")) check(Carbs.parse(z) == Carbs.CORRECTION) { "'$z' is not a correction" }
             check(Carbs.parse("") == Carbs.UNKNOWN && Carbs.parse(" ") == Carbs.UNKNOWN) { "empty carbs not 'unknown'" }
+            check(Carbs.parse("", "Correction before bed") == Carbs.CORRECTION && Carbs.parse("", "snack") == Carbs.UNKNOWN &&
+                Carbs.parse("30", "correction") == 30) { "'correction' in the note rule" }
             check(Carbs.parse("45") == 45 && Carbs.parse("abc") == null && Carbs.parse("900") == null) { "carbs number rule" }
             val um = Meal(0, 1, "x", "[]", Carbs.UNKNOWN, -1, -1, 0, "", "")
             check(Carbs.sum(listOf(um, um.copy(carbs = 30))) == (30 to 1)) { "unknown meal counted as grams" }

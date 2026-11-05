@@ -27,7 +27,7 @@ object MarkHistory {
     fun legend(prefix: String): CharSequence {
         val sb = SpannableStringBuilder(prefix)
         fun red(s: String) { val a = sb.length; sb.append(s); sb.setSpan(ForegroundColorSpan(RED), a, sb.length, 0); sb.setSpan(StyleSpan(Typeface.BOLD), a, sb.length, 0) }
-        red("M"); sb.append(" = meal · "); red("I"); sb.append(" = rapid insulin")
+        red("M"); sb.append(" = meal · "); red("I"); sb.append(" = rapid insulin · "); red("LI"); sb.append(" = long-acting insulin")
         return sb
     }
 
@@ -126,7 +126,7 @@ object MarkHistory {
             is Entry.I -> {
                 val d = e.d
                 val name = if (d.kind == "rapid") st.rapidName.ifBlank { "Rapid insulin" } else st.longName.ifBlank { "Long-acting insulin" }
-                letter(head, if (d.kind == "rapid") "I" else "L")
+                letter(head, if (d.kind == "rapid") "I" else "LI")
                 head.append("  ${hm.format(Date(d.ts))} · ${L.s(name)} · ${units(d.units)} u" + if (d.waitMin > 0) L.s(" · eat after ${d.waitMin} min") else "")
                 listOfNotNull(when { d.carbs > 0 -> "for ${d.carbs} g carbs"; d.correction -> "correction"; d.carbs == Carbs.UNKNOWN -> "meal, carbs unknown"; else -> null }, if (d.mgAt > 0) "glucose then ${d.mgAt} mg/dL" else null,
                     db.who("insulin", d.id).takeIf { it.isNotBlank() }?.let { "by $it" }).takeIf { it.isNotEmpty() }?.let { more += it.joinToString(" · ") { x -> L.s(x) } }
@@ -160,7 +160,7 @@ object MarkHistory {
         when (e) {
             is Entry.M -> { letter(sb, "M"); sb.append("  ${day(e.ts)} · ${e.m.title}"); right = e.m.carbText }
             is Entry.I -> {
-                letter(sb, if (e.d.kind == "rapid") "I" else "L")
+                letter(sb, if (e.d.kind == "rapid") "I" else "LI")
                 sb.append("  ${day(e.ts)} · " + if (e.d.kind == "rapid") st.rapidName.ifBlank { L.s("Rapid insulin") } else st.longName.ifBlank { L.s("Long-acting insulin") })
                 if (e.d.correction) sb.append(" · " + L.s("correction"))
                 right = "${units(e.d.units)} u"

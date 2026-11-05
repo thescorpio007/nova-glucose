@@ -129,13 +129,14 @@ class HealthActivity : BaseActivity() {
             sleep = WatchData.sleepIn(this@HealthActivity, day, end + 1)
             ex = (WatchData.get(this@HealthActivity, WatchData.addDays(day, -1)).ex + w.ex).filter { it.b > day && it.a <= end }
             meals = db.meals(400).filter { it.ts in day..end }.map { it.ts }
-            doses = db.doses(day, end).filter { it.kind == "rapid" }.map { it.ts }
+            val ds = db.doses(day, end)
+            doses = ds.filter { it.kind == "rapid" }.map { it.ts }; longs = ds.filter { it.kind == "long" }.map { it.ts }
             low = st.low; high = st.high
         }
         val cc = Ui.card(this).apply { setPadding(Ui.dp(context, 6), Ui.dp(context, 10), Ui.dp(context, 6), Ui.dp(context, 10)) }
         cc.addView(chart)
         cc.addView(Ui.text(this, L.s("Touch the chart to see every value at that moment.") + "  " +
-            L.s("Sleep: dark = deep · light · pale = REM · orange = awake") + "  · M = " + L.s("meal") + " · I = " + L.s("rapid insulin"), 11f, Ui.MUTED)
+            L.s("Sleep: dark = deep · light · pale = REM · orange = awake") + "  · M = " + L.s("meal") + " · I = " + L.s("rapid insulin") + " · LI = " + L.s("long-acting insulin"), 11f, Ui.MUTED)
             .apply { setPadding(Ui.dp(context, 8), Ui.dp(context, 4), Ui.dp(context, 8), 0) })
         body.addView(cc, Ui.lp(top = Ui.dp(this, 10)))
         chart.ex.firstOrNull()?.let { e -> chart.showAt(minOf(e.b + 20 * 60_000L, end, System.currentTimeMillis())) }

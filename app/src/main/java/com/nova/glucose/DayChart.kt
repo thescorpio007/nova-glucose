@@ -25,6 +25,7 @@ class DayChart(c: Context) : View(c) {
     var ex: List<Ex> = emptyList()
     var meals: List<Long> = emptyList()
     var doses: List<Long> = emptyList()
+    var longs: List<Long> = emptyList()
     var low = 70; var high = 180
     private var touchX = -1f
 
@@ -81,6 +82,7 @@ class DayChart(c: Context) : View(c) {
         } else cv.drawText(L.s("No glucose readings this day"), left + dp(8f), (gTop + gBot) / 2, txt)
         val mk = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(11f); isFakeBoldText = true; color = GraphView.MARK }
         doses.forEach { cv.drawText("I", x(it) - dp(8f), gy(low) + dp(14f), mk) }
+        longs.forEach { cv.drawText("LI", x(it) - dp(8f), gy(low) + dp(28f), mk) }
         meals.forEach { cv.drawText("M", x(it) + dp(1f), gy(low) + dp(14f), mk) }
 
         // steps
