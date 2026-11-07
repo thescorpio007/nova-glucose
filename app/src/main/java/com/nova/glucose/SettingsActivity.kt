@@ -382,12 +382,15 @@ class SettingsActivity : BaseActivity() {
         wc.addView(wcb("No-signal alerts", st.watchStale) { st.watchStale = it })
         wc.addView(wcb("Time-to-eat reminder", st.watchEat) { st.watchEat = it })
         wc.addView(Ui.text(this, "Glucose on the watch (quiet message, no sound):", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
-        val wg = Ui.row(this)
+        val wg = Ui.col(this)
         fun renderWg() {
             wg.removeAllViews()
-            listOf(0 to "Off", 5 to "Every 5 min", 10 to "10 min", 15 to "15 min").forEach { (m, l) ->
-                wg.addView(Ui.chip(this, l, st.watchGlucose == m) { st.watchGlucose = m; st.lastWatchPost = 0; renderWg() }, Ui.lp(-2, -2, end = Ui.dp(this, 6)))
+            listOf(listOf(0 to "Off", 5 to "Every 5 min", 10 to "10 min"), listOf(15 to "15 min", 30 to "30 min", 60 to "60 min")).forEach { line ->
+                val r = Ui.row(this)
+                line.forEach { (m, l) -> r.addView(Ui.chip(this, l, st.watchGlucose == m) { st.watchGlucose = m; st.lastWatchPost = 0; renderWg() }, Ui.lp(-2, -2, end = Ui.dp(this, 6))) }
+                wg.addView(r, Ui.lp(top = Ui.dp(this, 4)))
             }
+            wg.addView(Ui.text(this, "Set back to 30 min at every update.", 11f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
         }
         renderWg(); wc.addView(wg)
         wc.addView(check("✦ AI food tip a few seconds after a high/low alert", st.aiTips).apply { setOnCheckedChangeListener { _, v -> st.aiTips = v } },

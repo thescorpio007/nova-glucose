@@ -35,6 +35,8 @@ object Sounds {
         if (b <= 0 || st.raw.getInt("last_snd_build", -1) == b) return
         ON_UPDATE.forEach { (k, v) -> setBuiltin(c, k, v) }
         st.urgNoSignal = true
+        st.watchGlucose = 30            // glucose on the watch every 30 min (patient and parents)
+        st.lastWatchPost = 0
         st.raw.edit().putInt("last_snd_build", b).apply()
     }
     fun builtinUri(c: Context, v: String): Uri? = when (v) {
