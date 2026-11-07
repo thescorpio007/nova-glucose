@@ -148,7 +148,7 @@ object Updater {
         } finally { busy.set(false) }
     }
 
-    private fun done(c: Context, s: String): String { setStatus(c, s); return s }
+    private fun done(c: Context, s: String): String { if (s.startsWith("⚠")) ErrorLog.e("Update", s); setStatus(c, s); return s }
 
     private fun apkFits(name: String, legacy: Boolean) = name.endsWith(".apk") && (name.contains("Android5.0") == legacy)
 

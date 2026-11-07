@@ -524,6 +524,10 @@ class SettingsActivity : BaseActivity() {
             12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
         ab.addView(Ui.button(this, "⬆ Check for updates") { startActivity(Intent(this, UpdateActivity::class.java)) }.apply { tag = "free" },
             Ui.lp(top = Ui.dp(this, 6)))
+        ab.addView(Ui.text(this, "🐞 Error report", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 2)) })
+        ab.addView(Ui.text(this, L.s("Crashes and errors of the last 30 days, with the phone and settings info, to send for fixing and improving the app. No names, passwords, keys, family code, glucose values or meals.") +
+            " (" + L.s("{0} recorded").replace("{0}", "${ErrorLog.count(this)}") + ")", 12f, Ui.MUTED))
+        ab.addView(Ui.button(this, "📤 Share error report") { ErrorLog.share(this) }.apply { tag = "free" }, Ui.lp(top = Ui.dp(this, 6)))
         ab.addView(Ui.text(this, "Language", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 4)) })
         val lr = Ui.row(this)
         L.LANGS.forEach { (code, nm) ->

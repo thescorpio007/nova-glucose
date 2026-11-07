@@ -22,7 +22,7 @@ data class Provider(
     val skip: String = "audio|realtime|transcri|tts|image-gen|embed|search|moderation|instruct|codex|dall|whisper|computer|deep-research|live|exp|nano|-\\d{4}-\\d{2}-\\d{2}$"
 )
 
-class AiException(message: String, val code: Int = 0) : Exception(message)
+class AiException(message: String, val code: Int = 0) : Exception(message) { init { ErrorLog.e("AI", (if (code > 0) "HTTP $code: " else "") + message.take(200)) } }
 
 object Providers {
     val all = listOf(

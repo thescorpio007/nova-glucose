@@ -80,7 +80,7 @@ object Sounds {
         return u
     }
     @Volatile private var appCtx: Context? = null
-    fun init(c: Context) { appCtx = c.applicationContext; try { applyOnUpdate(c) } catch (_: Exception) { } }
+    fun init(c: Context) { ErrorLog.init(c); appCtx = c.applicationContext; try { applyOnUpdate(c) } catch (_: Exception) { } }
 
     fun isSilent(st: Store, kind: String) = current(st, kind) == SILENT && silentAllowed(st, kind)
 

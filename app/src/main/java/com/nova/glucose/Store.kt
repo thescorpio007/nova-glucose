@@ -73,7 +73,7 @@ class Store(c: Context) {
     var lastMg: Int get() = i("last_mg", 0); set(v) = puti("last_mg", v)
     var lastTrend: Int get() = i("last_trend", 0); set(v) = puti("last_trend", v)
     var lastTs: Long get() = sp.getLong("last_ts", 0); set(v) = sp.edit().putLong("last_ts", v).apply()
-    var lastError: String get() = s("last_error"); set(v) = put("last_error", v)
+    var lastError: String get() = s("last_error"); set(v) { if (v.isNotBlank() && v != s("last_error")) ErrorLog.e("Libre", v); put("last_error", v) }
     fun lastAlert(kind: String): Long = sp.getLong("alert_$kind", 0)
     fun setLastAlert(kind: String, t: Long) = sp.edit().putLong("alert_$kind", t).apply()
 
@@ -155,7 +155,7 @@ class Store(c: Context) {
     /** Data types received, e.g. "steps,ex,sleep,hr,rhr,spo2". */
     var hcGot: String get() = s("last_hc_got"); set(v) = put("last_hc_got", v)
     var hcSources: String get() = s("last_hc_src"); set(v) = put("last_hc_src", v)
-    var hcInfo: String get() = s("last_hc_info"); set(v) = put("last_hc_info", v)
+    var hcInfo: String get() = s("last_hc_info"); set(v) { if (v.startsWith("⚠") && v != s("last_hc_info")) ErrorLog.e("Watch", v); put("last_hc_info", v) }
     var hcShare: Boolean get() = b("hc_share", true); set(v) = putb("hc_share", v)
     /** Family phone: when it last asked the patient's phone to read the watch. Patient phone: the newest request it handled. */
     var hcReq: Long get() = sp.getLong("last_hc_req", 0); set(v) = sp.edit().putLong("last_hc_req", v).apply()
@@ -259,7 +259,7 @@ class Store(c: Context) {
     /** Server time of the newest change received (RFC 3339). */
     var syncSince: String get() = s("sync_since"); set(v) = put("sync_since", v)
     var syncLast: Long get() = sp.getLong("sync_last", 0); set(v) = sp.edit().putLong("sync_last", v).apply()
-    var syncInfo: String get() = s("sync_info"); set(v) = put("sync_info", v)
+    var syncInfo: String get() = s("sync_info"); set(v) { if (v.startsWith("⚠") && v != s("sync_info")) ErrorLog.e("Sync", v); put("sync_info", v) }
     var syncSeen: Long get() = sp.getLong("sync_seen", 0); set(v) = sp.edit().putLong("sync_seen", v).apply()
     /** Edit time of the eat timer last applied (family-wide). */
     var syncEatU: Long get() = sp.getLong("sync_eat_u", 0); set(v) = sp.edit().putLong("sync_eat_u", v).apply()

@@ -43,6 +43,11 @@ object SelfTest {
                 check(row("old").canRemove && !row("me").canRemove) { "old patient install / this phone rule" }
                 check(Members.rows(c, list.map { if (it.uid == "gone") FamilySync.Member("gone", it.name, System.currentTimeMillis() + 60_000, false) else it }).second == 0) { "removed phone didn't come back" }
             }
+            // 0c. Error report: no personal data
+            val sc = ErrorLog.scrub("login a.b@c.com failed key=AIzaSyA1234567890abcdef family ABCD-EF12-GH34")
+            check(!sc.contains("@") && !sc.contains("AIza") && !sc.contains("ABCD-EF12")) { "error report keeps personal data: $sc" }
+            ErrorLog.e("Test", "self-test entry"); check(ErrorLog.report(c).contains("self-test entry")) { "error report misses entries" }
+            ErrorLog.clear(c)
             // 1. Fill settings, secrets and data
             st.email = "test@example.com"; st.password = "LluPass!1"
             Providers.all.forEachIndexed { k, p -> st.setKey(p, "KEY-${p.id}-$k") }
