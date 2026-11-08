@@ -127,12 +127,15 @@ object EditEntry {
         root.addView(label(a, (st.rapidName.ifBlank { L.s("Rapid insulin") }) + " — " + L.s("units injected")))
         val units = Ui.input(a, if (d == null) "u (empty = no insulin)" else "u", multi = false).apply {
             setText(d?.let { fmt(it.units) } ?: ""); inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }
-        root.addView(units)
+        val urow = Ui.row(a).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        urow.addView(units, Ui.lp(0, -2, weight = 1f, end = Ui.dp(a, 8)))
+        root.addView(urow)
         root.addView(label(a, "Carbs eaten (g)"))
         val carbs = Ui.input(a, "g", multi = false).apply {
             setText(when { m != null -> if (m.known) m.carbs.toString() else ""; d!!.carbs > 0 -> d.carbs.toString(); d.carbs == Carbs.UNKNOWN -> ""; else -> "0" })
             inputType = InputType.TYPE_CLASS_NUMBER }
         root.addView(carbs)
+        val toggle = MealToggle(a, carbs); urow.addView(toggle.view)
         root.addView(Ui.text(a, "0 = correction only, no meal · empty = meal eaten, carbs not recorded · or write \"correction\" in the note", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 4), 0, 0) })
         m?.let { mm -> db.ai(mm.id)?.let { (_, ai) -> root.addView(Ui.text(a, "AI said $ai g — your number is kept as the family's count.", 12f, Ui.MUTED)
             .apply { setPadding(0, Ui.dp(a, 4), 0, 0) }) } }
@@ -150,6 +153,7 @@ object EditEntry {
         root.addView(label(a, "Note"))
         val note = Ui.input(a, "Note", multi = false).apply { setText(d?.note ?: m?.note ?: "") }
         root.addView(note)
+        toggle.attachNote(note)
         fun toggle() {
             val corr = Carbs.parse(carbs.text.toString(), note.text.toString()) == Carbs.CORRECTION
             mealBox.visibility = if (corr) android.view.View.GONE else android.view.View.VISIBLE

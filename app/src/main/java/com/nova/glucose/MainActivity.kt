@@ -22,6 +22,8 @@ class MainActivity : BaseActivity() {
     private lateinit var root: LinearLayout
     private lateinit var name: TextView
     private lateinit var bar: View
+    private lateinit var glucoseCard: LinearLayout
+    private var cardTexts: List<OutlineText> = emptyList()
     private lateinit var value: TextView
     private lateinit var arrow: TextView
     private lateinit var ago: TextView
@@ -196,19 +198,27 @@ class MainActivity : BaseActivity() {
         root.addView(connectCard, Ui.lp(top = Ui.dp(this, 12)))
 
         // reading card
+        // reading card: the whole card takes the colour of the situation, white text with a black outline
         val card = Ui.row(this).apply { background = Ui.round(Ui.CARD, Ui.dp(c(), 16).toFloat()) }
+        glucoseCard = card
         bar = View(this)
         card.addView(bar, LinearLayout.LayoutParams(Ui.dp(this, 10), LinearLayout.LayoutParams.MATCH_PARENT))
-        val inner = Ui.col(this, 14)
-        inner.addView(Ui.text(this, "Glucose", 15f, Ui.MUTED))
+        bar.visibility = View.GONE
+        val inner = Ui.col(this, 14).apply { setPadding(Ui.dp(c(), 20), Ui.dp(c(), 14), Ui.dp(c(), 14), Ui.dp(c(), 14)) }
+        fun ot(t: String, sp: Float, bold: Boolean) = OutlineText(this).apply {
+            text = L.s(t); textSize = sp; setTextColor(Ui.TEXT); if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD) }
+        val glbl = ot("Glucose", 15f, true)
+        inner.addView(glbl)
         val vr = Ui.row(this).apply { gravity = Gravity.BOTTOM }
-        value = Ui.text(this, "--", 56f, Ui.TEXT, true).apply { includeFontPadding = false }
-        arrow = Ui.text(this, "", 40f, Ui.TEXT, true).apply { setPadding(Ui.dp(c(), 8), 0, 0, 0) }
+        value = ot("--", 56f, true).apply { includeFontPadding = false }
+        arrow = ot("", 40f, true).apply { setPadding(Ui.dp(c(), 10), 0, 0, 0) }
         vr.addView(value); vr.addView(arrow)
-        vr.addView(Ui.text(this, " mg/dL", 16f, Ui.MUTED))
+        val unit = ot(" mg/dL", 16f, true)
+        vr.addView(unit)
         inner.addView(vr)
-        ago = Ui.text(this, "", 13f, Ui.MUTED)
+        ago = ot("", 13f, true)
         inner.addView(ago)
+        cardTexts = listOf(glbl, value as OutlineText, arrow as OutlineText, unit, ago as OutlineText)
         card.addView(inner, Ui.lp(0, weight = 1f))
         root.addView(card, Ui.lp(top = Ui.dp(this, 12)))
 
@@ -307,8 +317,17 @@ class MainActivity : BaseActivity() {
             Level.IN_RANGE -> Ui.IN_RANGE
             Level.NO_DATA -> Ui.MUTED
         }
-        bar.background = Ui.round(col, Ui.dp(this, 4).toFloat())
-        value.setTextColor(if (lv == Level.STALE) Ui.MUTED else Ui.TEXT)
+        val fill = when (lv) {
+            Level.URGENT_LOW, Level.LOW, Level.VERY_HIGH -> 0xFFCD2828.toInt()
+            Level.HIGH, Level.DROPPING -> 0xFFE67E14.toInt()
+            Level.STALE -> 0xFF5A6070.toInt()
+            Level.IN_RANGE -> 0xFF2E8C3E.toInt()
+            Level.NO_DATA -> Ui.CARD
+        }
+        glucoseCard.background = Ui.round(fill, Ui.dp(this, 16).toFloat())
+        val strong = lv != Level.NO_DATA
+        cardTexts.forEach { t -> t.outline = if (strong) Ui.dp(this, 3).toFloat() * (if (t === value) 1.6f else 1f) else 0f
+            t.setTextColor(if (strong) 0xFFFFFFFF.toInt() else if (t === value || t === arrow) Ui.TEXT else Ui.MUTED); t.invalidate() }
         renderAgo()
 
         if (err.isNullOrBlank() || !st.loggedIn) error.visibility = View.GONE

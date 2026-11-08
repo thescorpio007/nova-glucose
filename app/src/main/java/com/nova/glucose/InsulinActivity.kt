@@ -80,6 +80,7 @@ class InsulinActivity : BaseActivity() {
         }
         split.addView(refBox, Ui.lp(0, weight = 1.25f))
         rc.addView(split)
+        rc.addView(MealToggle(this, carbs).view, Ui.lp(top = Ui.dp(this, 8)))     // red = Meal (I + M) or Correction (I only)
         carbs.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}

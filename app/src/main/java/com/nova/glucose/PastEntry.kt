@@ -53,7 +53,10 @@ object PastEntry {
         val units = num("u", true)
         val carbs = num("g (approx)", false)
         val note = Ui.input(a, "Note, e.g. school lunch", multi = false)
-        root.addView(unitsL); root.addView(units)
+        val toggle = MealToggle(a, carbs).also { it.attachNote(note) }
+        val urow = Ui.row(a).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        urow.addView(units, Ui.lp(0, -2, weight = 1f, end = Ui.dp(a, 8))); urow.addView(toggle.view)
+        root.addView(unitsL); root.addView(urow)
         val carbsL = Ui.text(a, "Carbs eaten (approx)", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 12), 0, Ui.dp(a, 4)) }
         val carbsH = Ui.text(a, "", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 4), 0, 0) }
         root.addView(carbsL); root.addView(carbs); root.addView(carbsH)
@@ -70,6 +73,7 @@ object PastEntry {
             val ins = kind != "meal"
             unitsL.visibility = if (ins) android.view.View.VISIBLE else android.view.View.GONE
             units.visibility = unitsL.visibility
+            toggle.view.visibility = if (kind == "rapid") android.view.View.VISIBLE else android.view.View.GONE
             if (kind == "long" && units.text.isBlank()) units.setText(st.longDose)
             val cv = if (kind == "long") android.view.View.GONE else android.view.View.VISIBLE
             carbsL.visibility = cv; carbs.visibility = cv; carbsH.visibility = cv
