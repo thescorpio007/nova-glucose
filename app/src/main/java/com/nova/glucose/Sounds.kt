@@ -206,6 +206,9 @@ object Sounds {
     }
 
     /** General notifications (eat timer, AI tips, other): notification volume, respects silent mode. */
+    /** 💬 family message: Nova Blip at the alarm volume, even on silent. */
+    fun playMessage(c: Context) { play(c, "msg", AudioAttributes.USAGE_ALARM, 8_000); if (Store(c).vibFor("other")) vibrate(c, false) }
+
     fun playGeneral(c: Context, kind: String) {
         if (kind == "eat") { play(c, kind, AudioAttributes.USAGE_ALARM, 15_000); return }      // time to eat: alarm volume, even on silent
         if (!quiet(c)) play(c, kind, AudioAttributes.USAGE_NOTIFICATION, 15_000)

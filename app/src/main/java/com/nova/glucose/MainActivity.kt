@@ -34,6 +34,20 @@ class MainActivity : BaseActivity() {
     private lateinit var folderCard: LinearLayout
     private lateinit var eatLine: TextView
     private lateinit var rangeBtn: TextView
+    private lateinit var msgBtn: TextView
+
+    /** 💬 Messages: red with the number of unread messages. */
+    private fun renderMsgBtn() {
+        if (!::msgBtn.isInitialized) return
+        val on = st.syncFam.isNotBlank()
+        msgBtn.visibility = if (on) View.VISIBLE else View.GONE
+        if (!on) return
+        val n = Chat.unread(this).size
+        msgBtn.text = "💬 " + L.s("Messages") + if (n > 0) "  $n" else ""
+        msgBtn.background = Ui.round(if (n > 0) MealToggle.RED else Ui.CARD2, Ui.dp(this, 18).toFloat())
+        msgBtn.setTextColor(if (n > 0) 0xFFFFFFFF.toInt() else Ui.TEXT)
+        msgBtn.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0)
+    }
     private lateinit var navRow: LinearLayout
     private lateinit var navLabel: TextView
     private lateinit var chartLegend: TextView
@@ -104,6 +118,7 @@ class MainActivity : BaseActivity() {
         if (intent?.getBooleanExtra("demopick", false) == true) window.decorView.postDelayed({ DoctorReport.pick(this) }, 1200)
         if (intent?.getBooleanExtra("demotap", false) == true)
             Db.get(this).meals(1).firstOrNull()?.let { m -> window.decorView.postDelayed({ MarkHistory.show(this, m.ts) }, 1500) }
+        if (intent?.getBooleanExtra("openchat", false) == true) window.decorView.postDelayed({ Chat.show(this) { renderMsgBtn() } }, 600)
         if (intent?.getBooleanExtra("demopast", false) == true) window.decorView.postDelayed({ PastEntry.show(this) { } }, 1200)
         if (intent?.getBooleanExtra("democorr", false) == true)       // automatic test: the combined editor on a correction
             Db.get(this).doses().firstOrNull { it.correction }?.let { d -> window.decorView.postDelayed({ EditEntry.open(this, d.id, null) { } }, 1200) }
@@ -230,7 +245,12 @@ class MainActivity : BaseActivity() {
 
         val gc = Ui.card(this)
         rangeBtn = Ui.smallButton(this, "") { pickRange() }
-        gc.addView(rangeBtn, Ui.lp(-2, Ui.dp(this, 36)))
+        val topRow = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        topRow.addView(rangeBtn, Ui.lp(-2, Ui.dp(this, 36)))
+        topRow.addView(View(this), Ui.lp(0, 1, weight = 1f))
+        msgBtn = Ui.smallButton(this, "") { Chat.show(this) { renderMsgBtn() }; renderMsgBtn() }
+        topRow.addView(msgBtn, Ui.lp(-2, Ui.dp(this, 36)))
+        gc.addView(topRow)
         navRow = Ui.row(this).apply { setPadding(0, Ui.dp(c(), 8), 0, 0) }
         navRow.addView(Ui.smallButton(this, "‹") { offset--; renderChart() }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 32)))
         navLabel = Ui.text(this, "", 14f, Ui.TEXT).apply { gravity = android.view.Gravity.CENTER }
@@ -336,6 +356,7 @@ class MainActivity : BaseActivity() {
         renderChart()
 
         renderAdvice(r)
+        renderMsgBtn()
     }
 
     private val ranges = listOf("12" to "Last 12 hours", "24" to "24 hours (full day)", "w" to "Week", "m" to "Month")

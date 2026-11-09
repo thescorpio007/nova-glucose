@@ -373,6 +373,7 @@ object FamilySync {
         if (kind == "hcreq") { val st = Store(c); return JSONObject().put("t", "hcreq").put("g", "hcreq").put("u", st.hcReq).put("by", st.syncName) }
         if (kind == "hcst") return WatchRequest.status(c)
         if (kind == "mem") return Members.item(c, gid)
+        if (kind == "msg" || kind == "mseen") return Chat.item(c, gid)
         if (kind == "who") return Members.whoItem(c)
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
@@ -462,6 +463,7 @@ object FamilySync {
             }
             "hcreq" -> return WatchRequest.received(c, u)
             "mem" -> return Members.received(c, item)
+            "msg", "mseen" -> return Chat.received(c, item)
             "who" -> return Members.receivedWho(c, item)
             "hcst" -> {
                 val st = Store(c)
