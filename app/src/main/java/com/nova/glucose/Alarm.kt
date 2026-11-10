@@ -270,6 +270,7 @@ object EatTimer {
         val open = PendingIntent.getActivity(c, 42, Intent(c, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val mg = if (System.currentTimeMillis() - st.lastTs < 15 * 60_000) " · glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)}" else ""
+        if (!Store(c).onFor("eat")) return
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, Sounds.channel(c, "eat")) else @Suppress("DEPRECATION") Notification.Builder(c)
         nm.notify(ID_EAT, b.setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle(L.s("🍽 Time to eat$mg"))

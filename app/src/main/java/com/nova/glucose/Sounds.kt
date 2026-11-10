@@ -20,13 +20,13 @@ import java.io.File
  */
 object Sounds {
     val KINDS = listOf("urgent_low", "low", "high", "very_high", "stale")
-    val GENERAL = listOf("eat", "tip", "other")
+    val GENERAL = listOf("eat", "msg", "lantus", "guard", "update", "tip", "other")
     const val SILENT = "silent"
     /** Sounds built into the app (same on every phone). */
     val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep",
         "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s")
     fun defaultFor(kind: String) = when (kind) {
-        "low", "urgent_low" -> "builtin:medical"; "very_high", "stale" -> "builtin:blip5"; "eat" -> "builtin:beep5"; else -> "builtin:blip" }
+        "low", "urgent_low" -> "builtin:medical"; "very_high", "stale", "guard" -> "builtin:blip5"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
 
     /** The family's sound plan, applied again at every app update (each line can still be changed in between). */
     private val ON_UPDATE = listOf("urgent_low" to "builtin:medical", "very_high" to "builtin:blip5", "stale" to "builtin:blip5", "eat" to "builtin:beep5")
@@ -35,6 +35,7 @@ object Sounds {
         if (b <= 0 || st.raw.getInt("last_snd_build", -1) == b) return
         ON_UPDATE.forEach { (k, v) -> setBuiltin(c, k, v) }
         st.urgNoSignal = true
+        (KINDS + GENERAL).forEach { st.setOn(it, true) }      // every line on again after each update
         st.watchGlucose = 30            // glucose on the watch every 30 min (patient and parents)
         st.lastWatchPost = 0
         st.raw.edit().putInt("last_snd_build", b).apply()
@@ -48,7 +49,7 @@ object Sounds {
     fun patientMay(st: Store, kind: String) = kind !in setOf("urgent_low", "low", "very_high") && !(kind in KINDS && st.urgentFor(kind))
 
     /** Silent is allowed on every line that is not an urgent alarm (lows included when not urgent). */
-    fun silentAllowed(st: Store, kind: String) = !(kind in KINDS && st.urgentFor(kind))
+    @Suppress("UNUSED_PARAMETER") fun silentAllowed(st: Store, kind: String) = true      // every line may be Silent (family's choice)
     fun current(st: Store, kind: String): String = st.soundFor(kind).ifBlank { defaultFor(kind) }
     fun displayName(st: Store, kind: String): String {
         val v = current(st, kind)
@@ -59,7 +60,9 @@ object Sounds {
     fun label(st: Store, kind: String) = when (kind) {
         "urgent_low" -> "Urgent low (below ${st.urgentLow})"; "low" -> "Low (below ${st.low})"
         "high" -> "High (above ${st.high})"; "very_high" -> "Very high (above ${st.veryHigh})"; "stale" -> "No signal"
-        "eat" -> "🍽 Time to eat"; "tip" -> "✦ AI tips after alerts"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
+        "eat" -> "🍽 Time to eat"; "msg" -> "💬 Family messages"; "lantus" -> "💉 Night Lantus reminder"
+        "guard" -> "📵 Patient's phone not seen 2 h"; "update" -> "⬆ App update available"
+        "tip" -> "✦ AI tips after alerts"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
     }
 
     private fun isAlarm(kind: String) = kind in KINDS
@@ -199,19 +202,14 @@ object Sounds {
      * Normal (non-urgent) alert: the type's sound once. Lows play on the alarm stream (heard like before);
      * other alerts at notification volume and only when the phone isn't silent or in Do Not Disturb.
      */
-    fun playOnce(c: Context, kind: String) {
-        val low = lowKind(kind)
-        if (!low && quiet(c)) return
-        play(c, kind, if (low) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION, 20_000)
-    }
+    fun playOnce(c: Context, kind: String) { play(c, kind, AudioAttributes.USAGE_ALARM, 20_000) }   // alarm volume, even on silent / night mode
 
     /** General notifications (eat timer, AI tips, other): notification volume, respects silent mode. */
     /** 💬 family message: Nova Blip at the alarm volume, even on silent. */
-    fun playMessage(c: Context) { play(c, "msg", AudioAttributes.USAGE_ALARM, 8_000); if (Store(c).vibFor("other")) vibrate(c, false) }
+    fun playMessage(c: Context) = after(c, "msg")
 
     fun playGeneral(c: Context, kind: String) {
-        if (kind == "eat") { play(c, kind, AudioAttributes.USAGE_ALARM, 15_000); return }      // time to eat: alarm volume, even on silent
-        if (!quiet(c)) play(c, kind, AudioAttributes.USAGE_NOTIFICATION, 15_000)
+        play(c, kind, AudioAttributes.USAGE_ALARM, 15_000)       // every notification: alarm volume, even on silent / night mode
     }
 
     /** Settings › ▶ Test (tap again to stop). Returns what played. */
@@ -227,9 +225,7 @@ object Sounds {
     fun volumeNote(c: Context): String {
         val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         return when {
-            am.ringerMode == AudioManager.RINGER_MODE_SILENT -> "The phone is on silent — these notifications make no sound now (urgent alarms still ring)."
-            am.ringerMode == AudioManager.RINGER_MODE_VIBRATE -> "The phone is on vibrate — these notifications make no sound now (urgent alarms still ring)."
-            am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) == 0 -> "Notification volume is 0 — raise it in the phone's sound settings, or these notifications will be silent."
+            am.getStreamVolume(AudioManager.STREAM_ALARM) == 0 -> "Alarm volume is 0 — raise it in the phone's sound settings, or these notifications will be silent."
             else -> ""
         }
     }
@@ -247,7 +243,7 @@ object Sounds {
     }
 
     // ---------------------------------------------------------------- channels and vibration (Android stays silent; the app decides)
-    const val CH_POP = "nova_pop"; const val CH_POP_LOW = "nova_pop_low"; const val CH_QUIET = "nova_quiet"
+    const val CH_POP = "nova_pop"; const val CH_POP_ALL = "nova_pop_all"; const val CH_POP_LOW = "nova_pop_low"; const val CH_QUIET = "nova_quiet"
 
     /** Notification channel for a line: pops up or goes quietly to the list; never Android's own sound or vibration. */
     fun channel(c: Context, kind: String): String {
@@ -256,16 +252,18 @@ object Sounds {
             fun mk(id: String, name: String, imp: Int, dnd: Boolean = false) = nm.createNotificationChannel(
                 android.app.NotificationChannel(id, name, imp).apply { setSound(null, null); enableVibration(false); if (dnd) setBypassDnd(true) })
             mk(CH_POP, "Glucose alerts and notifications (pop up)", NotificationManager.IMPORTANCE_HIGH)
+            mk(CH_POP_ALL, "All notifications (pop up, night mode too)", NotificationManager.IMPORTANCE_HIGH, dnd = true)
             mk(CH_POP_LOW, "Low glucose (pop up)", NotificationManager.IMPORTANCE_HIGH, dnd = true)
             mk(CH_QUIET, "Quiet notifications (in the list only)", NotificationManager.IMPORTANCE_LOW)
             listOf("alerts3", "alerts_low3", "ai_tips2", "eat_timer2").forEach { try { nm.deleteNotificationChannel(it) } catch (_: Exception) { } }
         }
         val st = Store(c)
-        return if (!st.popFor(kind)) CH_QUIET else if (lowKind(kind)) CH_POP_LOW else CH_POP
+        return if (!st.popFor(kind)) CH_QUIET else if (lowKind(kind)) CH_POP_LOW else CH_POP_ALL
     }
 
     /** After posting a notification: the chosen sound and vibration for that line. */
     fun after(c: Context, kind: String) {
+        if (!Store(c).onFor(kind)) return
         if (kind in KINDS) playOnce(c, kind) else playGeneral(c, kind)
         if (Store(c).vibFor(kind)) vibrate(c, lowKind(kind) || kind == "eat")
     }

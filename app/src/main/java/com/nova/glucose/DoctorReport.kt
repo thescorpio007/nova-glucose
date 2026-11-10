@@ -231,7 +231,8 @@ object DoctorReport {
         val longs = doses.filter { it.kind == "long" }; val rapids = doses.filter { it.kind == "rapid" }
         table(doc, listOf(
             listOf("Long-acting", st.longName.ifBlank { "–" }, "Prescribed ${st.longDose.ifBlank { "–" }} u at ${st.longTime.ifBlank { "–" }}",
-                "Logged ${longs.size} doses" + (if (longs.isNotEmpty()) ", avg ${fmt(longs.map { it.units }.average())} u" else "")),
+                "Logged ${longs.size} doses" + (if (longs.isNotEmpty()) ", avg ${fmt(longs.map { it.units }.average())} u" else "") +
+                    (Lantus.changes(longs).takeIf { it.isNotEmpty() }?.let { " · changes: " + it.joinToString("; ") } ?: "")),
             listOf("Rapid-acting", st.rapidName.ifBlank { "–" },
                 "Ratio " + (if (st.carbRatio > 0) "1 u / ${st.carbRatio} g" else "–") + " · corr. " + (if (st.corrFactor > 0) "1 u / ${st.corrFactor}" else "–"),
                 "Target ${st.targetMg} mg/dL"),

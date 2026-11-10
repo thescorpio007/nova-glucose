@@ -74,12 +74,13 @@ object Guard {
     }
 
     private fun note(c: Context, title: String, text: String) {
-        val ch = Sounds.channel(c, "other")
+        if (!Store(c).onFor("guard")) return
+        val ch = Sounds.channel(c, "guard")
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, ch) else @Suppress("DEPRECATION") Notification.Builder(c)
         val open = PendingIntent.getActivity(c, 7802, Intent(c, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
         val n = b.setSmallIcon(android.R.drawable.stat_sys_warning).setContentTitle(title).setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text)).setAutoCancel(true).setContentIntent(open).build()
         (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(ID_NOTE, n)
-        Sounds.after(c, "other")
+        Sounds.after(c, "guard")
     }
 }

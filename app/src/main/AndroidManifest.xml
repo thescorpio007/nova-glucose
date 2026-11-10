@@ -79,6 +79,8 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+        <activity android:name=".LantusActivity" android:exported="false" android:excludeFromRecents="true"
+            android:launchMode="singleTop" android:showWhenLocked="true" android:turnScreenOn="true" />
         <activity android:name=".IncidentActivity" android:exported="true" android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".AlarmActivity"

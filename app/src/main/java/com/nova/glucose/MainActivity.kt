@@ -137,6 +137,8 @@ class MainActivity : BaseActivity() {
         FamilySync.listener = { ui.post { render(st.lastError.ifBlank { null }) } }
         graph.showCard()
         FamilySync.kick(this)
+        if (st.keepScreen) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         try { HealthRead.maybe(this) } catch (_: Exception) { }
         try { Updater.maybe(this); Updater.offerOnOpen(this) } catch (_: Exception) { }
     }

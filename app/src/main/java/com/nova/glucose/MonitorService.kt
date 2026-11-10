@@ -115,7 +115,8 @@ class MonitorService : Service() {
             try { HealthRead.maybe(this@MonitorService) } catch (_: Exception) { }   // watch data every 15 min
             try { Updater.maybe(this@MonitorService) } catch (_: Exception) { }      // app update check once a day
             try { WatchRequest.maybeStatus(this@MonitorService) } catch (_: Exception) { }
-            try { Guard.maybe(this@MonitorService) } catch (_: Exception) { }          // family phones: patient's phone silent for 2 h
+            try { Guard.maybe(this@MonitorService) } catch (_: Exception) { }
+            try { Lantus.maybe(this@MonitorService) } catch (_: Exception) { }        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             handler.postDelayed(this, next)
         }
@@ -218,8 +219,9 @@ class MonitorService : Service() {
             "stale" -> "No glucose signal for ${(now - r!!.ts) / 60_000} min"
             else -> "${adv.title}: ${r!!.mg} ${Libre.trendArrow(r.trend)} mg/dL"
         }
+        if (!st.onFor(kind)) return          // this line is turned off in Settings › Notifications
         val low = kind == "urgent_low" || kind == "low"
-        if (kind != "stale" && st.aiTips) aiTip(kind, r!!)
+        if (kind != "stale" && st.aiTips && st.onFor("tip")) aiTip(kind, r!!)
         if (urgent) {
             // Rings through silent / Do Not Disturb at the chosen volume, full screen, Stop / Snooze.
             AlarmPlayer.start(this, kind, L.s(title), L.s(body))

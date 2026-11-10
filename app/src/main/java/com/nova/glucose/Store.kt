@@ -214,6 +214,12 @@ class Store(c: Context) {
     fun vibFor(kind: String): Boolean = b("nvib_$kind", true)
     fun setVib(kind: String, v: Boolean) = putb("nvib_$kind", v)
     fun popFor(kind: String): Boolean = b("npop_$kind", true)
+    /** A notification line on/off (all on again at every update). */
+    fun onFor(kind: String): Boolean = b("non_$kind", true)
+    fun setOn(kind: String, v: Boolean) = putb("non_$kind", v)
+    var keepScreen: Boolean get() = b("keep_screen", false); set(v) = putb("keep_screen", v)
+    var lantusOn: Boolean get() = b("lantus_on", true); set(v) = putb("lantus_on", v)
+    var lantusTime: String get() = s("lantus_time").ifBlank { "20:30" }; set(v) = put("lantus_time", v.trim())
     fun setPop(kind: String, v: Boolean) = putb("npop_$kind", v)
     fun setSound(kind: String, uri: String, name: String) { sp.edit().putString("snd_$kind", uri).putString("snd_${kind}_name", name).apply() }
     var ringSec: Int get() = i("ring_sec", 60); set(v) = puti("ring_sec", v)

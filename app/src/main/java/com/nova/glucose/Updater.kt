@@ -245,14 +245,15 @@ object Updater {
     private fun notifyReady(c: Context, build: Int) {
         try {
             val nm = c.getSystemService(NotificationManager::class.java) ?: return
-            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null)
-                nm.createNotificationChannel(NotificationChannel(CHANNEL, "App updates", NotificationManager.IMPORTANCE_DEFAULT))
+            if (!Store(c).onFor("update")) return
+            val ch = Sounds.channel(c, "update")
             val pi = PendingIntent.getActivity(c, NOTE_ID, Intent(c, UpdateActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(c)
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, ch) else @Suppress("DEPRECATION") Notification.Builder(c)
             nm.notify(NOTE_ID, b.setSmallIcon(c.applicationInfo.icon).setContentTitle("$APP build %02d is ready".format(build))
                 .setContentText("Downloaded and verified (signature, SHA-256, same key). Tap to install.")
                 .setContentIntent(pi).setAutoCancel(true).build())
+            Sounds.after(c, "update")
         } catch (_: Exception) { }
     }
 

@@ -374,6 +374,7 @@ object FamilySync {
         if (kind == "hcst") return WatchRequest.status(c)
         if (kind == "mem") return Members.item(c, gid)
         if (kind == "msg" || kind == "mseen") return Chat.item(c, gid)
+        if (kind == "lnt") return Lantus.item(c, gid)
         if (kind == "who") return Members.whoItem(c)
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
@@ -464,6 +465,7 @@ object FamilySync {
             "hcreq" -> return WatchRequest.received(c, u)
             "mem" -> return Members.received(c, item)
             "msg", "mseen" -> return Chat.received(c, item)
+            "lnt" -> return Lantus.received(c, item)
             "who" -> return Members.receivedWho(c, item)
             "hcst" -> {
                 val st = Store(c)

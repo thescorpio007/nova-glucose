@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -291,6 +292,19 @@ class SettingsActivity : BaseActivity() {
         pc.addView(longDoseE, Ui.lp(top = Ui.dp(this, 6)))
         longTimeE = Ui.input(this, "Usual time, e.g. 21:00", multi = false).apply { setText(st.longTime) }
         pc.addView(longTimeE, Ui.lp(top = Ui.dp(this, 6)))
+        // 💉 night Lantus reminder: full-screen pop-up on every family phone, must be confirmed
+        val lr = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        lr.addView(Switch(this).apply { text = L.s("💉 Night Lantus reminder"); isChecked = st.lantusOn; setTextColor(Ui.TEXT); textSize = 14f
+            setOnCheckedChangeListener { _, v -> st.lantusOn = v } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
+        lateinit var lt: TextView
+        lt = Ui.smallButton(this, "🕘 ${st.lantusTime}") {
+            val (h, m) = st.lantusTime.split(":").map { it.toIntOrNull() ?: 0 }.let { (it.getOrElse(0) { 20 }) to (it.getOrElse(1) { 30 }) }
+            android.app.TimePickerDialog(this, { _, hh, mm -> st.lantusTime = "%02d:%02d".format(hh, mm); lt.text = "🕘 ${st.lantusTime}"
+                st.raw.edit().putLong("lantus_next", 0L).apply() }, h, m, true).show() }
+        lr.addView(lt, Ui.lp(-2, Ui.dp(this, 40)))
+        pc.addView(lr, Ui.lp(top = Ui.dp(this, 10)))
+        pc.addView(Ui.text(this, "Full-screen pop-up on every family phone with the usual dose (− / + to change). Repeats every 15 min until ✓ Injected; whoever confirms first counts.",
+            11.5f, Ui.MUTED))
         pc.addView(Ui.text(this, "Rapid insulin", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
         rapidNameE = Ui.input(this, "Name, e.g. NovoRapid", multi = false).apply { setText(st.rapidName) }
         pc.addView(nameRow(rapidNameE, "rapid"), Ui.lp(top = Ui.dp(this, 6)))
@@ -393,6 +407,9 @@ class SettingsActivity : BaseActivity() {
             wg.addView(Ui.text(this, "Set back to 30 min at every update.", 11f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
         }
         renderWg(); wc.addView(wg)
+        wc.addView(check("🔆 Keep the screen on while Nova Glucose is open in front", st.keepScreen).apply {
+            setOnCheckedChangeListener { _, v -> st.keepScreen = v } }, Ui.lp(top = Ui.dp(this, 10)))
+        wc.addView(Ui.text(this, "The phone doesn't lock while the app is in front, like watching a video. Uses more battery.", 11.5f, Ui.MUTED))
         wc.addView(check("✦ AI food tip a few seconds after a high/low alert", st.aiTips).apply { setOnCheckedChangeListener { _, v -> st.aiTips = v } },
             Ui.lp(top = Ui.dp(this, 10)))
         wc.addView(check("Show the time-to-eat reminder on this phone", st.notifyEat).apply { setOnCheckedChangeListener { _, v -> st.notifyEat = v } },
@@ -1163,7 +1180,9 @@ class SettingsActivity : BaseActivity() {
         val urgent = k in Sounds.KINDS && st.urgentFor(k)
         // non-urgent lines stay editable when Settings is locked (sound incl. Silent, vibrate, pop-up)
         if (Sounds.patientMay(st, k)) box.tag = "free"
-        val h = Ui.row(this)
+        val h = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        h.addView(android.widget.CheckBox(this).apply { isChecked = st.onFor(k); setOnCheckedChangeListener { _, v -> st.setOn(k, v)
+            if (!v) Ui.toast(this@SettingsActivity, L.s("Off: this notification won't show on this phone (on again after each update)")) } })
         h.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true), Ui.lp(0, weight = 1f))
         if (urgent) h.addView(Ui.text(this, "URGENT", 10f, 0xFFFF8A8D.toInt(), true))
         box.addView(h)

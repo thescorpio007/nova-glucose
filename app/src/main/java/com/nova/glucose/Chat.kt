@@ -124,7 +124,8 @@ object Chat {
 
     private const val NOTE = 7901
     private fun notify(c: Context, m: Msg) {
-        val ch = Sounds.channel(c, "other")
+        if (!Store(c).onFor("msg")) return
+        val ch = Sounds.channel(c, "msg")
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, ch) else @Suppress("DEPRECATION") Notification.Builder(c)
         val open = PendingIntent.getActivity(c, 7902, Intent(c, MainActivity::class.java).putExtra("openchat", true)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

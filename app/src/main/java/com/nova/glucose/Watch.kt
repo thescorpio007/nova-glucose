@@ -46,6 +46,7 @@ object Watch {
     fun test(c: Context) {
         channel(c); MonitorService.channels(c)
         val st = Store(c)
+        if (!Store(c).onFor("other")) return
         val n = builder(c, Sounds.channel(c, "other")).setSmallIcon(android.R.drawable.stat_sys_warning)
             .setContentTitle(L.s("Nova Glucose test ⌚"))
             .setContentText(L.s(if (st.lastTs > 0) "Last glucose ${st.lastMg} ${Libre.trendArrow(st.lastTrend)} mg/dL — if you see this on the watch, it works."
