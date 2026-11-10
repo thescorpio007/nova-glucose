@@ -119,14 +119,27 @@ class LantusActivity : BaseActivity() {
         root.addView(row, Ui.lp(top = Ui.dp(this, 8)))
         root.addView(Ui.text(this, L.s("Usual dose {0} u · change it with − / + if needed. A new dose becomes the usual dose from today.")
             .replace("{0}", Lantus.fmt(usual)), 12.5f, Ui.MUTED).apply { gravity = Gravity.CENTER }, Ui.lp(top = Ui.dp(this, 10)))
-        save = Ui.button(this, "", true) {
-            if (u <= 0) { Ui.toast(this, "Enter the units"); return@button }
+        fun doSave() {
             val now = System.currentTimeMillis(); val db = Db.get(this)
             val note = if (usual > 0 && u != usual) "night reminder · dose changed ${Lantus.fmt(usual)} → ${Lantus.fmt(u)} u" else "night reminder"
             db.addDose(Dose(0, now, "long", u, 0, 0, db.near(now)?.mg ?: 0, note))
             if (u != usual) { st.longDose = Lantus.fmt(u); if (usual > 0) BasalChanges.put(this, now, usual, u, "night reminder") }
             Lantus.setState(this, WatchData.dayKey(Lantus.at(st)), "done", share = true)
             FamilySync.kick(this); Sounds.stop(); Ui.toast(this, "Saved"); finish()
+        }
+        save = Ui.button(this, "", true) {
+            if (u <= 0) { Ui.toast(this, "Enter the units"); return@button }
+            // already saved in the last 2 hours (other phone, or a double tap)? ask before saving a second one
+            val now = System.currentTimeMillis(); val db = Db.get(this)
+            val prev = db.doses(now - 2 * 3600_000L, now + 60_000).filter { it.kind == "long" }.maxByOrNull { it.ts }
+            if (prev != null) {
+                val who = db.who("insulin", prev.id).ifBlank { L.s("this phone") }
+                Tr.Builder(this).setTitle("⚠ " + L.s("Lantus already saved"))
+                    .setMessage(L.s("Lantus {0} u was already saved at {1} by {2}. Save another one?").replace("{0}", Lantus.fmt(prev.units))
+                        .replace("{1}", java.text.SimpleDateFormat("HH:mm", Locale.US).format(java.util.Date(prev.ts))).replace("{2}", who))
+                    .setPositiveButton("Yes, save another") { _, _ -> doSave() }
+                    .setNegativeButton("No") { _, _ -> Lantus.setState(this, WatchData.dayKey(Lantus.at(st)), "done", share = false); Sounds.stop(); finish() }.show()
+            } else doSave()
         }
         root.addView(save, Ui.lp(top = Ui.dp(this, 20)))
         val r2 = Ui.row(this)
@@ -139,6 +152,14 @@ class LantusActivity : BaseActivity() {
         root.addView(Ui.text(this, "Saved as LI on the chart · editable in the history. The family phones see it was given.", 12f, Ui.MUTED)
             .apply { gravity = Gravity.CENTER }, Ui.lp(top = Ui.dp(this, 16)))
         upd()
+        // another phone confirmed (or skipped): close this pop-up by itself
+        val day = WatchData.dayKey(Lantus.at(st))
+        val h = android.os.Handler(mainLooper)
+        h.post(object : Runnable { override fun run() {
+            if (isFinishing) return
+            val s = st.raw.getString("lantus_st_$day", "") ?: ""
+            if (s.isNotBlank()) { Sounds.stop(); Ui.toast(this@LantusActivity, if (s == "skip") "Skipped tonight" else "Already confirmed"); finish(); return }
+            FamilySync.kick(this@LantusActivity); h.postDelayed(this, 20_000) } })
         setContentView(android.widget.ScrollView(this).apply { setBackgroundColor(Ui.BG); addView(root) })
     }
 }

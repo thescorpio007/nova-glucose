@@ -145,11 +145,28 @@ object MarkHistory {
         }
         box.addView(TextView(a).apply { text = head; textSize = 15f; setTextColor(Ui.TEXT) })
         more.forEach { box.addView(Ui.text(a, it, 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(a, 3), 0, 0) }) }
+        // ✏️ Edit and 🗑 Delete for every entry (delete: confirm, PIN on a locked patient's phone, removed on all family phones)
+        val btns = Ui.row(a)
+        fun del(what: String, go: () -> Unit) = Parent.guard(a, L.s("Enter the PIN to delete an entry.")) {
+            Tr.Builder(a).setTitle("🗑 " + L.s("Delete this entry?")).setMessage(what + "\n\n" + L.s("It is removed from all family phones."))
+                .setPositiveButton("Delete") { _, _ -> go(); FamilySync.kick(a); Ui.toast(a, "Deleted"); edited() }.setNegativeButton("Cancel", null).show() }
         when (e) {
-            is Entry.M -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.open(a, null, e.m.id) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
-            is Entry.I -> box.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.open(a, e.d.id, null) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), top = Ui.dp(a, 8)))
-            is Entry.X -> { }
+            is Entry.M -> {
+                btns.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.open(a, null, e.m.id) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), end = Ui.dp(a, 8)))
+                btns.addView(Ui.smallButton(a, "🗑 Delete") { del("M ${hm.format(Date(e.m.ts))} · ${e.m.title} · ${e.m.carbText}") {
+                    Db.get(a).deleteMeal(e.m.id); if (e.m.photo.isNotBlank()) java.io.File(e.m.photo).delete() } }, Ui.lp(-2, Ui.dp(a, 36)))
+            }
+            is Entry.I -> {
+                btns.addView(Ui.smallButton(a, "✏️ Edit") { EditEntry.open(a, e.d.id, null) { edited() } }, Ui.lp(-2, Ui.dp(a, 36), end = Ui.dp(a, 8)))
+                btns.addView(Ui.smallButton(a, "🗑 Delete") { del((if (e.d.kind == "rapid") "I " else "LI ") + "${hm.format(Date(e.d.ts))} · ${units(e.d.units)} u") {
+                    Db.get(a).deleteDose(e.d.id) } }, Ui.lp(-2, Ui.dp(a, 36)))
+            }
+            is Entry.X -> {
+                btns.addView(Ui.smallButton(a, "✏️ Edit") { IncidentActivity.open(a, e.i.id) }, Ui.lp(-2, Ui.dp(a, 36), end = Ui.dp(a, 8)))
+                btns.addView(Ui.smallButton(a, "🗑 Delete") { del(L.s("Incident") + " · ${hm.format(Date(e.i.ts))}") { Db.get(a).deleteIncident(e.i.id) } }, Ui.lp(-2, Ui.dp(a, 36)))
+            }
         }
+        box.addView(btns, Ui.lp(top = Ui.dp(a, 8)))
         return LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; addView(box); setPadding(0, 0, 0, Ui.dp(a, 8)) }
     }
 
