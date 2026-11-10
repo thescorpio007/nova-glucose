@@ -293,16 +293,16 @@ class SettingsActivity : BaseActivity() {
         longTimeE = Ui.input(this, "Usual time, e.g. 21:00", multi = false).apply { setText(st.longTime) }
         pc.addView(longTimeE, Ui.lp(top = Ui.dp(this, 6)))
         // 💉 night Lantus reminder: full-screen pop-up on every family phone, must be confirmed
-        val lr = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        lr.addView(Switch(this).apply { text = L.s("💉 Night Lantus reminder"); isChecked = st.lantusOn; setTextColor(Ui.TEXT); textSize = 14f
+        val lanRow = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        lanRow.addView(Switch(this).apply { text = L.s("💉 Night Lantus reminder"); isChecked = st.lantusOn; setTextColor(Ui.TEXT); textSize = 14f
             setOnCheckedChangeListener { _, v -> st.lantusOn = v } }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
-        lateinit var lt: TextView
-        lt = Ui.smallButton(this, "🕘 ${st.lantusTime}") {
+        lateinit var lanTime: TextView
+        lanTime = Ui.smallButton(this, "🕘 ${st.lantusTime}") {
             val (h, m) = st.lantusTime.split(":").map { it.toIntOrNull() ?: 0 }.let { (it.getOrElse(0) { 20 }) to (it.getOrElse(1) { 30 }) }
-            android.app.TimePickerDialog(this, { _, hh, mm -> st.lantusTime = "%02d:%02d".format(hh, mm); lt.text = "🕘 ${st.lantusTime}"
+            android.app.TimePickerDialog(this, { _, hh, mm -> st.lantusTime = "%02d:%02d".format(hh, mm); lanTime.text = "🕘 ${st.lantusTime}"
                 st.raw.edit().putLong("lantus_next", 0L).apply() }, h, m, true).show() }
-        lr.addView(lt, Ui.lp(-2, Ui.dp(this, 40)))
-        pc.addView(lr, Ui.lp(top = Ui.dp(this, 10)))
+        lanRow.addView(lanTime, Ui.lp(-2, Ui.dp(this, 40)))
+        pc.addView(lanRow, Ui.lp(top = Ui.dp(this, 10)))
         pc.addView(Ui.text(this, "Full-screen pop-up on every family phone with the usual dose (− / + to change). Repeats every 15 min until ✓ Injected; whoever confirms first counts.",
             11.5f, Ui.MUTED))
         pc.addView(Ui.text(this, "Rapid insulin", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
