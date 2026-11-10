@@ -124,7 +124,7 @@ class LantusActivity : BaseActivity() {
             val now = System.currentTimeMillis(); val db = Db.get(this)
             val note = if (usual > 0 && u != usual) "night reminder · dose changed ${Lantus.fmt(usual)} → ${Lantus.fmt(u)} u" else "night reminder"
             db.addDose(Dose(0, now, "long", u, 0, 0, db.near(now)?.mg ?: 0, note))
-            if (u != usual) st.longDose = Lantus.fmt(u)
+            if (u != usual) { st.longDose = Lantus.fmt(u); if (usual > 0) BasalChanges.put(this, now, usual, u, "night reminder") }
             Lantus.setState(this, WatchData.dayKey(Lantus.at(st)), "done", share = true)
             FamilySync.kick(this); Sounds.stop(); Ui.toast(this, "Saved"); finish()
         }

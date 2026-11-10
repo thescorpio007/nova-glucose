@@ -91,7 +91,7 @@ object DailyPdf {
 
         // ---------------------------------------------------------- graph
         doc.need(190f)
-        drawGraph(doc.cv!!, RectF(M + 28f, doc.y, (W - M).toFloat(), doc.y + 170f), readings, a, b, st, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, doses.filter { it.kind == "long" }.map { it.ts })
+        drawGraph(doc.cv!!, RectF(M + 28f, doc.y, (W - M).toFloat(), doc.y + 170f), readings, a, b, st, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, doses.filter { it.kind == "long" }.map { it.ts }, BasalChanges.list(c))
         doc.y += 190f
 
         // ---------------------------------------------------------- insulin
@@ -171,7 +171,8 @@ object DailyPdf {
         BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = s })
     } catch (_: Exception) { null }
 
-    private fun drawGraph(cv: Canvas, r: RectF, rs: List<Reading>, t0: Long, t1: Long, st: Store, meals: List<Long>, rapid: List<Long>, longs: List<Long> = emptyList()) {
+    private fun drawGraph(cv: Canvas, r: RectF, rs: List<Reading>, t0: Long, t1: Long, st: Store, meals: List<Long>, rapid: List<Long>, longs: List<Long> = emptyList(), chg: List<BasalChanges.Chg> = emptyList()) {
+        BasalChanges.drawLines(cv, r, t0, t1, chg)
         val maxV = maxOf(300, (rs.maxOfOrNull { it.mg } ?: 0) + 20); val minV = 40
         fun y(v: Int) = r.bottom - (v - minV).toFloat() / (maxV - minV) * r.height()
         fun x(t: Long) = r.left + (t - t0).toFloat() / (t1 - t0) * r.width()

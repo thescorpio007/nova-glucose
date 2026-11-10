@@ -77,6 +77,56 @@ class SettingsActivity : BaseActivity() {
     private lateinit var permStatus: TextView
     private lateinit var longNameE: EditText
     private lateinit var longDoseE: EditText
+    private lateinit var basalBox: LinearLayout
+
+    private fun renderBasal() {
+        basalBox.removeAllViews()
+        val l = BasalChanges.list(this).reversed()
+        if (l.isEmpty()) basalBox.addView(Ui.text(this, "No dose change recorded yet.", 12.5f, Ui.MUTED))
+        l.forEach { ch ->
+            val r = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat())
+                setPadding(Ui.dp(context, 12), Ui.dp(context, 8), Ui.dp(context, 8), Ui.dp(context, 8)) }
+            r.addView(Ui.text(this, BasalChanges.line(ch), 14f, Ui.TEXT, true), Ui.lp(0, weight = 1f))
+            r.addView(Ui.smallButton(this, "✏️") { editBasal(ch) }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 36)))
+            basalBox.addView(r, Ui.lp(top = Ui.dp(this, 6)))
+        }
+    }
+
+    private fun editBasal(ch: BasalChanges.Chg?) {
+        val cal = java.util.Calendar.getInstance().apply { if (ch != null) timeInMillis = ch.ts else { set(java.util.Calendar.HOUR_OF_DAY, 20); set(java.util.Calendar.MINUTE, 30) } }
+        val df = java.text.SimpleDateFormat("EEE d MMM yyyy · HH:mm", L.loc())
+        val root = Ui.col(this, 18)
+        lateinit var dateB: TextView
+        dateB = Ui.smallButton(this, df.format(cal.time)) {
+            android.app.DatePickerDialog(this, { _, y, m, d -> cal.set(y, m, d)
+                android.app.TimePickerDialog(this, { _, hh, mm -> cal.set(java.util.Calendar.HOUR_OF_DAY, hh); cal.set(java.util.Calendar.MINUTE, mm); dateB.text = df.format(cal.time) },
+                    cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true).show() },
+                cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH), cal.get(java.util.Calendar.DAY_OF_MONTH)).apply { datePicker.maxDate = System.currentTimeMillis() }.show() }
+        root.addView(Ui.text(this, "From (date and time of the first new dose)", 13f, Ui.MUTED)); root.addView(dateB, Ui.lp(top = Ui.dp(this, 4)))
+        fun num(h: String, v: Double?) = Ui.input(this, h, multi = false).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            v?.takeIf { it > 0 }?.let { setText(Lantus.fmt(it)) } }
+        val from = num("Old dose (u)", ch?.from ?: st.longDose.toDoubleOrNull()); val to = num("New dose (u)", ch?.to)
+        val note = Ui.input(this, "Note (optional), e.g. doctor's advice", multi = false).apply { setText(ch?.note ?: "") }
+        root.addView(Ui.text(this, "Old dose (u)", 13f, Ui.MUTED), Ui.lp(top = Ui.dp(this, 10))); root.addView(from)
+        root.addView(Ui.text(this, "New dose (u)", 13f, Ui.MUTED), Ui.lp(top = Ui.dp(this, 10))); root.addView(to)
+        root.addView(Ui.text(this, "Note", 13f, Ui.MUTED), Ui.lp(top = Ui.dp(this, 10))); root.addView(note)
+        val b = Tr.Builder(this).setTitle(if (ch == null) "+ Add dose change" else "✏️ Dose change").setView(ScrollView(this).apply { addView(root) })
+            .setPositiveButton("Save", null).setNegativeButton("Cancel", null)
+        if (ch != null) b.setNeutralButton("Delete") { _, _ -> BasalChanges.delete(this, ch); renderBasal() }
+        val dlg = b.create()
+        dlg.setOnShowListener {
+            dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val f = from.text.toString().replace(',', '.').toDoubleOrNull(); val t = to.text.toString().replace(',', '.').toDoubleOrNull()
+                if (f == null || f <= 0) { from.error = L.s("Enter the units"); return@setOnClickListener }
+                if (t == null || t <= 0 || t == f) { to.error = L.s("Enter the new units"); return@setOnClickListener }
+                if (ch != null) BasalChanges.put(this, cal.timeInMillis, f, t, note.text.toString().trim(), ch.id)
+                else BasalChanges.put(this, cal.timeInMillis, f, t, note.text.toString().trim())
+                if (BasalChanges.list(this).lastOrNull()?.ts == cal.timeInMillis) { st.longDose = Lantus.fmt(t); longDoseE.setText(st.longDose) }   // latest change = usual dose
+                FamilySync.kick(this); renderBasal(); dlg.dismiss()
+            }
+        }
+        dlg.show()
+    }
     private lateinit var longTimeE: EditText
     private lateinit var rapidNameE: EditText
     private lateinit var penStatus: TextView
@@ -305,6 +355,11 @@ class SettingsActivity : BaseActivity() {
         pc.addView(lanRow, Ui.lp(top = Ui.dp(this, 10)))
         pc.addView(Ui.text(this, "Full-screen pop-up on every family phone with the usual dose (− / + to change). Repeats every 15 min until ✓ Injected; whoever confirms first counts.",
             11.5f, Ui.MUTED))
+        // Lantus dose changes: reports draw a line and compare before → after (3, 7, 14 days)
+        pc.addView(Ui.text(this, "Dose changes", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 14), 0, Ui.dp(context, 4)) })
+        basalBox = Ui.col(this); pc.addView(basalBox); renderBasal()
+        pc.addView(Ui.button(this, "+ Add dose change", true) { editBasal(null) }, Ui.lp(top = Ui.dp(this, 6)))
+        pc.addView(Ui.text(this, "Added automatically when the night pop-up confirms a new dose. Reports show a line at each change and compare before → after over 3, 7 and 14 days.", 11.5f, Ui.MUTED))
         pc.addView(Ui.text(this, "Rapid insulin", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) })
         rapidNameE = Ui.input(this, "Name, e.g. NovoRapid", multi = false).apply { setText(st.rapidName) }
         pc.addView(nameRow(rapidNameE, "rapid"), Ui.lp(top = Ui.dp(this, 6)))

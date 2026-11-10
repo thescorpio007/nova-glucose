@@ -221,7 +221,7 @@ object DoctorReport {
             // daily average chart
             h2(doc, "Daily average with lowest–highest range")
             doc.need(130f)
-            daily(doc.cv!!, RectF(M + 28, doc.y, W - M, doc.y + 110), rs, start, days, st)
+            daily(doc.cv!!, RectF(M + 28, doc.y, W - M, doc.y + 110), rs, start, days, st, BasalChanges.list(c))
             doc.y += 128
         }
 
@@ -242,6 +242,14 @@ object DoctorReport {
                     (meals.count { !it.known }.takeIf { it > 0 }?.let { " · $it without carbs" } ?: "") +
                     (rapids.count { it.correction }.takeIf { it > 0 }?.let { " · $it corrections" } ?: ""))),
             listOf(80f, 140f, 170f, 133f), Color.WHITE)
+        // Lantus dose changes: before → after over 3, 7 and 14 days, and the night Lantus of each day
+        val chgs = BasalChanges.list(c).filter { it.ts >= start - 45L * 24 * 3600_000L }
+        if (chgs.isNotEmpty()) {
+            h2(doc, "Insulin changes — before → after (same number of days each side)")
+            chgs.forEach { ch -> table(doc, BasalChanges.tableRows(c, ch), listOf(143f, 127f, 127f, 126f), Color.rgb(242, 234, 255)) }
+            text(doc, "\"… (2/7 d)\" = not enough days since the change yet; that column fills in by itself.", paint(8f, muted))
+        }
+        text(doc, "Night Lantus: " + BasalChanges.nights(c, start, System.currentTimeMillis()), paint(8.5f))
 
         h2(doc, "By meal (average over the period)")
         fun slot(t: Long) = when (cal(t).get(Calendar.HOUR_OF_DAY)) { in 5..10 -> "Breakfast"; in 11..15 -> "Lunch"; in 18..22 -> "Dinner"; else -> "Snacks" }
@@ -369,7 +377,8 @@ object DoctorReport {
         cv.drawText("Median (line) · 25–75% (dark band) · 5–95% (light band)", r.left + 4, r.top + 8, lab)
     }
 
-    private fun daily(cv: Canvas, r: RectF, rs: List<Reading>, start: Long, days: Int, st: Store) {
+    private fun daily(cv: Canvas, r: RectF, rs: List<Reading>, start: Long, days: Int, st: Store, chg: List<BasalChanges.Chg> = emptyList()) {
+        BasalChanges.drawLines(cv, r, start, start + days * 24 * 3600_000L, chg)
         fun y(v: Int) = r.bottom - (v - 40f) / 300f * r.height()
         fun x(k: Int) = r.left + (k + 0.5f) / days * r.width()
         cv.drawRect(r.left, y(st.high), r.right, y(st.low), Paint().apply { color = Color.argb(45, 125, 203, 107) })
@@ -500,7 +509,7 @@ object DoctorReport {
             val ex = (WatchData.get(c, WatchData.addDays(a, -1)).ex + w.ex).filter { it.b > a && it.a <= b }
             val meals = db.meals(100_000).filter { it.ts in a..b }.sortedBy { it.ts }
             val doses = db.doses(a, b).sortedBy { it.ts }
-            dayChart(d.cv!!, RectF(M + 24, d.y, W - M, d.y + 250), a, rs, w, WatchData.sleepIn(c, a, b + 1), ex, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, st, doses.filter { it.kind == "long" }.map { it.ts })
+            dayChart(d.cv!!, RectF(M + 24, d.y, W - M, d.y + 250), a, rs, w, WatchData.sleepIn(c, a, b + 1), ex, meals.map { it.ts }, doses.filter { it.kind == "rapid" }.map { it.ts }, st, doses.filter { it.kind == "long" }.map { it.ts }, BasalChanges.list(c))
             d.y += 268
             val rows = mutableListOf(listOf("Time", "", "Entry"))
             val ev = mutableListOf<Pair<Long, List<String>>>()
@@ -520,7 +529,8 @@ object DoctorReport {
         if (shown == 0) { d.newPage(); text(d, "Day pages: no " + (if (keyOnly) "key days (lows, highs above 250 or incidents)" else "days with data") + " in this period.", paint(10f, muted)) }
     }
 
-    private fun dayChart(cv: Canvas, r: RectF, start: Long, rs: List<Reading>, w: WatchDay, sleep: List<Seg>, ex: List<Ex>, meals: List<Long>, doses: List<Long>, st: Store, longs: List<Long> = emptyList()) {
+    private fun dayChart(cv: Canvas, r: RectF, start: Long, rs: List<Reading>, w: WatchDay, sleep: List<Seg>, ex: List<Ex>, meals: List<Long>, doses: List<Long>, st: Store, longs: List<Long> = emptyList(), chg: List<BasalChanges.Chg> = emptyList()) {
+        BasalChanges.drawLines(cv, RectF(r.left, r.top, r.right, r.top + 120), start, start + 24 * 3600_000L, chg)
         val day = 24 * 3600_000f
         fun x(t: Long) = r.left + r.width() * ((t - start) / day).coerceIn(0f, 1f)
         val gTop = r.top; val gBot = r.top + 120

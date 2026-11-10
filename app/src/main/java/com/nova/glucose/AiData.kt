@@ -110,7 +110,8 @@ object AiData {
             if (doses.isNotEmpty()) append("Insulin times (for timing only): " + doses.sortedBy { it.ts }.joinToString("; ") {
                 "${dhm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long"}" + if (it.correction) " (correction only, no meal)" else "" } + "\n")
             append("Period totals: " + Carbs.counts(meals, doses) + "\n")
-            Lantus.changes(doses).takeIf { it.isNotEmpty() }?.let { append("Long-acting dose changes (important): " + it.joinToString("; ") + "\n") }
+            BasalChanges.aiText(c).takeIf { it.isNotBlank() }?.let { append(it) }
+            append("Night Lantus each day: " + BasalChanges.nights(c, start, System.currentTimeMillis()) + "\n")
             val inc = db.incidents(start, now)
             if (inc.isNotEmpty()) append("Incidents: " + inc.joinToString("; ") { "${it.kind} ${Incidents.period(it)}" + if (it.details.isNotBlank()) " (${it.details})" else "" } + "\n")
             append(WatchData.aiPeriod(c, days))
