@@ -35,6 +35,7 @@ object Sounds {
         if (b <= 0 || st.raw.getInt("last_snd_build", -1) == b) return
         ON_UPDATE.forEach { (k, v) -> setBuiltin(c, k, v) }
         st.urgNoSignal = true
+        st.urgentOn = true; st.urgUrgentLow = true; st.urgLow = true; st.urgVeryHigh = true   // urgent again at every update (each user can untick)
         (KINDS + GENERAL).forEach { st.setOn(it, true) }      // every line on again after each update
         st.watchGlucose = 30            // glucose on the watch every 30 min (patient and parents)
         st.lastWatchPost = 0
@@ -202,7 +203,17 @@ object Sounds {
      * Normal (non-urgent) alert: the type's sound once. Lows play on the alarm stream (heard like before);
      * other alerts at notification volume and only when the phone isn't silent or in Do Not Disturb.
      */
-    fun playOnce(c: Context, kind: String) { play(c, kind, AudioAttributes.USAGE_ALARM, 20_000) }   // alarm volume, even on silent / night mode
+    /** Glucose alert (not urgent): at the chosen alarm volume (raised for 20 s if the phone's is lower), even on vibrate / silent / night mode. */
+    fun playOnce(c: Context, kind: String) {
+        val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        try {
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM); val target = (max * Store(c).alarmVolume / 100.0).toInt().coerceIn(1, max)
+            val was = am.getStreamVolume(AudioManager.STREAM_ALARM)
+            if (was < target) { am.setStreamVolume(AudioManager.STREAM_ALARM, target, 0)
+                main.postDelayed({ try { if (AlarmPlayer.kind.isEmpty() || !AlarmPlayer.playing) am.setStreamVolume(AudioManager.STREAM_ALARM, was, 0) } catch (_: Exception) { } }, 21_000) }
+        } catch (_: Exception) { }
+        play(c, kind, AudioAttributes.USAGE_ALARM, 20_000)
+    }
 
     /** General notifications (eat timer, AI tips, other): notification volume, respects silent mode. */
     /** 💬 family message: Nova Blip at the alarm volume, even on silent. */

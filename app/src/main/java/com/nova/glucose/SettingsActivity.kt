@@ -1266,7 +1266,7 @@ class SettingsActivity : BaseActivity() {
         }, Ui.lp(0, weight = 1f))
         box.addView(r2, Ui.lp(top = Ui.dp(this, 4)))
         if (Sounds.patientMay(st, k) && Parent.enabled(st)) box.addView(Ui.text(this, "🔓 Can be changed even when Settings is locked.", 11f, Ui.MUTED))
-        if (urgent) box.addView(Ui.text(this, "Urgent: full screen, rings through silent until Stop — can't be silent.", 11f, Ui.MUTED))
+        if (urgent) box.addView(Ui.text(this, "Urgent: full screen, rings through vibrate, silent and night mode until Stop. The family phones ring too.", 11f, Ui.MUTED))
         if (k == "eat") box.addView(Ui.text(this, "Plays once at the alarm volume, even when the phone is on silent.", 11f, Ui.MUTED))
         return box
     }

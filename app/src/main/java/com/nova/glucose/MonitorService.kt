@@ -87,6 +87,10 @@ class MonitorService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             wake?.acquire(2 * POLL_MS)
+            // the phone stopped the monitor for a while (battery saving)? record the gap
+            run { val now0 = System.currentTimeMillis(); val last = st.raw.getLong("last_tick", 0L)
+                if (last > 0 && now0 - last > 10 * 60_000L) ErrorLog.e("Monitor", "no glucose check for ${(now0 - last) / 60_000} min — the phone paused Nova Glucose (battery saving?)")
+                st.raw.edit().putLong("last_tick", now0).apply() }
             L.init(this@MonitorService); Sounds.init(this@MonitorService)
             var next = POLL_MS
             try {
@@ -200,7 +204,7 @@ class MonitorService : Service() {
         }
         if (kind == null) { nm.cancel(ID_ALERT); if (AlarmPlayer.kind != "test") AlarmPlayer.dismiss(this); return }
         val urgent = st.urgentFor(kind)
-        if (urgent && now < st.snoozedUntil(kind)) return
+        if (urgent && now < st.snoozedUntil(kind)) { if (now - st.lastAlert(kind) > 10 * 60_000L) { st.setLastAlert(kind, now); ErrorLog.e("Alert", "$kind ${r?.mg} mg/dL · snoozed on this phone") }; return }
         val repeat = if (urgent) st.urgentRepeat.coerceIn(1, 60) else if (kind == "urgent_low") 5 else st.repeatMin
         if (now - st.lastAlert(kind) < repeat * 60_000L) return
         st.setLastAlert(kind, now)
@@ -219,12 +223,14 @@ class MonitorService : Service() {
             "stale" -> "No glucose signal for ${(now - r!!.ts) / 60_000} min"
             else -> "${adv.title}: ${r!!.mg} ${Libre.trendArrow(r.trend)} mg/dL"
         }
-        if (!st.onFor(kind)) return          // this line is turned off in Settings › Notifications
+        if (!st.onFor(kind)) { ErrorLog.e("Alert", "$kind ${r?.mg} mg/dL · not shown: line turned off on this phone"); return }
+        ErrorLog.e("Alert", "$kind ${r?.mg} mg/dL · urgent ${if (urgent) "✓" else "✗"} · " + Relay.mode(this))
         val low = kind == "urgent_low" || kind == "low"
         if (kind != "stale" && st.aiTips && st.onFor("tip")) aiTip(kind, r!!)
         if (urgent) {
             // Rings through silent / Do Not Disturb at the chosen volume, full screen, Stop / Snooze.
             AlarmPlayer.start(this, kind, L.s(title), L.s(body))
+            Relay.send(this, kind, r?.mg ?: 0, L.s(title), L.s(body))       // the family phones ring too
             Vault.logAlert(this, "URGENT ALARM · $title", body)
             return
         }
