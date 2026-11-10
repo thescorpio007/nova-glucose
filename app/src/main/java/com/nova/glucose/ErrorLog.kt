@@ -27,8 +27,10 @@ object ErrorLog {
         app = c.applicationContext
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
-            try { write("CRASH", "${e.javaClass.name}: ${e.message ?: ""} [thread ${t.name}]\n" + e.stackTraceToString().lines().take(25).joinToString("\n")) } catch (_: Throwable) { }
-            prev?.uncaughtException(t, e)
+            val main = t === android.os.Looper.getMainLooper().thread
+            try { write(if (main) "CRASH" else "BACKGROUND", "${e.javaClass.name}: ${e.message ?: ""} [thread ${t.name}]\n" + e.stackTraceToString().lines().take(25).joinToString("\n")) } catch (_: Throwable) { }
+            // a failure in a background task (network, backup, AI…) only stops that task — the app, alarms and readings keep running
+            if (main) prev?.uncaughtException(t, e)
         }
     }
 

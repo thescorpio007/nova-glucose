@@ -111,7 +111,10 @@ object DriveSync {
         val now = System.currentTimeMillis()
         if (now < nextRun(st)) return
         if (st.driveWifi && !onWifi(c)) return
-        Thread { backup(c, auto = true) }.start()
+        Thread {
+            // a slow network or a Drive sign-in to renew must never close the app: record it, try again later
+            try { backup(c, auto = true) } catch (e: Throwable) { ErrorLog.e("Drive", e.message, e); Store(c).driveLastInfo = "⚠ " + (e.message ?: "Google Drive backup failed — it will try again") }
+        }.start()
     }
 
     private fun onWifi(c: Context): Boolean {
