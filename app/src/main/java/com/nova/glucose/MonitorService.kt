@@ -120,7 +120,8 @@ class MonitorService : Service() {
             try { Updater.maybe(this@MonitorService) } catch (_: Exception) { }      // app update check once a day
             try { WatchRequest.maybeStatus(this@MonitorService) } catch (_: Exception) { }
             try { Guard.maybe(this@MonitorService) } catch (_: Exception) { }
-            try { Lantus.maybe(this@MonitorService) } catch (_: Exception) { }        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
+            try { Lantus.maybe(this@MonitorService) } catch (_: Exception) { }
+            try { Meeting.maybeEnd(this@MonitorService) } catch (_: Exception) { }        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             handler.postDelayed(this, next)
         }

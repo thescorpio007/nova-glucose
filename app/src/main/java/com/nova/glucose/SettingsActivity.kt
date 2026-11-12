@@ -274,6 +274,34 @@ class SettingsActivity : BaseActivity() {
         cbH = check("High", st.urgHigh); cbVH = check("Very high", st.urgVeryHigh)
         cbNS = check("No signal — no new reading for the minutes set in Alerts", st.urgNoSignal)
         listOf(cbUL, cbL, cbH, cbVH, cbNS).forEach { uc.addView(it) }
+        // 🏫 school hours: urgent low and very high can use another sound then (this phone only)
+        uc.addView(Ui.text(this, "School hours (for alert sounds)", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 4)) })
+        val shRow = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val schoolNow = Ui.text(this, "", 12f, Ui.ACCENT, true)
+        fun nowLine() { schoolNow.text = if (School.now(st)) L.s("Now: school hours") else L.s("Now: outside school hours") }
+        fun timeBtn(get: () -> String, set: (String) -> Unit): TextView {
+            lateinit var b: TextView
+            b = Ui.smallButton(this, get()) { val (h, m) = get().split(":").map { it.toIntOrNull() ?: 0 }.let { it.getOrElse(0) { 8 } to it.getOrElse(1) { 0 } }
+                android.app.TimePickerDialog(this, { _, hh, mm -> set("%02d:%02d".format(hh, mm)); b.text = get(); nowLine(); renderSounds() }, h, m, true).show() }
+            return b
+        }
+        shRow.addView(timeBtn({ st.schoolStart }) { st.schoolStart = it }, Ui.lp(-2, Ui.dp(this, 40), end = Ui.dp(this, 6)))
+        shRow.addView(Ui.text(this, "–", 16f, Ui.TEXT, true), Ui.lp(-2, -2, end = Ui.dp(this, 6)))
+        shRow.addView(timeBtn({ st.schoolEnd }) { st.schoolEnd = it }, Ui.lp(-2, Ui.dp(this, 40)))
+        uc.addView(shRow)
+        val dayRow = Ui.row(this)
+        fun renderDays() {
+            dayRow.removeAllViews()
+            listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEachIndexed { i, d ->
+                val iso = "${i + 1}"
+                dayRow.addView(Ui.chip(this, d, iso in st.schoolDays) {
+                    st.schoolDays = if (iso in st.schoolDays) st.schoolDays.replace(iso, "") else (st.schoolDays + iso).toCharArray().sorted().joinToString("")
+                    renderDays(); nowLine() }, Ui.lp(0, -2, weight = 1f, end = Ui.dp(this, 3)))
+            }
+        }
+        renderDays(); uc.addView(dayRow, Ui.lp(top = Ui.dp(this, 6)))
+        nowLine(); uc.addView(schoolNow, Ui.lp(top = Ui.dp(this, 6)))
+        uc.addView(Ui.text(this, "Used by Urgent low and Very high on this phone (another sound in school hours).", 11.5f, Ui.MUTED))
         soundTxt = Ui.text(this, "Alert sounds (this phone only · not shared · kept after updates)", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) }
         uc.addView(soundTxt)
         soundRows = Ui.col(this); uc.addView(soundRows)
@@ -1227,6 +1255,24 @@ class SettingsActivity : BaseActivity() {
         if (::allViews.isInitialized && uiLocked) renderLock()
     }
 
+    /** Sound menu ▾ + ▶ Test for one sound key (a line, or its "@school" sound). */
+    private fun soundRow(key: String): LinearLayout {
+        val r1 = Ui.row(this)
+        lateinit var dd: TextView
+        dd = Ui.smallButton(this, "🔔 ${Sounds.displayName(st, key)}  ▾") { soundMenu(key, dd) }
+        r1.addView(dd, Ui.lp(0, Ui.dp(this, 40), weight = 1f, end = Ui.dp(this, 6)))
+        r1.addView(Ui.smallButton(this, "▶ Test") {
+            when (Sounds.test(this, key)) {
+                "default" -> Ui.toast(this, "The chosen sound can't play — playing the phone default")
+                "beep" -> Ui.toast(this, "No sound file plays — built-in beep")
+                "silent" -> Ui.toast(this, "This line is set to Silent")
+                "chosen" -> Ui.toast(this, L.s("Playing") + " " + Sounds.displayName(st, key) + "…")
+                else -> {}
+            }
+        }.apply { tag = "free" }, Ui.lp(Ui.dp(this, 84), Ui.dp(this, 40)))
+        return r1
+    }
+
     private fun soundBox(k: String): View {
         val box = Ui.col(this).apply {
             background = Ui.round(Ui.CARD2, Ui.dp(context, 12).toFloat())
@@ -1241,20 +1287,25 @@ class SettingsActivity : BaseActivity() {
         h.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true), Ui.lp(0, weight = 1f))
         if (urgent) h.addView(Ui.text(this, "URGENT", 10f, 0xFFFF8A8D.toInt(), true))
         box.addView(h)
-        val r1 = Ui.row(this)
-        lateinit var dd: TextView
-        dd = Ui.smallButton(this, "🔔 ${Sounds.displayName(st, k)}  ▾") { soundMenu(k, dd) }
-        r1.addView(dd, Ui.lp(0, Ui.dp(this, 40), weight = 1f, end = Ui.dp(this, 6)))
-        r1.addView(Ui.smallButton(this, "▶ Test") {
-            when (Sounds.test(this, k)) {
-                "default" -> Ui.toast(this, "The chosen sound can't play — playing the phone default")
-                "beep" -> Ui.toast(this, "No sound file plays — built-in beep")
-                "silent" -> Ui.toast(this, "This line is set to Silent")
-                "chosen" -> Ui.toast(this, L.s("Playing") + " " + Sounds.displayName(st, k) + "…")
-                else -> {}
+        if (k in School.SCHED) {
+            // school hours / other hours: two sounds for this line
+            val sc = Switch(this).apply { text = L.s("Different sound in school hours"); isChecked = st.schedFor(k); setTextColor(Ui.TEXT); textSize = 13f }
+            box.addView(sc, Ui.lp(top = Ui.dp(this, 6)))
+            val two = Ui.col(this)
+            fun fill() {
+                two.removeAllViews()
+                if (st.schedFor(k)) {
+                    two.addView(Ui.text(this, "School hours (${st.schoolStart}–${st.schoolEnd})", 12f, Ui.MUTED), Ui.lp(top = Ui.dp(this, 6)))
+                    two.addView(soundRow("$k@school"), Ui.lp(top = Ui.dp(this, 2)))
+                    two.addView(Ui.text(this, "Other hours, days off and weekend", 12f, Ui.MUTED), Ui.lp(top = Ui.dp(this, 6)))
+                }
+                two.addView(soundRow(k), Ui.lp(top = Ui.dp(this, if (st.schedFor(k)) 2 else 8)))
+                if (::allViews.isInitialized && uiLocked) renderLock()
             }
-        }.apply { tag = "free" }, Ui.lp(Ui.dp(this, 84), Ui.dp(this, 40)))
-        box.addView(r1, Ui.lp(top = Ui.dp(this, 8)))
+            sc.setOnCheckedChangeListener { _, v -> st.setSched(k, v); fill() }
+            box.addView(two); fill()
+            if (k == "urgent_low") box.addView(Ui.text(this, "Set again at every update, on every phone: on · urgent · school hours Nova Blip 5s, otherwise Nova Medical.", 11f, 0xFFFFC850.toInt()))
+        } else box.addView(soundRow(k), Ui.lp(top = Ui.dp(this, 8)))
         val r2 = Ui.row(this)
         r2.addView(Switch(this).apply {
             text = "Vibrate"; isChecked = st.vibFor(k); setTextColor(Ui.TEXT); textSize = 13f

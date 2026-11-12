@@ -91,8 +91,14 @@ object AlarmPlayer {
             }, k * 1000L)
         } catch (_: Exception) { savedVolume = -1 }
 
-        // The chosen sound, else the phone's alarm, else its ringtone, else a built-in beep: never silent.
-        val tries = listOfNotNull(Sounds.chosen(st, kind, c), Sounds.builtinUri(c, Sounds.defaultFor(kind)), RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+        // 📳 meeting mode: no sound — the strongest vibration for the whole ring time
+        if (Meeting.on(st)) {
+            Meeting.strong(c, st.ringSec.coerceIn(10, 600))
+            main.postDelayed({ stopSound(c) }, st.ringSec.coerceIn(10, 600) * 1000L)
+            return
+        }
+        // The chosen sound (school hours or other), else the phone's alarm, else its ringtone, else a built-in beep: never silent.
+        val tries = listOfNotNull(Sounds.chosen(st, School.live(st, kind), c), Sounds.builtinUri(c, Sounds.defaultFor(kind)), RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
         player = null
         for (u in tries) {

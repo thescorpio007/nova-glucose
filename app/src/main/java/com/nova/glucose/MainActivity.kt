@@ -37,6 +37,37 @@ class MainActivity : BaseActivity() {
     private lateinit var msgBtn: TextView
 
     /** 💬 Messages: red with the number of unread messages. */
+    private lateinit var meetBtn: TextView
+    private lateinit var meetStrip: TextView
+    private val MEET = 0xFF9646C8.toInt()
+
+    /** 📳 button: off → confirm 1 hour (15 min on the patient's phone); on → end now. */
+    private fun meetingTap() {
+        if (Meeting.on(st)) {
+            Tr.Builder(this).setTitle("📳 " + L.s("End meeting mode?")).setMessage(L.s("Nova Glucose sounds come back on this phone now."))
+                .setPositiveButton("End now") { _, _ -> st.meetingUntil = 0L; renderMeeting() }.setNegativeButton("Cancel", null).show()
+            return
+        }
+        val min = Meeting.minutesFor(st)
+        val until = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(System.currentTimeMillis() + min * 60_000L))
+        Tr.Builder(this).setTitle("📳 " + L.s("Meeting mode — {0} min").replace("{0}", "$min"))
+            .setMessage(L.s("All Nova Glucose sounds on this phone are replaced by very strong vibration until {0}.").replace("{0}", until) + "\n\n" +
+                L.s("Urgent alarms still show full screen and vibrate at full strength, with no sound. Other phones are not changed. It ends by itself, or tap 📳 again."))
+            .setPositiveButton("Start meeting mode") { _, _ -> st.meetingUntil = System.currentTimeMillis() + min * 60_000L; Meeting.strong(this, 1); renderMeeting() }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun renderMeeting() {
+        if (!::meetBtn.isInitialized) return
+        val on = Meeting.on(st)
+        meetBtn.text = if (on) "📳 ${Meeting.minutesLeft(st)} min" else "📳"
+        meetBtn.background = Ui.round(if (on) MEET else Ui.CARD2, Ui.dp(this, 12).toFloat())
+        meetBtn.setTextColor(if (on) 0xFFFFFFFF.toInt() else Ui.TEXT)
+        meetStrip.visibility = if (on) View.VISIBLE else View.GONE
+        if (on) meetStrip.text = L.s("📳 Meeting mode · vibration only until {0} · tap to end")
+            .replace("{0}", java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(st.meetingUntil)))
+    }
+
     private fun renderMsgBtn() {
         if (!::msgBtn.isInitialized) return
         val on = st.syncFam.isNotBlank()
@@ -173,7 +204,9 @@ class MainActivity : BaseActivity() {
         name = Ui.text(this, "", 14f, Ui.MUTED)
         titles.addView(name)
         head.addView(titles, Ui.lp(0, weight = 1f))
-        head.addView(Ui.smallButton(this, "↻") { refresh(true) }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 36), end = Ui.dp(this, 8)))
+        // 📳 meeting mode (replaces ↻ — refresh: tap the glucose card; it also refreshes by itself every minute)
+        meetBtn = Ui.smallButton(this, "📳") { meetingTap() }
+        head.addView(meetBtn, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
         lateinit var langBtn: android.widget.TextView
         langBtn = Ui.smallButton(this, "🌐 ${L.short()} ▾") { Lang.pick(this, langBtn) }
         head.addView(langBtn, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
@@ -238,6 +271,12 @@ class MainActivity : BaseActivity() {
         cardTexts = listOf(glbl, value as OutlineText, arrow as OutlineText, unit, ago as OutlineText)
         card.addView(inner, Ui.lp(0, weight = 1f))
         root.addView(card, Ui.lp(top = Ui.dp(this, 12)))
+        card.isClickable = true
+        card.setOnClickListener { refresh(true); Ui.toast(this, "Refreshing…") }
+        meetStrip = Ui.text(this, "", 13f, 0xFFFFFFFF.toInt(), true).apply {
+            gravity = Gravity.CENTER; setPadding(Ui.dp(c(), 12), Ui.dp(c(), 8), Ui.dp(c(), 12), Ui.dp(c(), 8))
+            background = Ui.round(MEET, Ui.dp(c(), 14).toFloat()); visibility = View.GONE; setOnClickListener { meetingTap() } }
+        root.addView(meetStrip, Ui.lp(top = Ui.dp(this, 8)))
 
         error = Ui.text(this, "", 13f, Ui.BAD).apply {
             background = Ui.round(0x22FF6B6B, Ui.dp(c(), 10).toFloat())
@@ -359,6 +398,7 @@ class MainActivity : BaseActivity() {
 
         renderAdvice(r)
         renderMsgBtn()
+        renderMeeting()
     }
 
     private val ranges = listOf("12" to "Last 12 hours", "24" to "24 hours (full day)", "w" to "Week", "m" to "Month")

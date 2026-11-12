@@ -26,7 +26,7 @@ object Sounds {
     val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep",
         "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s")
     fun defaultFor(kind: String) = when (kind) {
-        "low", "urgent_low" -> "builtin:medical"; "very_high", "stale", "guard" -> "builtin:blip5"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
+        "low", "urgent_low" -> "builtin:medical"; "urgent_low@school", "very_high@school", "stale", "guard" -> "builtin:blip5"; "very_high" -> "builtin:medical"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
 
     /**
      * Each phone keeps its own notification choices (never shared, never reset by updates). Safety net at every update:
@@ -34,9 +34,16 @@ object Sounds {
      */
     fun applyOnUpdate(c: Context) {
         val st = Store(c); val b = Updater.current(c)
-        if (b <= 0 || st.raw.getInt("last_snd_build", -1) == b) return
-        st.urgentOn = true; st.urgUrgentLow = true; st.setOn("urgent_low", true)
-        if (isSilent(st, "urgent_low")) setBuiltin(c, "urgent_low", "builtin:medical")
+        val prev = st.raw.getInt("last_snd_build", -1)
+        if (b <= 0 || prev == b) return
+        // urgent low, every update, every phone: on · urgent · school hours Nova Blip 5s, otherwise Nova Medical
+        st.urgentOn = true; st.urgUrgentLow = true; st.setOn("urgent_low", true); st.setSched("urgent_low", true)
+        setBuiltin(c, "urgent_low@school", "builtin:blip5"); setBuiltin(c, "urgent_low", "builtin:medical")
+        // very high: the school schedule is only the default of a NEW installation — an updated phone keeps its own sound
+        if (prev != -1 && !st.raw.contains("sched_very_high")) {
+            st.setSched("very_high", false)
+            if (st.soundFor("very_high").isBlank()) setBuiltin(c, "very_high", "builtin:blip5")
+        }
         st.raw.edit().putInt("last_snd_build", b).apply()
     }
     fun builtinUri(c: Context, v: String): Uri? = when (v) {
@@ -272,8 +279,11 @@ object Sounds {
 
     /** After posting a notification: the chosen sound and vibration for that line. */
     fun after(c: Context, kind: String) {
-        if (!Store(c).onFor(kind)) return
-        if (kind in KINDS) playOnce(c, kind) else playGeneral(c, kind)
+        val st = Store(c)
+        if (!st.onFor(kind)) return
+        if (Meeting.on(st)) { Meeting.strong(c, if (kind in KINDS) 6 else 3); return }      // 📳 meeting mode: vibration only
+        val k = School.live(st, kind)
+        if (kind in KINDS) playOnce(c, k) else playGeneral(c, k)
         if (Store(c).vibFor(kind)) vibrate(c, lowKind(kind) || kind == "eat")
     }
 
