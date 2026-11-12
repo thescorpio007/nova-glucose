@@ -28,17 +28,15 @@ object Sounds {
     fun defaultFor(kind: String) = when (kind) {
         "low", "urgent_low" -> "builtin:medical"; "very_high", "stale", "guard" -> "builtin:blip5"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
 
-    /** The family's sound plan, applied again at every app update (each line can still be changed in between). */
-    private val ON_UPDATE = listOf("urgent_low" to "builtin:medical", "very_high" to "builtin:blip5", "stale" to "builtin:blip5", "eat" to "builtin:beep5")
+    /**
+     * Each phone keeps its own notification choices (never shared, never reset by updates). Safety net at every update:
+     * urgent low is switched back on, urgent, and not Silent.
+     */
     fun applyOnUpdate(c: Context) {
         val st = Store(c); val b = Updater.current(c)
         if (b <= 0 || st.raw.getInt("last_snd_build", -1) == b) return
-        ON_UPDATE.forEach { (k, v) -> setBuiltin(c, k, v) }
-        st.urgNoSignal = true
-        st.urgentOn = true; st.urgUrgentLow = true; st.urgLow = true; st.urgVeryHigh = true   // urgent again at every update (each user can untick)
-        (KINDS + GENERAL).forEach { st.setOn(it, true) }      // every line on again after each update
-        st.watchGlucose = 30            // glucose on the watch every 30 min (patient and parents)
-        st.lastWatchPost = 0
+        st.urgentOn = true; st.urgUrgentLow = true; st.setOn("urgent_low", true)
+        if (isSilent(st, "urgent_low")) setBuiltin(c, "urgent_low", "builtin:medical")
         st.raw.edit().putInt("last_snd_build", b).apply()
     }
     fun builtinUri(c: Context, v: String): Uri? = when (v) {

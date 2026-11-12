@@ -274,7 +274,7 @@ class SettingsActivity : BaseActivity() {
         cbH = check("High", st.urgHigh); cbVH = check("Very high", st.urgVeryHigh)
         cbNS = check("No signal — no new reading for the minutes set in Alerts", st.urgNoSignal)
         listOf(cbUL, cbL, cbH, cbVH, cbNS).forEach { uc.addView(it) }
-        soundTxt = Ui.text(this, "Alert sounds (this phone)", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) }
+        soundTxt = Ui.text(this, "Alert sounds (this phone only · not shared · kept after updates)", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, 0) }
         uc.addView(soundTxt)
         soundRows = Ui.col(this); uc.addView(soundRows)
         uc.addView(Ui.text(this, "Urgent alarms ring with these sounds through silent and Do Not Disturb. Normal alerts play their sound once " +
@@ -459,7 +459,7 @@ class SettingsActivity : BaseActivity() {
                 line.forEach { (m, l) -> r.addView(Ui.chip(this, l, st.watchGlucose == m) { st.watchGlucose = m; st.lastWatchPost = 0; renderWg() }, Ui.lp(-2, -2, end = Ui.dp(this, 6))) }
                 wg.addView(r, Ui.lp(top = Ui.dp(this, 4)))
             }
-            wg.addView(Ui.text(this, "Set back to 30 min at every update.", 11f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
+            wg.addView(Ui.text(this, "This phone only — not shared, not changed by updates.", 11f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
         }
         renderWg(); wc.addView(wg)
         wc.addView(check("🔆 Keep the screen on while Nova Glucose is open in front", st.keepScreen).apply {
@@ -1237,7 +1237,7 @@ class SettingsActivity : BaseActivity() {
         if (Sounds.patientMay(st, k)) box.tag = "free"
         val h = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
         h.addView(android.widget.CheckBox(this).apply { isChecked = st.onFor(k); setOnCheckedChangeListener { _, v -> st.setOn(k, v)
-            if (!v) Ui.toast(this@SettingsActivity, L.s("Off: this notification won't show on this phone (on again after each update)")) } })
+            if (!v) Ui.toast(this@SettingsActivity, L.s(if (k == "urgent_low") "Off on this phone — urgent low is switched back on at each update (safety)" else "Off on this phone only (not shared)")) } })
         h.addView(Ui.text(this, Sounds.label(st, k), 14f, Ui.TEXT, true), Ui.lp(0, weight = 1f))
         if (urgent) h.addView(Ui.text(this, "URGENT", 10f, 0xFFFF8A8D.toInt(), true))
         box.addView(h)
