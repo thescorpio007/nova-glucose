@@ -2,6 +2,7 @@ package com.nova.glucose
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -1635,6 +1636,7 @@ class SettingsActivity : BaseActivity() {
 
     override fun onRequestPermissionsResult(req: Int, perms: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(req, perms, res)
+        if (req == 7301) { renderNet(); return }
         if (req != HealthRead.REQ) return
         if (HealthRead.granted(this).isEmpty()) {
             hcMsg.setTextColor(Ui.WARN)
@@ -1686,8 +1688,28 @@ class SettingsActivity : BaseActivity() {
                 opts.forEach { m -> r.addView(Ui.chip(this, "$m min", cur == m) { set(m); renderNet() }, Ui.lp(-2, -2, end = Ui.dp(this, 6))) }
                 b.addView(r)
             }
-            choice("Check the internet every", listOf(1, 5, 10, 15), st.netEvery) { st.netEvery = it }
-            b.addView(switch("Pop-up + sound when there's no internet", st.onFor("net")).apply { setOnCheckedChangeListener { _, on -> st.setOn("net", on) } }, Ui.lp(top = Ui.dp(this, 8)))
+            choice("Check the connections every", listOf(1, 5, 10, 15), st.netEvery) { st.netEvery = it }
+            if (Net.bt(this) != null) {
+                b.addView(switch("Keep Bluetooth on (sensor, watch)", st.netBt).apply { setOnCheckedChangeListener { _, on -> st.netBt = on; renderNet() } }, Ui.lp(top = Ui.dp(this, 8)))
+                if (st.netBt) b.addView(Ui.text(this, when {
+                    !Net.btAllowed(this) -> "Allow \"Nearby devices\" so Nova can turn Bluetooth back on."
+                    own || Build.VERSION.SDK_INT < 33 -> "✓ Nova turns Bluetooth back on by itself."
+                    else -> "Without device owner Nova can only remind you (pop-up)." }, 12f, Ui.MUTED))
+                if (st.netBt && !Net.btAllowed(this) && Build.VERSION.SDK_INT >= 31)
+                    b.addView(Ui.smallButton(this, "Allow Nearby devices") { requestPermissions(arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT), 7301) }, Ui.lp(-2, Ui.dp(this, 38), top = Ui.dp(this, 4)))
+            }
+            if (Net.nfc(this) != null) {
+                b.addView(switch("Keep NFC on (sensor scan)", st.netNfc).apply { setOnCheckedChangeListener { _, on -> st.netNfc = on; renderNet() } }, Ui.lp(top = Ui.dp(this, 8)))
+                if (st.netNfc) {
+                    b.addView(Ui.text(this, if (Net.nfcAllowed(this)) "✓ Experimental: Nova tries to turn NFC back on by itself (not every phone allows it). The pop-up stays as a backup."
+                        else "Android doesn't let apps switch NFC: Nova shows a pop-up. Experimental: this ADB command may let Nova switch it by itself:", 12f, Ui.MUTED))
+                    if (!Net.nfcAllowed(this)) {
+                        b.addView(Ui.text(this, Net.ADB_NFC, 12f, Ui.ACCENT).apply { setTextIsSelectable(true); setPadding(0, Ui.dp(context, 4), 0, 0) })
+                        b.addView(Ui.smallButton(this, "📋 Copy command") { Ui.copy(this, Net.ADB_NFC); Ui.toast(this, "Copied") }.apply { tag = "free" }, Ui.lp(-2, Ui.dp(this, 38), top = Ui.dp(this, 4)))
+                    }
+                }
+            }
+            b.addView(switch("Pop-up + sound when a connection is off", st.onFor("net")).apply { setOnCheckedChangeListener { _, on -> st.setOn("net", on) } }, Ui.lp(top = Ui.dp(this, 8)))
             b.addView(soundRow("net"), Ui.lp(top = Ui.dp(this, 4)))
             choice("Remind again every", listOf(15, 30, 60), st.netRemind) { st.netRemind = it }
         } else {

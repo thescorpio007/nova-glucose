@@ -67,7 +67,7 @@ object Sounds {
         "urgent_low" -> "Urgent low (below ${st.urgentLow})"; "low" -> "Low (below ${st.low})"
         "high" -> "High (above ${st.high})"; "very_high" -> "Very high (above ${st.veryHigh})"; "stale" -> "No signal"
         "eat" -> "🍽 Time to eat"; "msg" -> "💬 Family messages"; "lantus" -> "💉 Night Lantus reminder"
-        "guard" -> "📵 Patient's phone offline (parents)"; "net" -> "📶 No internet (patient's phone)"; "update" -> "⬆ App update available"
+        "guard" -> "📵 Patient's phone offline (parents)"; "net" -> "📶 Connection off (patient's phone)"; "update" -> "⬆ App update available"
         "tip" -> "✦ AI tips after alerts"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
     }
 

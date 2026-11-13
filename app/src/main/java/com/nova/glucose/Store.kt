@@ -225,6 +225,8 @@ class Store(c: Context) {
     fun setSched(kind: String, v: Boolean) = putb("sched_$kind", v)
     var netEvery: Int get() = i("net_every", 5); set(v) = puti("net_every", v)
     var netRemind: Int get() = i("net_remind", 30); set(v) = puti("net_remind", v)
+    var netBt: Boolean get() = b("net_bt", true); set(v) = putb("net_bt", v)
+    var netNfc: Boolean get() = b("net_nfc", true); set(v) = putb("net_nfc", v)
     var netParentMin: Int get() = i("net_parent_min", 30); set(v) = puti("net_parent_min", v)
     var meetingUntil: Long get() = sp.getLong("meeting_until", 0L); set(v) = sp.edit().putLong("meeting_until", v).apply()
     var lantusOn: Boolean get() = b("lantus_on", true); set(v) = putb("lantus_on", v)
