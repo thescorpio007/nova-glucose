@@ -20,13 +20,13 @@ import java.io.File
  */
 object Sounds {
     val KINDS = listOf("urgent_low", "low", "high", "very_high", "stale")
-    val GENERAL = listOf("eat", "msg", "lantus", "guard", "update", "tip", "other")
+    val GENERAL = listOf("eat", "msg", "lantus", "net", "guard", "update", "tip", "other")
     const val SILENT = "silent"
     /** Sounds built into the app (same on every phone). */
     val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep",
         "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s")
     fun defaultFor(kind: String) = when (kind) {
-        "low", "urgent_low" -> "builtin:medical"; "urgent_low@school", "very_high@school", "stale", "guard" -> "builtin:blip5"; "very_high" -> "builtin:medical"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
+        "low", "urgent_low" -> "builtin:medical"; "urgent_low@school", "very_high@school", "stale", "guard", "net" -> "builtin:blip5"; "very_high" -> "builtin:medical"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
 
     /**
      * Each phone keeps its own notification choices (never shared, never reset by updates). Safety net at every update:
@@ -67,7 +67,7 @@ object Sounds {
         "urgent_low" -> "Urgent low (below ${st.urgentLow})"; "low" -> "Low (below ${st.low})"
         "high" -> "High (above ${st.high})"; "very_high" -> "Very high (above ${st.veryHigh})"; "stale" -> "No signal"
         "eat" -> "🍽 Time to eat"; "msg" -> "💬 Family messages"; "lantus" -> "💉 Night Lantus reminder"
-        "guard" -> "📵 Patient's phone not seen 2 h"; "update" -> "⬆ App update available"
+        "guard" -> "📵 Patient's phone offline (parents)"; "net" -> "📶 No internet (patient's phone)"; "update" -> "⬆ App update available"
         "tip" -> "✦ AI tips after alerts"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
     }
 

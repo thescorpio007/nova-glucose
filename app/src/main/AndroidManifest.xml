@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -81,6 +83,7 @@
         </activity-alias>
         <activity android:name=".LantusActivity" android:exported="false" android:excludeFromRecents="true"
             android:launchMode="singleTop" android:showWhenLocked="true" android:turnScreenOn="true" />
+        <activity android:name=".NetActivity" android:exported="false" android:excludeFromRecents="true" android:launchMode="singleTop" android:showWhenLocked="true" android:turnScreenOn="true" />
         <activity android:name=".IncidentActivity" android:exported="true" android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".AlarmActivity"

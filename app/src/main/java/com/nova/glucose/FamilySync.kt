@@ -377,6 +377,7 @@ object FamilySync {
         if (kind == "lnt") return Lantus.item(c, gid)
         if (kind == "bdc") return BasalChanges.item(c, gid)
         if (kind == "urg") return Relay.item(c, gid)
+        if (kind == "wifi") return Net.item(c, gid)
         if (kind == "who") return Members.whoItem(c)
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
@@ -470,6 +471,7 @@ object FamilySync {
             "lnt" -> return Lantus.received(c, item)
             "bdc" -> return BasalChanges.received(c, item)
             "urg" -> return Relay.received(c, item)
+            "wifi" -> return Net.received(c, item)
             "who" -> return Members.receivedWho(c, item)
             "hcst" -> {
                 val st = Store(c)
@@ -625,7 +627,7 @@ object FamilySync {
         // the twin rule may have queued items: send them next time
         // 3. "last seen" for the member list (every 30 min)
         Members.announce(c)
-        if (System.currentTimeMillis() - st.syncSeen > 30 * 60_000L) {
+        if (System.currentTimeMillis() - st.syncSeen > (if (st.isPatient) 5 else 30) * 60_000L) {     // patient's phone: every 5 min (offline warning)
             try { retry { writeMember(it, fam, key, st.syncName.ifBlank { "Phone" }) }; st.syncSeen = System.currentTimeMillis() } catch (_: Exception) { }
         }
         st.syncLast = System.currentTimeMillis()

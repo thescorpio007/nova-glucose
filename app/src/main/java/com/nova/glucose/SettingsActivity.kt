@@ -141,6 +141,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var roleRow: LinearLayout
     private lateinit var roleInfo: TextView
     private lateinit var guardBox: LinearLayout
+    private lateinit var netBox: LinearLayout
     private val patientOnly = mutableListOf<View>()
     private lateinit var hcFamilyNote: TextView
     private lateinit var hcPeerBox: LinearLayout
@@ -451,6 +452,12 @@ class SettingsActivity : BaseActivity() {
         val tc = Ui.card(this)
         Foods.PHOTO_TIPS.forEach { tc.addView(Ui.text(this, "•  $it", 13f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 3), 0, 0) }) }
         root.addView(tc)
+
+        // ---------------------------------------------------------- Network
+        root.addView(Ui.section(this, "📶 Network"))
+        netBox = Ui.card(this)
+        root.addView(netBox)
+        renderNet()
 
         // ---------------------------------------------------------- Parental control
         root.addView(Ui.section(this, "Parental control"))
@@ -1656,6 +1663,81 @@ class SettingsActivity : BaseActivity() {
         renderGuard()
     }
 
+    /** Network: internet checks on the patient's phone, device-owner powers, and the family's safe Wi-Fi list. */
+    private fun renderNet() {
+        val b = netBox; b.removeAllViews()
+        b.addView(Ui.text(this, Net.line(this), 14f, Ui.TEXT))
+        if (st.isPatient) {
+            val own = Net.owner(this)
+            b.addView(Ui.text(this, if (own) "✓ Device owner: Nova turns Wi-Fi on by itself, keeps mobile data and airplane mode locked, and can't be uninstalled."
+                else "Not device owner: Nova can only show a pop-up and open the Wi-Fi / mobile data panels. To give Nova full control, run this once from a computer (ADB):",
+                12.5f, if (own) Ui.GOOD else Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+            if (!own) {
+                b.addView(Ui.text(this, Net.ADB, 12f, Ui.ACCENT).apply { setTextIsSelectable(true); setPadding(0, Ui.dp(context, 4), 0, 0) })
+                b.addView(Ui.smallButton(this, "📋 Copy command") { Ui.copy(this, Net.ADB); Ui.toast(this, "Copied") }.apply { tag = "free" }, Ui.lp(-2, Ui.dp(this, 38), top = Ui.dp(this, 4)))
+            } else b.addView(Ui.smallButton(this, "🔓 Release device owner (parent)") {
+                Parent.ask(this, L.s("Enter the PIN to release device owner.")) {
+                    Tr.Builder(this).setTitle("Release device owner?").setMessage("Nova will stop controlling Wi-Fi, mobile data, airplane mode and uninstall. To give it back, the ADB command is needed again.")
+                        .setPositiveButton("Release") { _, _ -> Net.releaseOwner(this); renderNet() }.setNegativeButton("Cancel", null).show()
+                } }, Ui.lp(-2, Ui.dp(this, 38), top = Ui.dp(this, 6)))
+            fun choice(label: String, opts: List<Int>, cur: Int, set: (Int) -> Unit) {
+                b.addView(Ui.text(this, label, 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
+                val r = Ui.row(this)
+                opts.forEach { m -> r.addView(Ui.chip(this, "$m min", cur == m) { set(m); renderNet() }, Ui.lp(-2, -2, end = Ui.dp(this, 6))) }
+                b.addView(r)
+            }
+            choice("Check the internet every", listOf(1, 5, 10, 15), st.netEvery) { st.netEvery = it }
+            b.addView(switch("Pop-up + sound when there's no internet", st.onFor("net")).apply { setOnCheckedChangeListener { _, on -> st.setOn("net", on) } }, Ui.lp(top = Ui.dp(this, 8)))
+            b.addView(soundRow("net"), Ui.lp(top = Ui.dp(this, 4)))
+            choice("Remind again every", listOf(15, 30, 60), st.netRemind) { st.netRemind = it }
+        } else {
+            b.addView(Ui.text(this, "The internet checks run on the patient's phone. You're told if it stays offline.", 12.5f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+            b.addView(Ui.text(this, "Tell me when the patient's phone is offline for", 13f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 4)) })
+            val r = Ui.row(this)
+            listOf(15, 30, 60).forEach { m -> r.addView(Ui.chip(this, "$m min", st.netParentMin == m) { st.netParentMin = m; renderNet(); renderGuard() }, Ui.lp(-2, -2, end = Ui.dp(this, 6))) }
+            b.addView(r)
+            b.addView(soundRow("guard"), Ui.lp(top = Ui.dp(this, 6)))
+        }
+
+        b.addView(Ui.text(this, "Safe Wi-Fi networks (shared with the family)", 14f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 14), 0, Ui.dp(context, 2)) })
+        b.addView(Ui.text(this, "The patient's phone saves these networks so it joins them by itself.", 12f, Ui.MUTED))
+        Net.list(this).forEach { w ->
+            val r = Ui.row(this).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }
+            r.addView(Ui.text(this, "📶 ${w.ssid}\n🔑 ${w.pass.ifBlank { "—" }} · ${w.sec}${if (w.by.isNotBlank()) " · " + w.by else ""}", 13f, Ui.TEXT), Ui.lp(0, -2, weight = 1f))
+            r.addView(Ui.smallButton(this, "✏️") { wifiDialog(w) }, Ui.lp(Ui.dp(this, 48), Ui.dp(this, 38)))
+            b.addView(r)
+        }
+        b.addView(Ui.button(this, "+ Add safe Wi-Fi") { wifiDialog(null) }, Ui.lp(top = Ui.dp(this, 8)))
+        if (::allViews.isInitialized && uiLocked) renderLock()
+    }
+
+    private fun wifiDialog(w: Net.Wifi?) {
+        val root = Ui.col(this).apply { setPadding(Ui.dp(context, 20), Ui.dp(context, 8), Ui.dp(context, 20), 0) }
+        val ssid = Ui.input(this, "Network name (SSID)", multi = false).apply { setText(w?.ssid ?: "") }
+        val pass = Ui.input(this, "Password", multi = false).apply { setText(w?.pass ?: "") }
+        var sec = w?.sec ?: "WPA2"
+        val secRow = Ui.row(this)
+        fun renderSec() { secRow.removeAllViews(); listOf("WPA2", "WPA3", "Open").forEach { s -> secRow.addView(Ui.chip(this, s, sec == s) { sec = s; renderSec() }, Ui.lp(-2, -2, end = Ui.dp(this, 6))) } }
+        renderSec()
+        root.addView(Ui.text(this, "Network name (SSID)", 13f, Ui.MUTED)); root.addView(ssid)
+        root.addView(Ui.text(this, "Password", 13f, Ui.MUTED), Ui.lp(top = Ui.dp(this, 10))); root.addView(pass)
+        root.addView(Ui.text(this, "Security", 13f, Ui.MUTED), Ui.lp(top = Ui.dp(this, 10))); root.addView(secRow, Ui.lp(top = Ui.dp(this, 4)))
+        val bd = Tr.Builder(this).setTitle(if (w == null) "+ Add safe Wi-Fi" else "✏️ Safe Wi-Fi").setView(ScrollView(this).apply { addView(root) })
+            .setPositiveButton("Save", null).setNegativeButton("Cancel", null)
+        if (w != null) bd.setNeutralButton("Delete") { _, _ -> Net.put(this, w.ssid, "", w.sec, w.id, del = true); FamilySync.kick(this); renderNet() }
+        val dlg = bd.create()
+        dlg.setOnShowListener {
+            dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val n = ssid.text.toString().trim(); val pw = pass.text.toString()
+                if (n.isEmpty()) { ssid.error = L.s("Enter the network name"); return@setOnClickListener }
+                if (sec != "Open" && pw.length < 8) { pass.error = L.s("At least 8 characters"); return@setOnClickListener }
+                if (w != null) Net.put(this, n, if (sec == "Open") "" else pw, sec, w.id) else Net.put(this, n, if (sec == "Open") "" else pw, sec)
+                Net.applySafe(this); FamilySync.kick(this); renderNet(); dlg.dismiss()
+            }
+        }
+        dlg.show()
+    }
+
     /** Patient's phone: protection against uninstalling (device administrator). Family phones: the 2-hour warning. */
     private fun renderGuard() {
         guardBox.removeAllViews()
@@ -1667,7 +1749,7 @@ class SettingsActivity : BaseActivity() {
                 if (on) Parent.ask(this, L.s("Enter the PIN to change the protection.")) { Guard.openAdminList(this) } else Guard.askProtect(this) },
                 Ui.lp(top = Ui.dp(this, 6)))
         } else if (st.syncFam.isNotBlank())
-            guardBox.addView(Ui.text(this, "🔔 You get a notification if the patient's phone hasn't synced for 2 hours.", 12.5f, Ui.MUTED))
+            guardBox.addView(Ui.text(this, L.s("🔔 You get a notification if the patient's phone is offline for {0} min (Settings → 📶 Network).").replace("{0}", "${st.netParentMin}"), 12.5f, Ui.MUTED))
     }
 
     private fun chooseRole(id: String) {

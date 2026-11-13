@@ -48,7 +48,7 @@ object Guard {
         val st = Store(c)
         if (st.isPatient || st.syncFam.isBlank()) return
         val now = System.currentTimeMillis()
-        if (now - st.raw.getLong("last_guard_chk", 0L) < 15 * 60_000L) return
+        if (now - st.raw.getLong("last_guard_chk", 0L) < 5 * 60_000L) return
         st.raw.edit().putLong("last_guard_chk", now).apply()
         val app = c.applicationContext
         Thread { try { check(app) } catch (_: Exception) { } }.start()
@@ -60,11 +60,11 @@ object Guard {
         val p = Members.patient(c, list) ?: return
         val now = System.currentTimeMillis()
         val warned = st.raw.getLong("last_guard_warn", 0L)
-        if (p.seen > 0 && now - p.seen > SILENT_MS) {
+        if (p.seen > 0 && now - p.seen > maxOf(st.netParentMin, 15) * 60_000L) {
             if (warned == p.seen) return
             st.raw.edit().putLong("last_guard_warn", p.seen).apply()
-            val h = (now - p.seen) / 3600_000L
-            note(c, L.s("Patient's phone not seen for {0} h").replace("{0}", "$h"),
+            val mn = (now - p.seen) / 60_000L
+            note(c, L.s("Patient's phone offline for {0}").replace("{0}", if (mn >= 120) "${mn / 60} h" else "$mn min"),
                 L.s("Last sync {0}. The phone may be off or offline, or Nova Glucose may have been stopped or removed.")
                     .replace("{0}", SimpleDateFormat("d MMM HH:mm", Locale.US).format(Date(p.seen))))
         } else if (warned > 0 && p.seen > warned) {
