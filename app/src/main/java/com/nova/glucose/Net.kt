@@ -90,6 +90,7 @@ object Net {
         try { dpm.addUserRestriction(a, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS) } catch (_: Exception) { }
         if (Build.VERSION.SDK_INT >= 28) try { dpm.addUserRestriction(a, UserManager.DISALLOW_AIRPLANE_MODE) } catch (_: Exception) { }
         try { dpm.setUninstallBlocked(a, c.packageName, true) } catch (_: Exception) { }
+        try { AppGuard.apply(c) } catch (_: Exception) { }
         if (Build.VERSION.SDK_INT >= 31 && !btAllowed(c)) try {      // device owner gives itself "Nearby devices" (Bluetooth)
             dpm.setPermissionGrantState(a, c.packageName, android.Manifest.permission.BLUETOOTH_CONNECT, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) } catch (_: Exception) { }
     }
@@ -97,6 +98,7 @@ object Net {
     /** Parent switch (PIN): give everything back and stop being device owner. */
     fun releaseOwner(c: Context) {
         if (!owner(c)) return
+        AppGuard.release(c)
         val dpm = c.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager; val a = Guard.admin(c)
         try { dpm.clearUserRestriction(a, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS) } catch (_: Exception) { }
         if (Build.VERSION.SDK_INT >= 28) try { dpm.clearUserRestriction(a, UserManager.DISALLOW_AIRPLANE_MODE) } catch (_: Exception) { }

@@ -143,6 +143,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var roleInfo: TextView
     private lateinit var guardBox: LinearLayout
     private lateinit var netBox: LinearLayout
+    private lateinit var appsBox: LinearLayout
     private val patientOnly = mutableListOf<View>()
     private lateinit var hcFamilyNote: TextView
     private lateinit var hcPeerBox: LinearLayout
@@ -459,6 +460,12 @@ class SettingsActivity : BaseActivity() {
         netBox = Ui.card(this)
         root.addView(netBox)
         renderNet()
+
+        // ---------------------------------------------------------- Protected apps
+        root.addView(Ui.section(this, "🛡 Protected apps"))
+        appsBox = Ui.card(this)
+        root.addView(appsBox)
+        renderApps()
 
         // ---------------------------------------------------------- Parental control
         root.addView(Ui.section(this, "Parental control"))
@@ -1663,6 +1670,72 @@ class SettingsActivity : BaseActivity() {
             else -> L.s("Choose who uses this phone. Everything is set up for that person.")
         }
         renderGuard()
+    }
+
+    /** 🛡 Protected apps: patient's phone = choose apps, lock app management, parent unlock; family phones = last status. */
+    private fun renderApps() {
+        val b = appsBox; b.removeAllViews()
+        if (!st.isPatient) {
+            val o = AppGuard.status(this)
+            if (o == null) b.addView(Ui.text(this, "No status from the patient's phone yet.", 13f, Ui.MUTED))
+            else {
+                val a = o.optJSONArray("apps")
+                val parts = (0 until (a?.length() ?: 0)).map { i -> val e = a!!.getJSONObject(i); e.optString("n") + " " + AppGuard.stateText(e.optString("s")) }
+                val bad = (0 until (a?.length() ?: 0)).any { i -> a!!.getJSONObject(i).optString("s") != "ok" }
+                b.addView(Ui.text(this, parts.joinToString(" · ").ifBlank { "—" }, 13.5f, if (bad) Ui.WARN else Ui.GOOD))
+                b.addView(Ui.text(this, L.s("Last check {0}").replace("{0}", java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(java.util.Date(o.optLong("u")))) +
+                    (if (!o.optBoolean("own")) " · " + L.s("not device owner") else ""), 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
+            }
+            b.addView(switch("Tell me if a protected app is removed, disabled or stopped", st.onFor("apps")).apply { setOnCheckedChangeListener { _, on -> st.setOn("apps", on) } }, Ui.lp(top = Ui.dp(this, 8)))
+            b.addView(soundRow("apps"), Ui.lp(top = Ui.dp(this, 4)))
+            if (::allViews.isInitialized && uiLocked) renderLock()
+            return
+        }
+        val own = Net.owner(this)
+        b.addView(Ui.text(this, if (own) "✓ Device owner — Nova protects the apps below" else "Not device owner: Nova can only watch these apps. Make Nova device owner (📶 Network) to protect them.",
+            13f, if (own) Ui.GOOD else Ui.WARN))
+        val ch = AppGuard.chosen(this)
+        (ch + "com.nova.glucose").distinct().forEach { p ->
+            val r = Ui.row(this).apply { gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0, Ui.dp(context, 8), 0, 0) }
+            r.addView(android.widget.ImageView(this).apply { try { setImageDrawable(packageManager.getApplicationIcon(p)) } catch (_: Exception) { setImageResource(android.R.drawable.sym_def_app_icon) } },
+                Ui.lp(Ui.dp(this, 34), Ui.dp(this, 34), end = Ui.dp(this, 10)))
+            val s = AppGuard.state(this, p); val nova = p == packageName
+            val sub = when { nova -> L.s("Always protected"); s == "ok" -> L.s("Active") + if (own) " · 🔒 " + L.s("can't be uninstalled") else ""; else -> "⚠ " + AppGuard.stateText(s) }
+            val col = Ui.col(this)
+            col.addView(Ui.text(this, AppGuard.label(this, p), 14.5f, Ui.TEXT))
+            col.addView(Ui.text(this, sub, 11.5f, if (s == "ok") Ui.GOOD else Ui.WARN))
+            r.addView(col, Ui.lp(0, -2, weight = 1f))
+            if (!nova) r.addView(android.widget.CheckBox(this).apply { isChecked = true
+                setOnCheckedChangeListener { v, on -> if (!on) { v.post { renderApps() }
+                    Parent.ask(this@SettingsActivity, L.s("Enter the PIN to stop protecting this app.")) {
+                        AppGuard.setChosen(this@SettingsActivity, AppGuard.chosen(this@SettingsActivity) - p); renderApps() } } } })
+            b.addView(r)
+        }
+        b.addView(Ui.button(this, "+ Add another app") { pickApp() }, Ui.lp(top = Ui.dp(this, 8)))
+        b.addView(switch("🔒 Lock app management for all apps (no force stop, disable or clear data)", AppGuard.lockOn(this)).apply {
+            setOnCheckedChangeListener { v, on -> if (!on) { v.post { renderApps() }
+                    Parent.ask(this@SettingsActivity, L.s("Enter the PIN to unlock app management.")) { AppGuard.setLock(this@SettingsActivity, false); renderApps() } }
+                else { AppGuard.setLock(this@SettingsActivity, true); renderApps() } } }, Ui.lp(top = Ui.dp(this, 8)))
+        b.addView(switch("🔔 Tell the parents if a protected app is removed, disabled or stopped", st.onFor("apps")).apply { setOnCheckedChangeListener { _, on -> st.setOn("apps", on) } }, Ui.lp(top = Ui.dp(this, 4)))
+        b.addView(soundRow("apps"), Ui.lp(top = Ui.dp(this, 4)))
+        val until = AppGuard.unlockedUntil(this)
+        if (until > System.currentTimeMillis())
+            b.addView(Ui.text(this, L.s("🔓 App management unlocked until {0}").replace("{0}", java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(until))), 13f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        else if (own && AppGuard.lockOn(this))
+            b.addView(Ui.button(this, "🔓 Unlock app management for 15 min (parent PIN)") {
+                Parent.ask(this, L.s("Enter the PIN to unlock app management.")) { AppGuard.unlock15(this); renderApps() } }, Ui.lp(top = Ui.dp(this, 8)))
+        b.addView(Ui.text(this, "Updates from the Play Store still install normally. Release device owner (📶 Network) removes all protection.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        if (::allViews.isInitialized && uiLocked) renderLock()
+    }
+
+    private fun pickApp() {
+        val i = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+        val have = AppGuard.chosen(this).toSet() + packageName
+        val apps = try { packageManager.queryIntentActivities(i, 0).map { it.activityInfo.packageName }.distinct().filter { it !in have }
+            .map { it to AppGuard.label(this, it) }.sortedBy { it.second.lowercase() } } catch (_: Exception) { emptyList() }
+        if (apps.isEmpty()) { Ui.toast(this, "No other apps found"); return }
+        Tr.Builder(this).setTitle("+ Add another app").setItems(apps.map { it.second }.toTypedArray()) { _, w ->
+            AppGuard.setChosen(this, AppGuard.chosen(this) + apps[w].first); renderApps() }.setNegativeButton("Cancel", null).show()
     }
 
     /** Network: internet checks on the patient's phone, device-owner powers, and the family's safe Wi-Fi list. */

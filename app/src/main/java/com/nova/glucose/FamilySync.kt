@@ -378,6 +378,7 @@ object FamilySync {
         if (kind == "bdc") return BasalChanges.item(c, gid)
         if (kind == "urg") return Relay.item(c, gid)
         if (kind == "wifi") return Net.item(c, gid)
+        if (kind == "appst") return AppGuard.item(c, gid)
         if (kind == "who") return Members.whoItem(c)
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
@@ -472,6 +473,7 @@ object FamilySync {
             "bdc" -> return BasalChanges.received(c, item)
             "urg" -> return Relay.received(c, item)
             "wifi" -> return Net.received(c, item)
+            "appst" -> return AppGuard.received(c, item)
             "who" -> return Members.receivedWho(c, item)
             "hcst" -> {
                 val st = Store(c)
