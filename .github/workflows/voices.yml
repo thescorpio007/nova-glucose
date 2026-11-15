@@ -1,0 +1,19 @@
+name: Voice proposals
+on:
+  push:
+    branches: [voices]
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg espeak-ng > /dev/null
+          pip install -q kokoro-onnx soundfile
+          curl -sSLfO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+          curl -sSLfO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+          mkdir -p out && python tools/voices.py
+      - uses: actions/upload-artifact@v4
+        with: { name: voices, path: out/, retention-days: 7 }
