@@ -41,6 +41,7 @@ object FoodAi {
         val st = Store(c)
         return buildString {
             append(AiData.picture(c, 24))
+            append(AiData.dailyLog(c, 30))
             append("Carb plan: meals ${st.mealMin}–${st.mealMax} g, snacks ${st.snackMin}–${st.snackMax} g, low treatment ${st.lowTreatG} g fast sugar.\n")
             if (st.foodNotes.isNotBlank()) append("Family food notes (likes, dislikes, allergies — always respect): ${st.foodNotes}\n")
             append("About the patient: ${st.aboutLine()}\n")
@@ -53,7 +54,7 @@ object FoodAi {
 You help choose food for a person with type 1 diabetes (age ${st.age}, see the profile) who uses rapid insulin before meals.
 ${AiData.audience(st)}
 Rules:
-- ${AiData.NO_DOSE}
+- ${AiData.OPEN_DATA}
 - If glucose is low (below her low limit): first say to have the fast-sugar treatment from her plan and recheck in 15 minutes; only then other food.
 - If glucose is very high: mention water and checking ketones as the care team advised, and prefer lower-carb choices.
 - Respect the family food notes (allergies, dislikes) strictly. Carb numbers are for the PATIENT's portion and are estimates.

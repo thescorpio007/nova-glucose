@@ -11,10 +11,73 @@ object AiData {
     private val hm = SimpleDateFormat("HH:mm", Locale.US)
     private val dhm = SimpleDateFormat("EEE d MMM HH:mm", Locale.US)
 
+    /** Strict rule for short tips and food ideas. */
     const val NO_DOSE = "NEVER suggest insulin doses or units, and never say to inject more or less or to change the ratio or correction: " +
         "for any dose question, say to follow the diabetes care team. Food, timing, patterns and questions for the doctor only. " +
         "Height and weight are background only: never comment on weight, body shape or BMI, and never suggest losing or gaining weight. " +
         "A meal marked \"carbs not recorded\" was eaten: never count it as 0 g. A \"correction only\" rapid dose had no meal."
+
+    /** Rule for the AI review conversation and Ask AI: all recorded data is open; only advice on future doses is not given. */
+    const val OPEN_DATA = "All the data below was entered by the family for this purpose: answer every question about it openly, fully and with exact numbers " +
+        "— insulin units given (rapid, long-acting, meal and correction), counts, totals, daily averages, carbs, readings, meals, incidents, watch data, " +
+        "comparisons between days or periods. Use the pre-computed totals and averages given; if you add up yourself, show the sum. Never refuse a question " +
+        "about recorded data and never tell the family to ask the care team for numbers that are in the data. " +
+        "The only things you don't do: recommend a future dose (how many units to give, more or less, or a new ratio or correction factor) " +
+        "— for that, say it is the care team's decision — and comment on weight, body shape or BMI. " +
+        "A meal marked \"carbs not recorded\" was eaten: never count it as 0 g. A \"correction only\" rapid dose had no meal."
+
+    private fun u(x: Double) = if (x % 1.0 == 0.0) x.toInt().toString() else "%.1f".format(Locale.US, x)
+
+    /** Every recorded day (up to 400): glucose, rapid and long-acting units, carbs — plus exact averages computed here. */
+    fun dailyLog(c: Context, maxDays: Int = 400): String {
+        val st = Store(c); val db = Db.get(c); val now = System.currentTimeMillis()
+        val from = now - maxDays * 24 * 3600_000L
+        val df = SimpleDateFormat("EEE d MMM yyyy", Locale.US)
+        fun dayKey(ts: Long) = Vault.dayRange(Calendar.getInstance().apply { timeInMillis = ts }).first
+        val rs = db.readings(from, now).groupBy { dayKey(it.ts) }
+        val doses = db.doses(from).groupBy { dayKey(it.ts) }
+        val meals = db.meals(20000).filter { it.ts >= from }.groupBy { dayKey(it.ts) }
+        val days = (rs.keys + doses.keys + meals.keys).toSortedSet()
+        if (days.isEmpty()) return ""
+        class D(val rapid: Double, val nRapid: Int, val meal: Double, val corr: Double, val long: Double, val carbs: Int, val nMeals: Int, val noCarbs: Int)
+        val per = LinkedHashMap<Long, D>()
+        return buildString {
+            append("Daily log, every recorded day (exact, computed by the app):\n")
+            days.forEach { d ->
+                val r = rs[d].orEmpty(); val ds = doses[d].orEmpty(); val ms = meals[d].orEmpty()
+                val rap = ds.filter { it.kind == "rapid" }; val lon = ds.filter { it.kind != "rapid" }
+                val x = D(rap.sumOf { it.units }, rap.size, rap.filter { !it.correction }.sumOf { it.units }, rap.filter { it.correction }.sumOf { it.units },
+                    lon.sumOf { it.units }, ms.filter { it.known }.sumOf { it.carbs }, ms.size, ms.count { !it.known })
+                per[d] = x
+                append("- ${df.format(Date(d))}: ")
+                val s = Vault.stats(st, r)
+                append(if (s != null) "glucose avg ${s.avg}, in range ${s.inRange}%, min ${s.min}, max ${s.max}, lows ${s.lowEpisodes}" else "no readings")
+                append(" · rapid ${u(x.rapid)} u in ${x.nRapid} dose(s)")
+                if (x.nRapid > 0) append(" (meal ${u(x.meal)} u, correction ${u(x.corr)} u)")
+                append(" · long-acting ${if (lon.isEmpty()) "not logged" else u(x.long) + " u"}")
+                append(" · carbs ${x.carbs} g in ${x.nMeals} meal(s)" + if (x.noCarbs > 0) ", ${x.noCarbs} without carbs recorded" else "")
+                append("\n")
+            }
+            fun avg(n: Int) {
+                val l = per.entries.toList().takeLast(n).map { it.value }; val withRapid = l.filter { it.nRapid > 0 }; val withLong = l.filter { it.long > 0 }
+                if (l.isEmpty()) return
+                append("Averages, last ${l.size} recorded day(s): rapid ${if (withRapid.isEmpty()) "—" else u(withRapid.sumOf { it.rapid } / withRapid.size) + " u/day (over ${withRapid.size} day(s) with rapid logged; " +
+                    "meal ${u(withRapid.sumOf { it.meal } / withRapid.size)} u, correction ${u(withRapid.sumOf { it.corr } / withRapid.size)} u, " +
+                    u(withRapid.sumOf { it.nRapid }.toDouble() / withRapid.size) + " doses/day)"}" +
+                    " · long-acting ${if (withLong.isEmpty()) "—" else u(withLong.sumOf { it.long } / withLong.size) + " u/day"}" +
+                    " · total daily insulin ${if (withRapid.isEmpty() && withLong.isEmpty()) "—" else u(l.filter { it.nRapid > 0 || it.long > 0 }.let { z -> z.sumOf { it.rapid + it.long } / z.size }) + " u/day"}" +
+                    " · carbs ${u(l.filter { it.nMeals > 0 }.let { z -> if (z.isEmpty()) 0.0 else z.sumOf { it.carbs }.toDouble() / z.size })} g/day (known carbs only)\n")
+            }
+            listOf(3, 7, 14, 30).filter { it < per.size }.forEach { avg(it) }
+            avg(per.size)
+        }
+    }
+
+    /** Every dose of the period with its units (as entered by the family). */
+    private fun doseLines(doses: List<Dose>, f: SimpleDateFormat) = doses.sortedBy { it.ts }.joinToString("; ") {
+        "${f.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long-acting"} ${u(it.units)} u" +
+            (if (it.correction) " (correction only, no meal)" else if (it.carbs > 0) " (meal ${it.carbs} g)" else "") +
+            (if (it.mgAt > 0) " at ${it.mgAt} mg/dL" else "") + (if (it.note.isNotBlank()) " note: ${it.note.take(60)}" else "") }
 
     /** Who reads the answer: the patient on their own phone, or the family. */
     fun audience(st: Store) = if (st.isPatient)
@@ -67,8 +130,7 @@ object AiData {
             if (meals.isNotEmpty()) append("Meals (time, food, carbs counted by the family): " + meals.joinToString("; ") {
                 "${hm.format(Date(it.ts))} ${it.title} ${Carbs.ai(it)}" + if (it.mgAt > 0) " (glucose ${it.mgAt} at the meal)" else "" } + "\n")
             val doses = db.doses(minOf(a, now - hours * 3600_000L)).sortedBy { it.ts }
-            if (doses.isNotEmpty()) append("Insulin given (as entered by the family; for timing only — never comment on doses): " + doses.joinToString("; ") {
-                "${hm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long-acting"}" + if (it.correction) " (correction only, no meal)" else "" } + "\n")
+            if (doses.isNotEmpty()) append("Insulin given (as entered by the family): " + doseLines(doses, hm) + "\n")
             if (st.eatAt > now) append("An eat timer is running: the patient should start eating at ${hm.format(Date(st.eatAt))}.\n")
             append(Incidents.context(c))
             append(WatchData.aiNow(c))
@@ -107,8 +169,7 @@ object AiData {
                 }
             }
             val doses = db.doses(start)
-            if (doses.isNotEmpty()) append("Insulin times (for timing only): " + doses.sortedBy { it.ts }.joinToString("; ") {
-                "${dhm.format(Date(it.ts))} ${if (it.kind == "rapid") "rapid" else "long"}" + if (it.correction) " (correction only, no meal)" else "" } + "\n")
+            if (doses.isNotEmpty()) append("Insulin given (as entered by the family): " + doseLines(doses, dhm) + "\n")
             append("Period totals: " + Carbs.counts(meals, doses) + "\n")
             BasalChanges.aiText(c).takeIf { it.isNotBlank() }?.let { append(it) }
             append("Night Lantus each day: " + BasalChanges.nights(c, start, System.currentTimeMillis()) + "\n")

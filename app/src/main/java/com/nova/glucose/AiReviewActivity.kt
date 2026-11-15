@@ -33,14 +33,15 @@ line up with her glucose (e.g. night lows after sport, higher mornings after sho
 Questions for the doctor
 (2 to 4 short bullets "• …" the family can ask)
 When Lantus (long-acting) dose changes are given, say what changed before → after (3, 7, 14 days) and whether nights and fasting improved; if too few days, say it is too early.
-Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if there is too little data, say so. No markdown symbols other than "•".
+Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if there is too little data, say so. No markdown symbols other than "•".
 """.trimIndent()
 
     private val chatSystem = """
-You are discussing a person's type 1 diabetes data with their family, after an AI review (shown in the conversation). Answer the new question
-in plain text for a phone screen: short, clear, quoting numbers and times from the data. Use "•" bullets only when listing.
+You are discussing a person's type 1 diabetes data with their family, after an AI review (shown in the conversation). You have all the recorded data:
+the daily log of every recorded day (glucose, insulin units, carbs, with averages) and the details of the review period. Answer the new question directly
+in plain text for a phone screen: clear, with the exact numbers, totals, averages and times asked for. Use "•" bullets only when listing.
 When asked about Lantus (long-acting) dose changes, compare before → after using the given 3/7/14-day numbers and the nights; say if it is too early.
-Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if the data does not show it, say so. No markdown other than "•".
+Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does not show it, say so. No markdown other than "•".
 """.trimIndent()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -133,7 +134,7 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if the data does n
         val app = applicationContext; val d = days; val lg = revLang()
         Thread {
             try {
-                val a = Providers.ask(st, p, system + "\n" + AiData.audience(st) + (if (lg != "en") "\nWrite the whole review in ${L.name(lg)}, including the two headings." else ""), AiData.period(app, d)) { s -> runOnUiThread { status.text = s } }
+                val a = Providers.ask(st, p, system + "\n" + AiData.audience(st) + (if (lg != "en") "\nWrite the whole review in ${L.name(lg)}, including the two headings." else ""), AiData.period(app, d) + "\n" + AiData.dailyLog(app, 30)) { s -> runOnUiThread { status.text = s } }
                 val txt = clean(a)
                 st.aiReview = txt; st.aiReviewTs = System.currentTimeMillis(); st.aiReviewDays = d; st.aiReviewDoneLang = lg
                 val c = AiChats.Conv(java.util.UUID.randomUUID().toString().take(10), System.currentTimeMillis(), d, mutableListOf(false to txt))
@@ -157,7 +158,7 @@ Rules: ${AiData.NO_DOSE} Do not diagnose. Do not invent data; if the data does n
         val app = applicationContext; val lg = revLang()
         Thread {
             try {
-                val user = AiData.period(app, c.days) + "\n\nThe conversation so far:\n" +
+                val user = AiData.dailyLog(app) + "\nDetails of the review period:\n" + AiData.period(app, c.days) + "\n\nThe conversation so far:\n" +
                     c.turns.dropLast(1).joinToString("\n\n") { (me, t) -> (if (me) "Family: " else "AI: ") + t } + "\n\nNew question from the family: $q"
                 val a = clean(Providers.ask(st, p, chatSystem + "\n" + AiData.audience(st) + langLine(lg), user) { s -> runOnUiThread { status.text = s } })
                 c.turns += false to a; AiChats.save(app, c)
