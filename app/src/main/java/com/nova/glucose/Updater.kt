@@ -76,20 +76,110 @@ object Updater {
     fun lastCheck(c: Context): Long = sp(c).getLong("last_check", 0)
     private fun setStatus(c: Context, s: String) { sp(c).edit().putString("status", s).apply() }
 
+    // ---------------------------------------------------------------- settings of this phone (⬆ Updates)
+    fun everyH(c: Context) = sp(c).getInt("every_h", 3)
+    fun setEveryH(c: Context, h: Int) { sp(c).edit().putInt("every_h", h).apply(); schedule(c, force = true) }
+    fun autoDl(c: Context) = sp(c).getBoolean("auto_dl", true)
+    fun setAutoDl(c: Context, on: Boolean) = sp(c).edit().putBoolean("auto_dl", on).apply()
+    /** Newest build seen on GitHub (downloaded or not). */
+    fun latest(c: Context) = sp(c).getInt("latest_build", 0)
+
+    /** New defaults forced on every update (family's choice): check every 3 h, download automatically. */
+    fun applyOnUpdate(c: Context) {
+        sp(c).edit().putInt("every_h", 3).putBoolean("auto_dl", true).apply()
+        schedule(c, force = true)
+        Store(c).updAutoPatient = true
+    }
+
+    /** As device owner (patient's phone) Nova installs without asking. */
+    fun silentOk(c: Context) = Net.owner(c)
+
+    /** Patient's phone, device owner: install the ready build by itself (waits for the end of an alarm or a low). */
+    fun autoInstall(c: Context, why: String) {
+        val r = ready(c) ?: return
+        if (!silentOk(c)) return
+        blockReason(c)?.let { sp(c).edit().putString("pending_why", why).apply(); if (sp(c).getInt("pending_logged", 0) != r.first) {
+            sp(c).edit().putInt("pending_logged", r.first).apply(); ErrorLog.e("Update", "install of build ${r.first} waits: $it") }; return }
+        sp(c).edit().remove("pending_why").apply()
+        if (System.currentTimeMillis() - sp(c).getLong("auto_try", 0L) < 10 * 60_000L) return     // one try every 10 min at most
+        sp(c).edit().putLong("auto_try", System.currentTimeMillis()).apply()
+        ErrorLog.e("Update", "installing build ${r.first} by itself ($why)")
+        installFrom(c, r.second)
+    }
+    fun pendingWhy(c: Context) = sp(c).getString("pending_why", "") ?: ""
+
+    /** A parent asked this phone to install [build] ("by" = their phone's name). */
+    fun requested(c: Context, build: Int, by: String) {
+        sp(c).edit().putInt("req_build", build).putString("req_by", by).apply()
+        val app = c.applicationContext
+        Thread {
+            try {
+                if (ready(app)?.first != build && current(app) < build) check(app, manual = true)
+                if (current(app) >= build) return@Thread
+                if (silentOk(app)) autoInstall(app, "asked by $by")
+                else popup(app, build, by)
+            } catch (_: Exception) { }
+        }.start()
+    }
+    fun requestedBy(c: Context): Pair<Int, String>? = sp(c).getInt("req_build", 0).takeIf { it > current(c) }?.let { it to (sp(c).getString("req_by", "") ?: "") }
+
+    private fun popup(c: Context, build: Int, by: String) {
+        try {
+            val nm = c.getSystemService(NotificationManager::class.java) ?: return
+            val i = Intent(c, UpdateActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val pi = PendingIntent.getActivity(c, NOTE_ID + 2, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, Sounds.channel(c, "update")) else @Suppress("DEPRECATION") Notification.Builder(c)
+            nm.notify(NOTE_ID + 2, b.setSmallIcon(c.applicationInfo.icon).setContentTitle(L.s("📲 Update from your family"))
+                .setContentText(L.s("{0} asked to install {1} build {2}.").replace("{0}", by).replace("{1}", APP).replace("{2}", "%02d".format(build)))
+                .setContentIntent(pi).setFullScreenIntent(pi, true).setAutoCancel(true).build())
+            if (Build.VERSION.SDK_INT < 29 || android.provider.Settings.canDrawOverlays(c)) c.startActivity(i)
+            Sounds.after(c, "update")
+        } catch (_: Exception) { }
+    }
+
+    /** First start of a new build: "Updated to build NN" on this phone. */
+    fun notifyUpdated(c: Context, build: Int) {
+        try {
+            val nm = c.getSystemService(NotificationManager::class.java) ?: return
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, Sounds.channel(c, "update")) else @Suppress("DEPRECATION") Notification.Builder(c)
+            nm.notify(NOTE_ID + 3, b.setSmallIcon(c.applicationInfo.icon).setContentTitle(L.s("✓ {0} updated to build {1}").replace("{0}", APP).replace("{1}", "%02d".format(build)))
+                .setContentText(versionName(c)).setAutoCancel(true).build())
+        } catch (_: Exception) { }
+    }
+
+    /** Family phone: the patient's phone reported a newer build. */
+    fun notifyPatientUpdated(c: Context, build: Int) {
+        try {
+            val nm = c.getSystemService(NotificationManager::class.java) ?: return
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, Sounds.channel(c, "update")) else @Suppress("DEPRECATION") Notification.Builder(c)
+            nm.notify(NOTE_ID + 4, b.setSmallIcon(c.applicationInfo.icon).setContentTitle(L.s("✓ Patient's phone updated to build {0}").replace("{0}", "%02d".format(build)))
+                .setContentText(APP).setAutoCancel(true).build())
+        } catch (_: Exception) { }
+    }
+
     // ---------------------------------------------------------------- scheduling (once a day, any network)
-    fun schedule(c: Context) {
+    fun schedule(c: Context, force: Boolean = false) {
         try {
             val js = c.getSystemService(JobScheduler::class.java) ?: return
-            if (js.allPendingJobs.any { it.id == JOB_ID }) return
+            val h = everyH(c)
+            if (!force && js.allPendingJobs.any { it.id == JOB_ID } && sp(c).getInt("job_h", 24) == h) return
+            js.cancel(JOB_ID); sp(c).edit().putInt("job_h", h).apply()
             js.schedule(JobInfo.Builder(JOB_ID, ComponentName(c, UpdateJob::class.java))
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPeriodic(DAY).setPersisted(true).build())
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPeriodic(h * 3600_000L).setPersisted(true).build())
         } catch (_: Exception) { }
     }
 
     /** From the app's own start or service: check if the last check is over a day old. */
     fun maybe(c: Context) {
         schedule(c)
-        if (System.currentTimeMillis() - lastCheck(c) < DAY) return
+        val st = Store(c)
+        val r0 = ready(c)
+        if (r0 != null && silentOk(c)) { val app = c.applicationContext
+            Thread { try {
+                if (st.isPatient && st.updAutoPatient) autoInstall(app, "automatic")
+                else requestedBy(app)?.let { (b, by) -> if (r0.first == b) autoInstall(app, "asked by $by") }
+            } catch (_: Exception) { } }.start() }
+        if (System.currentTimeMillis() - lastCheck(c) < everyH(c) * 3600_000L - 60_000L) return
         val app = c.applicationContext
         Thread { try { check(app, manual = false) } catch (_: Exception) { } }.start()
     }
@@ -124,6 +214,8 @@ object Updater {
                 return done(c, "✓ Up to date (build %02d)".format(cur))
             }
             val (build, r, urls) = pick
+            sp(c).edit().putInt("latest_build", build).apply()
+            if (!manual && !autoDl(c) && ready(c)?.first != build) return done(c, "Build %02d is available — tap Download".format(build))
             ready(c)?.let { if (it.first == build) { if (!manual) notifyReady(c, build); return done(c, "Build %02d is ready to install".format(build)) } }
             progress("Checking the signature of build %02d…".format(build))
             val sums = get(urls["SHA256SUMS.txt"]!!); val sig = get(urls["SHA256SUMS.sig"]!!)
@@ -142,6 +234,10 @@ object Updater {
             sp(c).edit().putInt("ready_build", build).putString("ready_path", f.absolutePath)
                 .putString("ready_notes", r.optString("body").take(800)).apply()
             notifyReady(c, build)
+            try { Members.announce(c); FamilySync.kick(c) } catch (_: Exception) { }
+            val st = Store(c)
+            if (st.isPatient && st.updAutoPatient) autoInstall(c, "automatic")
+            else requestedBy(c)?.let { (b, by) -> if (b == build && silentOk(c)) autoInstall(c, "asked by $by") }
             return done(c, "✓ Build %02d downloaded and verified (signature ✓ · SHA-256 ✓ · same key ✓)".format(build))
         } catch (e: Exception) {
             return done(c, "⚠ Update check failed: " + (e.message ?: e.javaClass.simpleName))
@@ -283,18 +379,22 @@ object Updater {
             try { a.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + a.packageName))) } catch (_: Exception) { }
             return "Allow \"Install unknown apps\" for $APP, then come back and tap Install again"
         }
+        installFrom(a, r.second)
+        return null
+    }
+
+    fun installFrom(a: Context, file: File) {
         val pi = a.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         params.setAppPackageName(a.packageName)
         if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         val id = pi.createSession(params)
         pi.openSession(id).use { s ->
-            s.openWrite("app.apk", 0, r.second.length()).use { o -> r.second.inputStream().use { it.copyTo(o) }; s.fsync(o) }
+            s.openWrite("app.apk", 0, file.length()).use { o -> file.inputStream().use { it.copyTo(o) }; s.fsync(o) }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) 0x02000000 else 0)   // FLAG_MUTABLE
             val cb = PendingIntent.getBroadcast(a, id, Intent(a, UpdateReceiver::class.java), flags)
             s.commit(cb.intentSender)
         }
-        return null
     }
 }
 
@@ -349,6 +449,10 @@ class UpdateActivity : BaseActivity() {
         if (r == null) {
             box.addView(tv("No update waiting. You have build %02d.".format(cur), 15f, fg))
         } else {
+            Updater.requestedBy(this)?.takeIf { it.first == r.first }?.let { (_, by) ->
+                root.addView(tv("📲 " + L.s("Update from your family"), 20f, accent, true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+                root.addView(tv(L.s("{0} asked to install {1} build {2}.").replace("{0}", by).replace("{1}", APP).replace("{2}", "%02d".format(r.first)), 15f, fg))
+            }
             box.addView(tv("Build %02d → build %02d".format(cur, r.first), 18f, accent, true))
             box.addView(tv("✓ Checksum file signed with $APP's own key\n✓ SHA-256 of the download matches\n✓ Same signing key as the installed app", 14f, fg)
                 .apply { setPadding(0, dp(10), 0, dp(10)) })

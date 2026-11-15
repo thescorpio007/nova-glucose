@@ -24,7 +24,7 @@ object Sounds {
     const val SILENT = "silent"
     /** Sounds built into the app (same on every phone). */
     val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep",
-        "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s")
+        "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s", "builtin:voice" to "Nova Voice: connect your sensor")
     fun defaultFor(kind: String) = when (kind) {
         "low", "urgent_low" -> "builtin:medical"; "urgent_low@school", "very_high@school", "stale", "guard", "net", "apps" -> "builtin:blip5"; "very_high" -> "builtin:medical"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
 
@@ -44,11 +44,18 @@ object Sounds {
             st.setSched("very_high", false)
             if (st.soundFor("very_high").isBlank()) setBuiltin(c, "very_high", "builtin:blip5")
         }
+        // every update, every phone (family's choice): update defaults; patient's phone: "No signal" = Nova Voice, at least 15 s, every 5 min
+        try { Updater.applyOnUpdate(c) } catch (_: Exception) { }
+        st.staleRepeat = 5
+        if (st.isPatient) { st.staleAlert = true; st.setOn("stale", true); setBuiltin(c, "stale", "builtin:voice") }
+        if (prev in 1 until b) try { Updater.notifyUpdated(c, b) } catch (_: Exception) { }
         st.raw.edit().putInt("last_snd_build", b).apply()
     }
     fun builtinUri(c: Context, v: String): Uri? = when (v) {
         "builtin:blip" -> R.raw.nova_blip; "builtin:medical" -> R.raw.nova_medical; "builtin:beep" -> R.raw.nova_beep
-        "builtin:blip5" -> R.raw.nova_blip5; "builtin:beep5" -> R.raw.nova_beep5; else -> null
+        "builtin:blip5" -> R.raw.nova_blip5; "builtin:beep5" -> R.raw.nova_beep5
+        "builtin:voice" -> when (L.lang) { "fr" -> R.raw.nova_voice_fr; "ar" -> R.raw.nova_voice_ar; else -> R.raw.nova_voice_en }
+        else -> null
     }?.let { Uri.parse("android.resource://${c.packageName}/$it") }
     /** Silent is never allowed for lows; for very high / no signal only when not urgent. */
     /** Lines the patient may change while Settings is locked: never urgent low, low, very high, or a line made urgent. */

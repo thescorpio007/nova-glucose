@@ -144,6 +144,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var guardBox: LinearLayout
     private lateinit var netBox: LinearLayout
     private lateinit var appsBox: LinearLayout
+    private lateinit var updBox: LinearLayout
     private val patientOnly = mutableListOf<View>()
     private lateinit var hcFamilyNote: TextView
     private lateinit var hcPeerBox: LinearLayout
@@ -629,16 +630,19 @@ class SettingsActivity : BaseActivity() {
         root.addView(gd)
         renderDrive()
 
+        // ---------------------------------------------------------- Updates
+        root.addView(Ui.section(this, "⬆ Updates"))
+        updBox = Ui.col(this)
+        root.addView(updBox)
+        renderUpd()
+
         // ---------------------------------------------------------- About
         root.addView(Ui.section(this, "About"))
         val ab = Ui.card(this)
         val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "" }
         ab.addView(Ui.text(this, "Nova Glucose $ver", 15f, Ui.TEXT, true))
         ab.addView(Ui.text(this, Foods.CARE_NOTE, 13f, Ui.MUTED))
-        ab.addView(Ui.text(this, Updater.status(this).ifBlank { "Updates: checked once a day from GitHub (signature, SHA-256 and signing key verified before installing)." },
-            12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
-        ab.addView(Ui.button(this, "⬆ Check for updates") { startActivity(Intent(this, UpdateActivity::class.java)) }.apply { tag = "free" },
-            Ui.lp(top = Ui.dp(this, 6)))
+        ab.addView(Ui.text(this, "Updates: see ⬆ Updates above.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
         ab.addView(Ui.text(this, "🐞 Error report", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 2)) })
         ab.addView(Ui.text(this, L.s("Crashes and errors of the last 30 days, with the phone and settings info, to send for fixing and improving the app. No names, passwords, keys, family code, glucose values or meals.") +
             " (" + L.s("{0} recorded").replace("{0}", "${ErrorLog.count(this)}") + ")", 12f, Ui.MUTED))
@@ -1670,6 +1674,80 @@ class SettingsActivity : BaseActivity() {
             else -> L.s("Choose who uses this phone. Everything is set up for that person.")
         }
         renderGuard()
+    }
+
+    /** ⬆ Updates: this phone's update (check interval, automatic download, install), and on family phones each phone's build. */
+    private fun renderUpd() {
+        val b = updBox; b.removeAllViews()
+        val cur = Updater.current(this); val r = Updater.ready(this); val latest = Updater.latest(this)
+        val c1 = Ui.card(this); b.addView(c1)
+        c1.addView(Ui.text(this, L.s("Installed: {0}").replace("{0}", "${Updater.versionName(this)} · build %02d".format(cur)), 15f, Ui.TEXT, true))
+        when {
+            r != null -> {
+                c1.addView(Ui.text(this, L.s("✓ New: build {0} — downloaded, verified").replace("{0}", "%02d".format(r.first)), 14.5f, Ui.GOOD).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
+                c1.addView(Ui.text(this, L.s("Signature, SHA-256 and signing key checked") + " · " + "%.1f MB".format(java.util.Locale.US, r.second.length() / 1048576.0), 12f, Ui.MUTED))
+                if (r.third.isNotBlank()) c1.addView(Ui.text(this, L.s("What's new:") + " " + r.third.lines().firstOrNull { it.isNotBlank() }.orEmpty().take(300), 12.5f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+                Updater.pendingWhy(this).takeIf { it.isNotBlank() }?.let { c1.addView(Ui.text(this, "⏳ " + L.s("Waiting: an alarm is ringing or the glucose is low."), 12.5f, Ui.WARN)) }
+                c1.addView(Ui.button(this, L.s("Install build {0} now").replace("{0}", "%02d".format(r.first)), true) {
+                    val err = Updater.install(this); if (err != null) Ui.toast(this, err) }.apply { tag = "free" }, Ui.lp(top = Ui.dp(this, 8)))
+                c1.addView(Ui.button(this, "Later") { Ui.toast(this, "OK") }.apply { tag = "free" }, Ui.lp(top = Ui.dp(this, 6)))
+            }
+            latest > cur -> {
+                c1.addView(Ui.text(this, L.s("New: build {0} available").replace("{0}", "%02d".format(latest)), 14.5f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
+                c1.addView(Ui.button(this, L.s("⬇ Download build {0}").replace("{0}", "%02d".format(latest)), true) { checkUpd() }.apply { tag = "free" }, Ui.lp(top = Ui.dp(this, 8)))
+            }
+            else -> c1.addView(Ui.text(this, "✓ " + L.s("Up to date"), 14.5f, Ui.GOOD).apply { setPadding(0, Ui.dp(context, 4), 0, 0) })
+        }
+        Updater.status(this).takeIf { it.isNotBlank() }?.let { c1.addView(Ui.text(this, it, 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) }) }
+
+        val c2 = Ui.card(this); b.addView(c2, Ui.lp(top = Ui.dp(this, 8)))
+        c2.addView(Ui.text(this, "Check for updates every", 14f, Ui.TEXT))
+        val ch = Ui.row(this)
+        listOf(3, 6, 12, 24).forEach { h -> ch.addView(Ui.chip(this, "$h h", Updater.everyH(this) == h) { Updater.setEveryH(this, h); renderUpd() }.apply { tag = "free" }, Ui.lp(-2, -2, end = Ui.dp(this, 6))) }
+        c2.addView(ch, Ui.lp(top = Ui.dp(this, 4)))
+        c2.addView(switch("⬇ Download updates automatically", Updater.autoDl(this)).apply { tag = "free"; setOnCheckedChangeListener { _, on -> Updater.setAutoDl(this@SettingsActivity, on) } }, Ui.lp(top = Ui.dp(this, 6)))
+        val last = Updater.lastCheck(this)
+        if (last > 0) { val f = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US)
+            c2.addView(Ui.text(this, L.s("Last check {0}").replace("{0}", f.format(java.util.Date(last))) + " · " + L.s("next check {0}").replace("{0}", f.format(java.util.Date(last + Updater.everyH(this) * 3600_000L))), 12f, Ui.MUTED)) }
+        c2.addView(Ui.button(this, "🔄 Check now") { checkUpd() }.apply { tag = "free" }, Ui.lp(top = Ui.dp(this, 6)))
+        c2.addView(Ui.text(this, "Never installs while an alarm rings or the glucose is low — it waits.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+
+        if (!st.isPatient && st.syncFam.isNotBlank()) {
+            val c3 = Ui.card(this); b.addView(c3, Ui.lp(top = Ui.dp(this, 8)))
+            c3.addView(Ui.text(this, "📱 Family phones", 14f, Ui.TEXT, true))
+            val list = Ui.col(this); c3.addView(list)
+            list.addView(Ui.text(this, "…", 12f, Ui.MUTED))
+            c3.addView(switch("Install automatically on the patient's phone when ready", st.updAutoPatient).apply {
+                setOnCheckedChangeListener { _, on -> st.updAutoPatient = on; FamilySync.kick(this@SettingsActivity) } }, Ui.lp(top = Ui.dp(this, 8)))
+            c3.addView(Ui.text(this, "Sent through family sync. The patient's phone installs it by itself (device owner) — never during an alarm or a low. Other phones show a pop-up.", 12f, Ui.MUTED))
+            val app = applicationContext
+            Thread {
+                val res = try { FamilySync.memberDocs(app) } catch (_: Exception) { null }
+                runOnUiThread {
+                    if (isFinishing) return@runOnUiThread
+                    list.removeAllViews()
+                    if (res == null) { list.addView(Ui.text(this, "Phones: couldn't load", 12.5f, Ui.MUTED)); return@runOnUiThread }
+                    val want = maxOf(latest, r?.first ?: 0, cur)
+                    Members.rows(this, res).first.forEach { row ->
+                        val (pb, prb) = if (row.m.me) cur to (r?.first ?: 0) else Members.builds(this, row.m.uid)
+                        val line = Ui.row(this).apply { gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0, Ui.dp(context, 6), 0, 0) }
+                        line.addView(Ui.text(this, row.name + (if (row.patient) " · " + L.s("patient") else "") + (if (row.m.me) " " + L.s("(this phone)") else ""), 13.5f, Ui.TEXT), Ui.lp(0, -2, weight = 1f))
+                        val ok = pb >= want && pb > 0
+                        line.addView(Ui.text(this, if (pb <= 0) "build ?" else "build %02d".format(pb) + (if (prb > pb) " · %02d ".format(prb) + L.s("ready") else "") + if (ok) " ✓" else "", 13f, if (ok) Ui.GOOD else Ui.WARN))
+                        list.addView(line)
+                        if (!row.m.me && pb in 1 until want)
+                            list.addView(Ui.smallButton(this, "📲 " + L.s("Install build {0} on this phone").replace("{0}", "%02d".format(want))) {
+                                Members.askInstall(this, row.m.uid, want); FamilySync.kick(this); Ui.toast(this, "Sent") }, Ui.lp(-2, Ui.dp(this, 38), top = Ui.dp(this, 2)))
+                    }
+                }
+            }.start()
+        }
+    }
+
+    private fun checkUpd() {
+        val app = applicationContext
+        Ui.toast(this, "Checking GitHub…")
+        Thread { val s = Updater.check(app, manual = true); runOnUiThread { if (!isFinishing) { Ui.toast(this, s); renderUpd() } } }.start()
     }
 
     /** 🛡 Protected apps: patient's phone = choose apps, lock app management, parent unlock; family phones = last status. */

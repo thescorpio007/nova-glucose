@@ -44,7 +44,7 @@ object Members {
     /** Each phone tells the others whether it is the patient's phone (sent when it changes). */
     fun announce(c: Context) {
         val st = Store(c); if (st.syncUid.isBlank()) return
-        val now = "${st.syncUid}|${st.role}"
+        val now = "${st.syncUid}|${st.role}|${Updater.current(c)}|${Updater.ready(c)?.first ?: 0}"
         if (st.raw.getString(SENT, "") == now) return
         st.raw.edit().putString(SENT, now).apply()
         Db.get(c).queue("who-${st.syncUid}", "who", kick = false)
@@ -53,14 +53,42 @@ object Members {
     fun whoItem(c: Context): JSONObject? {
         val st = Store(c); if (st.syncUid.isBlank()) return null
         return JSONObject().put("t", "who").put("g", "who-${st.syncUid}").put("u", System.currentTimeMillis()).put("uid", st.syncUid).put("r", st.role)
+            .put("b", Updater.current(c)).put("rb", Updater.ready(c)?.first ?: 0)
     }
 
     fun receivedWho(c: Context, item: JSONObject): String {
         val uid = item.optString("uid"); val u = item.optLong("u"); if (uid.isBlank()) return ""
         val e = json(c, ROLES); val o = e.optJSONObject(uid) ?: JSONObject()
         if (u <= o.optLong("u")) return ""
-        o.put("r", item.optString("r")); o.put("u", u); e.put(uid, o); save(c, ROLES, e)
+        val oldB = o.optInt("b", 0); val b = item.optInt("b", 0)
+        o.put("r", item.optString("r")); o.put("u", u); o.put("b", b); o.put("rb", item.optInt("rb", 0)); e.put(uid, o); save(c, ROLES, e)
+        if (item.optString("r") == "patient" && oldB in 1 until b && !Store(c).isPatient) try { Updater.notifyPatientUpdated(c, b) } catch (_: Exception) { }
         return "who"
+    }
+
+    /** Build installed / ready on a family phone (from its last "who"). */
+    fun builds(c: Context, uid: String): Pair<Int, Int> = json(c, ROLES).optJSONObject(uid)?.let { it.optInt("b", 0) to it.optInt("rb", 0) } ?: (0 to 0)
+    fun roleOf(c: Context, uid: String): String = json(c, ROLES).optJSONObject(uid)?.optString("r") ?: ""
+
+    // ---------------------------------------------------------------- "📲 Install build NN" asked by a parent
+    private const val REQ = "sync_updreq"           // {gid: {to, b, by, u}}
+    fun askInstall(c: Context, toUid: String, build: Int) {
+        val st = Store(c); val gid = "updreq-$toUid-$build-${System.currentTimeMillis()}"
+        val e = json(c, REQ); e.put(gid, JSONObject().put("to", toUid).put("b", build).put("by", Chat.myName(st)).put("u", System.currentTimeMillis())); save(c, REQ, e)
+        Db.get(c).queue(gid, "updreq")
+    }
+    fun reqItem(c: Context, gid: String): JSONObject? {
+        val o = json(c, REQ).optJSONObject(gid) ?: return null
+        return JSONObject(o.toString()).put("t", "updreq").put("g", gid)
+    }
+    fun receivedReq(c: Context, item: JSONObject): String {
+        val gid = item.optString("g"); val e = json(c, REQ)
+        if (e.has(gid)) return ""
+        e.put(gid, JSONObject(item.toString()).apply { remove("t"); remove("g") }); save(c, REQ, e)
+        val st = Store(c)
+        if (item.optString("to") == st.syncUid && System.currentTimeMillis() - item.optLong("u") < 3 * 24 * 3600_000L)
+            Updater.requested(c, item.optInt("b"), item.optString("by"))
+        return "updreq"
     }
 
     /** The patient's phone (the most recently seen phone that says it is the patient's). */

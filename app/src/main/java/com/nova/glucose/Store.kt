@@ -223,6 +223,9 @@ class Store(c: Context) {
     var schoolDays: String get() = s("school_days").ifBlank { "12345" }; set(v) = put("school_days", v)
     fun schedFor(kind: String): Boolean = b("sched_$kind", true)
     fun setSched(kind: String, v: Boolean) = putb("sched_$kind", v)
+    /** Parents' choice (shared): the patient's phone installs a downloaded update by itself. */
+    var updAutoPatient: Boolean get() = b("upd_auto_patient", true); set(v) = putb("upd_auto_patient", v)
+    var staleRepeat: Int get() = i("stale_repeat", 5); set(v) = puti("stale_repeat", v)
     var netEvery: Int get() = i("net_every", 5); set(v) = puti("net_every", v)
     var netRemind: Int get() = i("net_remind", 30); set(v) = puti("net_remind", v)
     var netBt: Boolean get() = b("net_bt", true); set(v) = putb("net_bt", v)
@@ -318,7 +321,7 @@ class Store(c: Context) {
         val LIBRE_KEYS = setOf("email", "api_base", "llu_version", "patient_id", "patient_name")
         /** Plain settings shared in the family. Alerts, alarms, watch, folder, Drive and PIN stay on each phone. */
         val SHARED_KEYS = setOf("ai", "age", "gender", "about_her", "long_name", "long_dose", "long_time", "rapid_name", "carb_ratio",
-            "target_mg", "corr_factor", "eat_wait", "low_treat", "meal_min", "meal_max", "snack_min", "snack_max", "food_notes")
+            "target_mg", "corr_factor", "eat_wait", "low_treat", "meal_min", "meal_max", "snack_min", "snack_max", "food_notes", "upd_auto_patient")
         fun shared(k: String) = k in SHARED_KEYS || k.startsWith("model_")
         fun aiKey(k: String) = k == "ai" || k.startsWith("model_")
         private const val ALIAS = "nova_glucose_secret"

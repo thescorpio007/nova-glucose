@@ -208,7 +208,7 @@ class MonitorService : Service() {
         if (kind == null) { nm.cancel(ID_ALERT); if (AlarmPlayer.kind != "test") AlarmPlayer.dismiss(this); return }
         val urgent = st.urgentFor(kind)
         if (urgent && now < st.snoozedUntil(kind)) { if (now - st.lastAlert(kind) > 10 * 60_000L) { st.setLastAlert(kind, now); ErrorLog.e("Alert", "$kind ${r?.mg} mg/dL · snoozed on this phone") }; return }
-        val repeat = if (urgent) st.urgentRepeat.coerceIn(1, 60) else if (kind == "urgent_low") 5 else st.repeatMin
+        val repeat = if (kind == "stale") st.staleRepeat.coerceIn(1, 60) else if (urgent) st.urgentRepeat.coerceIn(1, 60) else if (kind == "urgent_low") 5 else st.repeatMin
         if (now - st.lastAlert(kind) < repeat * 60_000L) return
         st.setLastAlert(kind, now)
 
