@@ -123,7 +123,8 @@ class MonitorService : Service() {
             try { Lantus.maybe(this@MonitorService) } catch (_: Exception) { }
             try { Meeting.maybeEnd(this@MonitorService) } catch (_: Exception) { }
             try { Net.maybe(this@MonitorService) } catch (_: Exception) { }
-            try { AppGuard.maybe(this@MonitorService) } catch (_: Exception) { }          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
+            try { AppGuard.maybe(this@MonitorService) } catch (_: Exception) { }
+            try { Coach.maybeWeekly(this@MonitorService) } catch (_: Exception) { }      // 📈 Sunday summary          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             handler.postDelayed(this, next)
         }

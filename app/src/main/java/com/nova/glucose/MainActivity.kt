@@ -349,6 +349,7 @@ class MainActivity : BaseActivity() {
         dr.addView(Ui.button(this, "📊 AI review") { startActivity(Intent(this, AiReviewActivity::class.java)) }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
         dr.addView(Ui.button(this, "📤 Share with doctor") { DoctorReport.pick(this) }, Ui.lp(0, weight = 1f))
         root.addView(dr, Ui.lp(top = Ui.dp(this, 8)))
+        root.addView(Ui.button(this, "💬 Ask Nova AI", true) { startActivity(Intent(this, AiReviewActivity::class.java).putExtra("coach", true)) }, Ui.lp(top = Ui.dp(this, 8)))
 
         advice = Ui.card(this)
         root.addView(advice, Ui.lp(top = Ui.dp(this, 12)))

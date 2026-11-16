@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 import org.json.JSONArray
 import java.io.File
 import java.text.SimpleDateFormat
@@ -87,14 +88,18 @@ class LogbookActivity : BaseActivity() {
         list.removeAllViews()
         val db = Db.get(this)
         val meals = db.meals()
-        if (meals.isEmpty()) {
+        val doses = db.doses(meals.lastOrNull()?.ts?.minus(24 * 3600_000L) ?: (System.currentTimeMillis() - 90L * 24 * 3600_000))
+        if (meals.isEmpty() && doses.isEmpty()) {
             list.addView(Ui.card(this).apply {
                 addView(Ui.text(context, "No meals yet. Use \"Carbs from photo / video\" and tap Save to logbook.", 14f, Ui.MUTED))
             })
             return
         }
         val now = System.currentTimeMillis()
-        for (m in meals) {
+        val all = (meals.map { it.ts to (it as Any) } + doses.map { it.ts to (it as Any) }).sortedByDescending { it.first }
+        for ((_, x) in all) {
+            if (x is Dose) { list.addView(doseCard(x, fmt), Ui.lp(top = Ui.dp(this, 8))); continue }
+            val m = x as Meal
             val card = Ui.card(this)
             val top = Ui.row(this)
             if (m.photo.isNotBlank() && File(m.photo).exists()) {
@@ -134,6 +139,11 @@ class LogbookActivity : BaseActivity() {
             }
             if (m.note.isNotBlank()) card.addView(Ui.text(this, "Note: ${m.note}", 12f, Ui.MUTED))
 
+            val btns = Ui.row(this)
+            btns.addView(Ui.smallButton(this, "✏️ Edit") { EditEntry.open(this, null, m.id) { render() } }, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
+            btns.addView(Ui.smallButton(this, "🗑 Delete") { del("M ${fmt.format(Date(m.ts))} · ${m.title} · ${m.carbText}") {
+                db.deleteMeal(m.id); if (m.photo.isNotBlank()) File(m.photo).delete() } }, Ui.lp(-2, Ui.dp(this, 36)))
+            card.addView(btns, Ui.lp(top = Ui.dp(this, 8)))
             card.setOnClickListener { EditEntry.open(this, null, m.id) { render() } }
             card.setOnLongClickListener {
                 Parent.guard(this, "Enter the PIN to delete a meal.") { Tr.Builder(this).setMessage("Delete this meal?")
@@ -145,5 +155,36 @@ class LogbookActivity : BaseActivity() {
             }
             list.addView(card, Ui.lp(top = Ui.dp(this, 8)))
         }
+    }
+
+    private fun del(what: String, go: () -> Unit) = Parent.guard(this, L.s("Enter the PIN to delete an entry.")) {
+        Tr.Builder(this).setTitle("🗑 " + L.s("Delete this entry?")).setMessage(what + "\n\n" + L.s("It is removed from all family phones."))
+            .setPositiveButton("Delete") { _, _ -> go(); FamilySync.kick(this); Ui.toast(this, "Deleted"); render() }.setNegativeButton("Cancel", null).show() }
+
+    /** I (rapid) or LI (long-acting) entry, with ✏️ Edit and 🗑 Delete. */
+    private fun doseCard(d: Dose, fmt: java.text.SimpleDateFormat): LinearLayout {
+        val st = Store(this); val db = Db.get(this)
+        val card = Ui.card(this)
+        val rapid = d.kind == "rapid"
+        val name = if (rapid) st.rapidName.ifBlank { L.s("Rapid insulin") } else st.longName.ifBlank { L.s("Long-acting insulin") }
+        val u = if (d.units % 1.0 == 0.0) d.units.toInt().toString() else "%.1f".format(java.util.Locale.US, d.units)
+        val sb = android.text.SpannableStringBuilder()
+        val tag = if (rapid) "I" else "LI"
+        sb.append(tag); sb.setSpan(android.text.style.ForegroundColorSpan(0xFFFF5A5F.toInt()), 0, tag.length, 0)
+        sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, tag.length, 0)
+        sb.append("  $name · $u u")
+        card.addView(Ui.text(this, fmt.format(Date(d.ts)), 12f, Ui.MUTED))
+        card.addView(TextView(this).apply { text = sb; textSize = 15f; setTextColor(Ui.TEXT) })
+        val more = listOfNotNull(when { d.carbs > 0 -> L.s("for {0} g carbs").replace("{0}", "${d.carbs}"); d.correction -> L.s("correction"); else -> null },
+            if (d.mgAt > 0) L.s("glucose then {0} mg/dL").replace("{0}", "${d.mgAt}") else null,
+            db.who("insulin", d.id).takeIf { it.isNotBlank() }?.let { L.s("by {0}").replace("{0}", it) }).joinToString(" · ")
+        if (more.isNotBlank()) card.addView(Ui.text(this, more, 13f, Ui.MUTED))
+        if (d.note.isNotBlank()) card.addView(Ui.text(this, "Note: ${d.note}", 12f, Ui.MUTED))
+        val btns = Ui.row(this)
+        btns.addView(Ui.smallButton(this, "✏️ Edit") { EditEntry.open(this, d.id, null) { render() } }, Ui.lp(-2, Ui.dp(this, 36), end = Ui.dp(this, 8)))
+        btns.addView(Ui.smallButton(this, "🗑 Delete") { del("$tag ${fmt.format(Date(d.ts))} · $u u") { db.deleteDose(d.id) } }, Ui.lp(-2, Ui.dp(this, 36)))
+        card.addView(btns, Ui.lp(top = Ui.dp(this, 8)))
+        card.setOnClickListener { EditEntry.open(this, d.id, null) { render() } }
+        return card
     }
 }

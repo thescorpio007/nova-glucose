@@ -22,6 +22,8 @@ class AiReviewActivity : BaseActivity() {
     private var conv: AiChats.Conv? = null
     private var days = 7
     private var busy = false
+    /** 💬 Ask Nova AI: a free conversation (not tied to a review), days = 0. */
+    private var coach = false
 
     private val system = """
 You review the glucose data of a person with type 1 diabetes (a child or teenager — see the profile), to prepare the next talk with their diabetes care team.
@@ -47,10 +49,11 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         st = Store(this)
+        coach = intent.getBooleanExtra("coach", false)
         val root = Ui.col(this, 16)
         sv = ScrollView(this).apply { addView(root); setBackgroundColor(Ui.BG) }
         val head = Ui.row(this)
-        head.addView(Ui.title(this, "📊 AI review"), Ui.lp(0, weight = 1f))
+        head.addView(Ui.title(this, if (coach) "💬 Ask Nova AI" else "📊 AI review"), Ui.lp(0, weight = 1f))
         lateinit var lb: TextView
         lb = Ui.smallButton(this, "🌐 ${L.short(revLang())} ▾") {
             Lang.pick(this, lb, revLang()) { code -> st.aiReviewLang = code; lb.text = "🌐 ${L.short(code)} ▾" }
@@ -62,14 +65,16 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
         root.addView(Ui.text(this, "AI: ${st.current().label} · " + L.s("looks at the patient's profile ({0}), readings, meals, insulin times, incidents and watch data (activity, sleep, heart rate)")
             .replace("{0}", listOfNotNull("age ${st.age}", st.heightCm.takeIf { it > 0 }?.let { "${it.fmt()} cm" }, st.weightKg.takeIf { it > 0 }?.let { "${it.fmt()} kg" }).joinToString(", ")), 13f, Ui.MUTED))
         chips = Ui.row(this)
-        root.addView(chips, Ui.lp(top = Ui.dp(this, 10)))
-        root.addView(Ui.button(this, "✦ New review", true) { review() }, Ui.lp(top = Ui.dp(this, 10)))
+        if (!coach) {
+            root.addView(chips, Ui.lp(top = Ui.dp(this, 10)))
+            root.addView(Ui.button(this, "✦ New review", true) { review() }, Ui.lp(top = Ui.dp(this, 10)))
+        } else root.addView(Ui.button(this, "+ New conversation") { conv = null; render() }, Ui.lp(top = Ui.dp(this, 10)))
         status = Ui.text(this, "", 13f, Ui.MUTED)
         root.addView(status, Ui.lp(top = Ui.dp(this, 8)))
         convo = Ui.col(this)
         root.addView(convo, Ui.lp(top = Ui.dp(this, 6)))
         askRow = Ui.row(this).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
-        input = Ui.input(this, "Ask the AI about this review…", multi = true)
+        input = Ui.input(this, if (coach) "Ask Nova AI about her readings, progress, food, routine…" else "Ask the AI about this review…", multi = true)
         askRow.addView(input, Ui.lp(0, -2, weight = 1f, end = Ui.dp(this, 8)))
         askRow.addView(Ui.button(this, "Send", true) { ask() }, Ui.lp(-2, -2))
         root.addView(askRow, Ui.lp(top = Ui.dp(this, 10)))
@@ -81,8 +86,9 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
             "The last review is added to the doctor report. Conversations are kept 30 days (🕘).", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 10), 0, 0) })
         root.addView(Ui.signature(this))
         setContentView(sv)
-        conv = AiChats.latest(this)
-        conv?.let { days = it.days }
+        val wanted = intent.getStringExtra("conv")
+        conv = if (wanted != null) AiChats.all(this).firstOrNull { it.id == wanted } else if (coach) AiChats.latestCoach(this) else AiChats.latest(this)
+        conv?.let { if (it.days > 0) days = it.days }
         renderChips(); render()
     }
 
@@ -114,11 +120,15 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
     private fun render() {
         convo.removeAllViews()
         val c = conv
+        if (coach && (c == null || c.turns.isEmpty())) {
+            convo.addView(Ui.text(this, "Talk with Nova AI about her readings and progress: it sees every reading, meal, insulin dose (I and LI), incident and watch day, and what is happening right now. Ask anything — how this week compares, what to watch tonight, ideas for school days, questions for the doctor.", 14f, Ui.MUTED))
+            status.text = ""; askRow.visibility = android.view.View.VISIBLE; actions.visibility = android.view.View.GONE; return
+        }
         if (c == null || c.turns.isEmpty()) {
             convo.addView(Ui.text(this, "Choose a period and tap ✦ New review. Then ask the AI anything about it in the same conversation.", 14f, Ui.MUTED))
             askRow.visibility = android.view.View.GONE; actions.visibility = android.view.View.GONE; status.text = ""; return
         }
-        status.text = L.s("Review of {0} · {1} day(s)").replace("{0}", SimpleDateFormat("EEE d MMM HH:mm", L.loc()).format(Date(c.ts))).replace("{1}", "${c.days}")
+        status.text = if (c.days == 0) L.s("Conversation of {0}").replace("{0}", SimpleDateFormat("EEE d MMM HH:mm", L.loc()).format(Date(c.ts))) else L.s("Review of {0} · {1} day(s)").replace("{0}", SimpleDateFormat("EEE d MMM HH:mm", L.loc()).format(Date(c.ts))).replace("{1}", "${c.days}")
         c.turns.forEach { bubble(it.second, it.first) }
         askRow.visibility = android.view.View.VISIBLE; actions.visibility = android.view.View.VISIBLE
     }
@@ -134,7 +144,7 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
         val app = applicationContext; val d = days; val lg = revLang()
         Thread {
             try {
-                val a = Providers.ask(st, p, system + "\n" + AiData.audience(st) + (if (lg != "en") "\nWrite the whole review in ${L.name(lg)}, including the two headings." else ""), AiData.period(app, d) + "\n" + AiData.dailyLog(app, 30)) { s -> runOnUiThread { status.text = s } }
+                val a = Providers.ask(st, p, system + "\n" + AiData.audience(st) + (if (lg != "en") "\nWrite the whole review in ${L.name(lg)}, including the two headings." else ""), AiData.period(app, d) + "\n" + AiData.dailyLog(app, 30) + "\n" + AiData.live(app)) { s -> runOnUiThread { status.text = s } }
                 val txt = clean(a)
                 st.aiReview = txt; st.aiReviewTs = System.currentTimeMillis(); st.aiReviewDays = d; st.aiReviewDoneLang = lg
                 val c = AiChats.Conv(java.util.UUID.randomUUID().toString().take(10), System.currentTimeMillis(), d, mutableListOf(false to txt))
@@ -148,8 +158,9 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
 
     /** A follow-up question in the same conversation: the AI gets the data, the review and the earlier questions. */
     private fun ask() {
-        val q = input.text.toString().trim(); val c = conv ?: return
+        val q = input.text.toString().trim()
         if (q.isEmpty() || busy) return
+        val c = conv ?: (if (coach) AiChats.Conv(java.util.UUID.randomUUID().toString().take(10), System.currentTimeMillis(), 0, mutableListOf()).also { conv = it } else return)
         val p = st.current()
         busy = true; input.setText("")
         c.turns += true to q; AiChats.save(this, c); render()
@@ -158,9 +169,10 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
         val app = applicationContext; val lg = revLang()
         Thread {
             try {
-                val user = AiData.dailyLog(app) + "\nDetails of the review period:\n" + AiData.period(app, c.days) + "\n\nThe conversation so far:\n" +
+                val user = AiData.dailyLog(app) + "\nDetails of the " + (if (c.days == 0) "last 14 days" else "review period") + ":\n" + AiData.period(app, if (c.days == 0) 14 else c.days) +
+                    "\n" + AiData.live(app) + "\n\nThe conversation so far:\n" +
                     c.turns.dropLast(1).joinToString("\n\n") { (me, t) -> (if (me) "Family: " else "AI: ") + t } + "\n\nNew question from the family: $q"
-                val a = clean(Providers.ask(st, p, chatSystem + "\n" + AiData.audience(st) + langLine(lg), user) { s -> runOnUiThread { status.text = s } })
+                val a = clean(Providers.ask(st, p, (if (c.days == 0) Coach.SYSTEM else chatSystem) + "\n" + AiData.audience(st) + langLine(lg), user) { s -> runOnUiThread { status.text = s } })
                 c.turns += false to a; AiChats.save(app, c)
                 runOnUiThread { render(); sv.post { sv.fullScroll(ScrollView.FOCUS_DOWN) } }
             } catch (e: Exception) {
@@ -174,10 +186,10 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
         if (l.isEmpty()) { Ui.toast(this, "No conversations yet"); return }
         val df = SimpleDateFormat("EEE d MMM HH:mm", L.loc())
         val names = l.map { c -> val qs = c.turns.count { it.first }
-            "${df.format(Date(c.ts))} · ${c.days} d · " + (if (qs == 0) L.s("review only") else L.s("{0} question(s)").replace("{0}", "$qs")) +
+            "${df.format(Date(c.ts))} · " + (if (c.days == 0) "💬 · " else "📊 ${c.days} d · ") + (if (qs == 0) L.s("review only") else L.s("{0} question(s)").replace("{0}", "$qs")) +
                 (c.turns.lastOrNull { it.first }?.let { "\n" + it.second.take(60) } ?: "") as CharSequence }.toTypedArray()
         Tr.Builder(this).setTitle("🕘 " + L.s("Past conversations (30 days)")).setItems(names) { _, i ->
-            conv = l[i]; days = l[i].days; renderChips(); render() }.setNegativeButton("Close", null).show()
+            conv = l[i]; if (l[i].days > 0) days = l[i].days; renderChips(); render() }.setNegativeButton("Close", null).show()
     }
 
     private fun share() {
@@ -206,7 +218,8 @@ object AiChats {
         } catch (_: Exception) { emptyList() }
     }
 
-    fun latest(c: android.content.Context) = all(c).firstOrNull()
+    fun latest(c: android.content.Context) = all(c).firstOrNull { it.days > 0 }
+    fun latestCoach(c: android.content.Context) = all(c).firstOrNull { it.days == 0 }
 
     @Synchronized fun save(c: android.content.Context, conv: Conv) {
         val l = all(c).filter { it.id != conv.id } + conv

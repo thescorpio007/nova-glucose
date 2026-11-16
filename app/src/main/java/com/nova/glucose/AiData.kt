@@ -112,6 +112,10 @@ object AiData {
     }
 
     /** Full picture for Ask AI and alert tips: last [hours] h of readings every 5 min, statistics, today's food and insulin, incidents. */
+    /** Right now: current glucose and trend, readings every 5 min of the last 6 h, meals and doses, eat timer, alarm ringing. */
+    fun live(c: Context): String = "Right now (live):\n" + picture(c, 6) +
+        (if (AlarmPlayer.playing) "An alarm is ringing now (${AlarmPlayer.kind}).\n" else "")
+
     fun picture(c: Context, hours: Int = 24): String {
         val st = Store(c); val db = Db.get(c); val now = System.currentTimeMillis()
         val rs = db.readings(now - hours * 3600_000L)

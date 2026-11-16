@@ -20,7 +20,7 @@ import java.io.File
  */
 object Sounds {
     val KINDS = listOf("urgent_low", "low", "high", "very_high", "stale")
-    val GENERAL = listOf("eat", "msg", "lantus", "net", "guard", "apps", "update", "tip", "other")
+    val GENERAL = listOf("eat", "msg", "lantus", "net", "guard", "apps", "update", "tip", "weekly", "other")
     const val SILENT = "silent"
     /** Sounds built into the app (same on every phone). */
     val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep",
@@ -75,7 +75,7 @@ object Sounds {
         "high" -> "High (above ${st.high})"; "very_high" -> "Very high (above ${st.veryHigh})"; "stale" -> "No signal"
         "eat" -> "🍽 Time to eat"; "msg" -> "💬 Family messages"; "lantus" -> "💉 Night Lantus reminder"
         "guard" -> "📵 Patient's phone offline (parents)"; "net" -> "📶 Connection off (patient's phone)"; "apps" -> "🛡 Protected app removed or stopped (parents)"; "update" -> "⬆ App update available"
-        "tip" -> "✦ AI tips after alerts"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
+        "tip" -> "✦ AI tips after alerts"; "weekly" -> "📈 Weekly progress summary (Sunday 19:00)"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
     }
 
     private fun isAlarm(kind: String) = kind in KINDS
