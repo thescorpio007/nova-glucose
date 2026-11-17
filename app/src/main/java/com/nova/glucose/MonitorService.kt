@@ -205,6 +205,16 @@ class MonitorService : Service() {
         val now = System.currentTimeMillis()
         val lv = Foods.level(st, r, now)
         val noSignal = r != null && now - r.ts > st.staleMin.coerceIn(5, 240) * 60_000L
+        // Abbott's server down for maintenance (status 911): no "No signal" alarm from Nova — the 🛠 notice was shown, and LibreLink's own
+        // alarms on the patient's phone (low, high, signal loss) are relayed to the family. Back to normal as soon as the server answers.
+        if (noSignal && st.raw.getLong("maint_since", 0L) > 0) {
+            if (st.raw.getLong("maint_quiet_log", 0L) != st.raw.getLong("maint_since", 0L)) {
+                st.raw.edit().putLong("maint_quiet_log", st.raw.getLong("maint_since", 0L)).apply()
+                ErrorLog.e("Alert", "no-signal alarm silenced: LibreLinkUp is down for maintenance (LibreLink alarms still relayed)")
+            }
+            nm.cancel(ID_ALERT)
+            return
+        }
         val kind = if (noSignal) { if (st.staleAlert || st.urgNoSignal) "stale" else null } else when (lv) {
             Level.URGENT_LOW -> "urgent_low"; Level.LOW -> "low"; Level.HIGH -> "high"; Level.VERY_HIGH -> "very_high"
             else -> null
