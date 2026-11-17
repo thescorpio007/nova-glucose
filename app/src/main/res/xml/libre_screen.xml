@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="2000"
+    android:packageNames="com.freestylelibre.app.ae,com.freestylelibre.app,com.freestylelibre.app.de,com.freestylelibre.app.fr,com.freestylelibre.app.gb,com.freestylelibre.app.us,com.freestylelibre3.app,com.freestylelibre3.app.ae"
+    android:description="@string/libre_screen_desc" />

@@ -39,6 +39,7 @@
 
     <queries>
         <package android:name="com.freestylelibre.app.ae" />
+        <package android:name="com.freestylelibre.app" />
         <package android:name="com.huawei.health" />
         <package android:name="nl.appyhapps.healthsync" />
         <intent>
@@ -98,6 +99,15 @@
         </activity-alias>
         <activity android:name=".LantusActivity" android:exported="false" android:excludeFromRecents="true"
             android:launchMode="singleTop" android:showWhenLocked="true" android:turnScreenOn="true" />
+        <service android:name=".LibreNotes" android:exported="true" android:label="Nova Glucose · LibreLink alarm relay"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+        </service>
+        <service android:name=".LibreScreen" android:exported="true" android:label="Nova Glucose · LibreLink reading relay"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/libre_screen" />
+        </service>
         <activity android:name=".NetActivity" android:exported="false" android:excludeFromRecents="true" android:launchMode="singleTop" android:showWhenLocked="true" android:turnScreenOn="true" />
         <activity android:name=".IncidentActivity" android:exported="true" android:windowSoftInputMode="adjustResize" />
         <activity

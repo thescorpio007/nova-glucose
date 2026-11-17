@@ -145,6 +145,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var netBox: LinearLayout
     private lateinit var appsBox: LinearLayout
     private lateinit var updBox: LinearLayout
+    private lateinit var llBox: LinearLayout
     private val patientOnly = mutableListOf<View>()
     private lateinit var hcFamilyNote: TextView
     private lateinit var hcPeerBox: LinearLayout
@@ -461,6 +462,12 @@ class SettingsActivity : BaseActivity() {
         netBox = Ui.card(this)
         root.addView(netBox)
         renderNet()
+
+        // ---------------------------------------------------------- LibreLink relay (patient's phone)
+        if (st.isPatient) {
+            root.addView(Ui.section(this, "📡 LibreLink relay (second connection)"))
+            llBox = Ui.card(this); root.addView(llBox); renderLL()
+        }
 
         // ---------------------------------------------------------- Protected apps
         root.addView(Ui.section(this, "🛡 Protected apps"))
@@ -1748,6 +1755,28 @@ class SettingsActivity : BaseActivity() {
         val app = applicationContext
         Ui.toast(this, "Checking GitHub…")
         Thread { val s = Updater.check(app, manual = true); runOnUiThread { if (!isFinishing) { Ui.toast(this, s); renderUpd() } } }.start()
+    }
+
+    /** 📡 Second connection on the patient's phone: LibreLink alarms + the number shown in LibreLink, shared with the family. */
+    private fun renderLL() {
+        val b = llBox; b.removeAllViews()
+        b.addView(Ui.text(this, "Works next to LibreLinkUp, even when Abbott's server is down: LibreLink's alarms on this phone and every number shown in LibreLink reach the family phones. The sensor stays with LibreLink.", 12.5f, Ui.MUTED))
+        b.addView(switch("📡 Relay LibreLink to the family", st.libreRelay).apply { setOnCheckedChangeListener { _, on -> st.libreRelay = on; LibreLocal.ensure(this@SettingsActivity); renderLL() } }, Ui.lp(top = Ui.dp(this, 6)))
+        if (!st.libreRelay) { if (::allViews.isInitialized && uiLocked) renderLock(); return }
+        LibreLocal.ensure(this)
+        val n = LibreLocal.listenerOn(this); val sc = LibreLocal.screenOn(this)
+        b.addView(Ui.text(this, (if (n) "✓ " else "✗ ") + L.s("LibreLink alarms relayed"), 13.5f, if (n) Ui.GOOD else Ui.WARN).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        if (!n) b.addView(Ui.smallButton(this, "Allow notification access") { try { startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) } catch (_: Exception) { } }.apply { tag = "free" }, Ui.lp(-2, Ui.dp(this, 38), top = Ui.dp(this, 4)))
+        b.addView(Ui.text(this, (if (sc) "✓ " else "✗ ") + L.s("Numbers shown in LibreLink relayed"), 13.5f, if (sc) Ui.GOOD else Ui.WARN).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        if (!sc) b.addView(Ui.smallButton(this, "Allow in Accessibility") { try { startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) { } }.apply { tag = "free" }, Ui.lp(-2, Ui.dp(this, 38), top = Ui.dp(this, 4)))
+        if ((!n || !sc) && !Net.nfcAllowed(this)) {
+            b.addView(Ui.text(this, "Or let Nova switch both on by itself with this ADB command (once):", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+            b.addView(Ui.text(this, Net.ADB_NFC, 12f, Ui.ACCENT).apply { setTextIsSelectable(true) })
+        }
+        val ts = st.raw.getLong("ll_scr_ts", 0L)
+        if (ts > 0) b.addView(Ui.text(this, L.s("Last number from LibreLink: {0} mg/dL at {1}").replace("{0}", "${st.raw.getInt("ll_scr_mg", 0)}")
+            .replace("{1}", java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(ts))), 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 6), 0, 0) })
+        if (::allViews.isInitialized && uiLocked) renderLock()
     }
 
     /** 🛡 Protected apps: patient's phone = choose apps, lock app management, parent unlock; family phones = last status. */

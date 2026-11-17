@@ -98,9 +98,10 @@ class MonitorService : Service() {
                 latest = snap
                 Db.get(this@MonitorService).addReadings(snap.graph)
                 snap.latest?.let { r ->
-                    st.lastMg = r.mg; st.lastTrend = r.trend; st.lastTs = r.ts
+                    if (r.ts >= st.lastTs) { st.lastMg = r.mg; st.lastTrend = r.trend; st.lastTs = r.ts; st.raw.edit().putString("last_src", "").apply() }
                 }
                 st.lastError = ""
+                LibreLocal.maintEnded(this@MonitorService)
                 notifyListeners(snap, null)
                 update(snap.latest)
                 if (System.currentTimeMillis() - st.lastExport >= 15 * 60_000L) Vault.exportAll(this@MonitorService)
@@ -109,6 +110,7 @@ class MonitorService : Service() {
                 st.lastError = e.message ?: "error"
                 notifyListeners(null, st.lastError)
                 if (e.kind == LibreException.Kind.LOCKED) next = 5 * POLL_MS
+                if (e.kind == LibreException.Kind.MAINT) { next = 2 * POLL_MS; LibreLocal.maintStarted(this@MonitorService) }
                 if (e.kind == LibreException.Kind.LOGIN || e.kind == LibreException.Kind.TERMS) next = 10 * POLL_MS
                 update(null)
             } catch (e: Exception) {
@@ -124,7 +126,8 @@ class MonitorService : Service() {
             try { Meeting.maybeEnd(this@MonitorService) } catch (_: Exception) { }
             try { Net.maybe(this@MonitorService) } catch (_: Exception) { }
             try { AppGuard.maybe(this@MonitorService) } catch (_: Exception) { }
-            try { Coach.maybeWeekly(this@MonitorService) } catch (_: Exception) { }      // 📈 Sunday summary          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
+            try { Coach.maybeWeekly(this@MonitorService) } catch (_: Exception) { }      // 📈 Sunday summary
+            try { LibreLocal.ensure(this@MonitorService) } catch (_: Exception) { }      // 📡 LibreLink relay switched on (patient)          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             handler.postDelayed(this, next)
         }

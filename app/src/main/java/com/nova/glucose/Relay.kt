@@ -14,11 +14,11 @@ object Relay {
     private const val FRESH = 15 * 60_000L
 
     /** Patient's phone: send the urgent alarm to the family. */
-    fun send(c: Context, kind: String, mg: Int, title: String, body: String) {
+    fun send(c: Context, kind: String, mg: Int, title: String, body: String, fromLibre: Boolean = false) {
         val st = Store(c)
         if (!st.isPatient || st.syncFam.isBlank()) return
         val now = System.currentTimeMillis()
-        st.raw.edit().putString("relay_last", JSONObject().put("kind", kind).put("mg", mg).put("ts", now).put("ti", title).put("b", body).toString()).apply()
+        st.raw.edit().putString("relay_last", JSONObject().put("kind", kind).put("mg", mg).put("ts", now).put("ti", title).put("b", body).put("ll", fromLibre).toString()).apply()
         Db.get(c).queue("urg-$kind-$now", "urg")
         ErrorLog.e("Alert", "relayed to the family: $kind $mg mg/dL")
     }
@@ -36,6 +36,9 @@ object Relay {
         if (st.isPatient || kind.isBlank() || now - ts > FRESH) return ""
         when {
             !st.onFor(kind) -> ErrorLog.e("Alert", "patient's urgent $kind not rung here: line turned off on this phone")
+            !st.urgentFor(kind) && it.optBoolean("ll") -> {          // LibreLink alarm on the patient's phone, not urgent here: a normal alert with this phone's sound
+                if (now - st.lastAlert("ll_$kind") > 5 * 60_000L) { st.setLastAlert("ll_$kind", now); plain(c, kind, it.optString("ti"), it.optString("b")) }
+            }
             !st.urgentFor(kind) -> ErrorLog.e("Alert", "patient's urgent $kind not rung here: not ticked urgent on this phone")
             now < st.snoozedUntil(kind) -> ErrorLog.e("Alert", "patient's urgent $kind not rung here: snoozed")
             now - st.lastAlert(kind) < st.urgentRepeat.coerceIn(1, 60) * 60_000L -> { }   // this phone already rang for it
@@ -46,6 +49,18 @@ object Relay {
             }
         }
         return "urg"
+    }
+
+    private fun plain(c: Context, kind: String, title: String, body: String) {
+        try {
+            val nm = c.getSystemService(NotificationManager::class.java) ?: return
+            val b = if (android.os.Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(c, Sounds.channel(c, kind)) else @Suppress("DEPRECATION") android.app.Notification.Builder(c)
+            val open = android.app.PendingIntent.getActivity(c, 7996, android.content.Intent(c, MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK), android.app.PendingIntent.FLAG_IMMUTABLE)
+            nm.notify(7996 + kind.hashCode() % 50, b.setSmallIcon(android.R.drawable.stat_sys_warning).setContentTitle("📡 " + title + " · " + L.s("patient's phone"))
+                .setContentText(body).setContentIntent(open).setAutoCancel(true).build())
+            Sounds.after(c, kind)
+            ErrorLog.e("Alert", "patient's LibreLink $kind shown here · " + mode(c))
+        } catch (_: Exception) { }
     }
 
     /** "vibrate mode · alarm volume 3/15 · night mode on" for the alert record. */

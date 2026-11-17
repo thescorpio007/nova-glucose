@@ -24,7 +24,8 @@ data class Snapshot(
 )
 
 class LibreException(message: String, val kind: Kind = Kind.OTHER) : Exception(message) {
-    enum class Kind { LOGIN, TERMS, NETWORK, LOCKED, NO_PATIENT, OTHER }
+    enum class Kind { LOGIN, TERMS, NETWORK, LOCKED, NO_PATIENT, MAINT, OTHER }
+    companion object { const val MAINT_MSG = "🛠 Abbott's LibreLinkUp is down for maintenance — readings will resume by themselves. Her LibreLink app on her phone still alarms." }
 }
 
 /**
@@ -145,6 +146,7 @@ class Libre(private val st: Store) {
                     st.apiBase = if (region.isBlank()) DEFAULT_BASE else "https://api-$region.libreview.io"
                     continue
                 }
+                status == 911 -> throw LibreException(LibreException.MAINT_MSG, LibreException.Kind.MAINT)
                 status == 2 -> throw LibreException("Wrong LibreLinkUp email or password.", LibreException.Kind.LOGIN)
                 status == 4 -> throw LibreException(
                     "Open the official LibreLinkUp app, sign in and accept the new terms, then try again.",
@@ -167,10 +169,11 @@ class Libre(private val st: Store) {
     private class HttpError(val code: Int, val body: String) : Exception("HTTP $code") {
         fun toLibre(): LibreException = when (code) {
             -1 -> LibreException("No connection to LibreLinkUp — check the internet.", LibreException.Kind.NETWORK)
+            else -> if (body.replace(" ", "").contains("\"status\":911") || code == 503) LibreException(LibreException.MAINT_MSG, LibreException.Kind.MAINT) else when (code) {
             401, 403 -> LibreException("LibreLinkUp refused the login (error $code). Check email/password in Settings.", LibreException.Kind.LOGIN)
             429 -> LibreException("LibreLinkUp says too many requests — waiting a bit.", LibreException.Kind.LOCKED)
             else -> LibreException("LibreLinkUp error $code ${body.take(160)}")
-        }
+        } }
     }
 
     private fun open(path: String, auth: Boolean): HttpURLConnection =

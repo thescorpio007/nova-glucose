@@ -358,8 +358,11 @@ class MainActivity : BaseActivity() {
         setContentView(sv)
     }
 
-    private fun current(): Reading? =
-        snap?.latest ?: if (st.lastTs > 0) Reading(st.lastTs, st.lastMg, st.lastTrend) else null
+    /** The newest reading, whichever way it came (LibreLinkUp, or LibreLink on the patient's phone). */
+    private fun current(): Reading? {
+        val a = snap?.latest; val b = if (st.lastTs > 0) Reading(st.lastTs, st.lastMg, st.lastTrend) else null
+        return if (a == null) b else if (b == null || a.ts >= b.ts) a else b
+    }
 
     @SuppressLint("SetTextI18n")
     private fun render(err: String?) {
@@ -502,7 +505,8 @@ class MainActivity : BaseActivity() {
     private fun renderAgo() {
         val r = current() ?: run { ago.text = ""; return }
         val m = ((System.currentTimeMillis() - r.ts) / 60_000).toInt()
-        ago.text = (if (m <= 0) "Just now" else "$m min ago") + " · " + Libre.trendText(r.trend)
+        ago.text = (if (m <= 0) "Just now" else "$m min ago") + " · " + Libre.trendText(r.trend) +
+            (if (st.raw.getString("last_src", "") == "ll" && r.ts == st.lastTs) " · " + L.s("📡 from LibreLink on her phone") else "")
     }
 
     private fun renderAdvice(r: Reading?) {

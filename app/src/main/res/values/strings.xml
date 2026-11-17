@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="libre_screen_desc">Nova Glucose reads only the glucose number shown by the FreeStyle LibreLink app on this phone and shares it with the family, so the family keeps seeing readings when Abbott\'s server is down. Nothing else is read.</string>
+</resources>

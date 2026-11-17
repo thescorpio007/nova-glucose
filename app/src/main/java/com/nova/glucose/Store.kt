@@ -225,6 +225,8 @@ class Store(c: Context) {
     fun setSched(kind: String, v: Boolean) = putb("sched_$kind", v)
     /** Parents' choice (shared): the patient's phone installs a downloaded update by itself. */
     var updAutoPatient: Boolean get() = b("upd_auto_patient", true); set(v) = putb("upd_auto_patient", v)
+    /** 📡 Patient's phone relays LibreLink alarms and the numbers shown in LibreLink. */
+    var libreRelay: Boolean get() = b("libre_relay", true); set(v) = putb("libre_relay", v)
     var staleRepeat: Int get() = i("stale_repeat", 5); set(v) = puti("stale_repeat", v)
     var netEvery: Int get() = i("net_every", 5); set(v) = puti("net_every", v)
     var netRemind: Int get() = i("net_remind", 30); set(v) = puti("net_remind", v)
