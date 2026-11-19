@@ -81,6 +81,8 @@ class MainActivity : BaseActivity() {
     }
     private lateinit var navRow: LinearLayout
     private lateinit var navLabel: TextView
+    private lateinit var zoomRow: LinearLayout
+    private lateinit var zoomLabel: TextView
     private lateinit var chartLegend: TextView
     private lateinit var tirBox: Pair<LinearLayout, TextView>
     private lateinit var avgBox: Pair<LinearLayout, TextView>
@@ -298,9 +300,23 @@ class MainActivity : BaseActivity() {
         navRow.addView(navLabel, Ui.lp(0, weight = 1f))
         navRow.addView(Ui.smallButton(this, "›") { if (offset < 0) { offset++; renderChart() } }, Ui.lp(Ui.dp(this, 44), Ui.dp(this, 32)))
         gc.addView(navRow)
+        zoomRow = Ui.row(this).apply { visibility = View.GONE; gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(Ui.dp(c(), 10), Ui.dp(c(), 6), Ui.dp(c(), 6), Ui.dp(c(), 6)); background = Ui.round(0xFF10302C.toInt(), Ui.dp(c(), 10).toFloat()) }
+        zoomLabel = Ui.text(this, "", 13f, Ui.TEXT); zoomRow.addView(zoomLabel, Ui.lp(0, weight = 1f))
+        zoomRow.addView(Ui.smallButton(this, "↺ " + L.s("Reset")) { graph.resetZoom() }, Ui.lp(-2, Ui.dp(this, 32)))
+        gc.addView(zoomRow, Ui.lp(top = Ui.dp(this, 8)))
         graph = GraphView(this).apply {
             onMark = { t -> MarkHistory.show(this@MainActivity, t) }
             onIncident = { id -> IncidentActivity.open(this@MainActivity, id) }
+            onZoom = { z, a, b ->
+                zoomRow.visibility = if (z) View.VISIBLE else View.GONE
+                if (z) {
+                    val mins = (b - a) / 60_000
+                    val len = if (mins < 120) "$mins min" else if (mins < 72 * 60) "${(mins + 30) / 60} h" else "${(mins + 720) / 1440} d"
+                    val f = java.text.SimpleDateFormat("EEE d HH:mm", L.loc()); val f2 = java.text.SimpleDateFormat(if (b - a < 20 * 3600_000L) "HH:mm" else "EEE d HH:mm", L.loc())
+                    zoomLabel.text = "🔍 " + L.s("Zoom") + " · $len · ${f.format(java.util.Date(a))} → ${f2.format(java.util.Date(b))}"
+                }
+            }
         }
         gc.addView(graph, Ui.lp(top = Ui.dp(this, 6)))
         chartLegend = Ui.text(this, "", 11f, Ui.MUTED).apply { visibility = View.GONE }   // no text under the chart
@@ -405,7 +421,7 @@ class MainActivity : BaseActivity() {
         renderMeeting()
     }
 
-    private val ranges = listOf("12" to "Last 12 hours", "24" to "24 hours (full day)", "w" to "Week", "m" to "Month")
+    private val ranges = listOf("12" to "Last 12 hours", "24" to "Last 24 hours", "w" to "Week", "m" to "Month")
 
     private fun statBox(label: String): Pair<LinearLayout, TextView> {
         val b = Ui.col(this, 10).apply { background = Ui.round(Ui.CARD2, Ui.dp(c(), 10).toFloat()) }
@@ -429,8 +445,9 @@ class MainActivity : BaseActivity() {
             set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
         }
         return when (st.chartRange) {
-            "24" -> { cal.add(java.util.Calendar.DAY_OF_YEAR, offset); val a = cal.timeInMillis
-                Triple(a, a + 24 * 3600_000L - 1, if (offset == 0) "Today · ${df.format(java.util.Date(a))}" else df.format(java.util.Date(a))) }
+            "24" -> { val b = now + offset * 24 * 3600_000L; val a = b - 24 * 3600_000L      // from this time yesterday to now; ‹ › = 24 h earlier / later
+                val f = java.text.SimpleDateFormat("EEE d HH:mm", L.loc())
+                Triple(a, b, "${f.format(java.util.Date(a))} → ${f.format(java.util.Date(b))}" + if (offset == 0) " (" + L.s("now") + ")" else "") }
             "w" -> { cal.add(java.util.Calendar.DAY_OF_YEAR, -6 + offset * 7); val a = cal.timeInMillis; val b = a + 7 * 24 * 3600_000L - 1
                 Triple(a, b, "${java.text.SimpleDateFormat("d MMM", L.loc()).format(java.util.Date(a))} – ${java.text.SimpleDateFormat("d MMM", L.loc()).format(java.util.Date(b))}") }
             "m" -> { cal.set(java.util.Calendar.DAY_OF_MONTH, 1); cal.add(java.util.Calendar.MONTH, offset); val a = cal.timeInMillis
@@ -458,7 +475,7 @@ class MainActivity : BaseActivity() {
         graph.set(mode, a, b, pts)
         chartLegend.text = when (mode) {
             "12" -> MarkHistory.legend("Every hour labelled · tap a mark · ")
-            "24" -> MarkHistory.legend("Full day · ‹ › other days · tap a mark · ")
+            "24" -> MarkHistory.legend("From this time yesterday to now · ‹ › 24 h earlier / later · pinch to zoom · tap a mark · ")
             "w" -> MarkHistory.legend("All readings of the 7 days · ‹ › other weeks · tap a mark · ")
             else -> "Line = daily average · band = lowest to highest · ‹ › other months"
         }

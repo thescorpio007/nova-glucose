@@ -53,8 +53,61 @@ class GraphView(c: Context) : View(c) {
 
     private fun timeAt(x: Float): Long = t0 + ((x.coerceIn(gx0, gx1) - gx0) / (gx1 - gx0) * (t1 - t0)).toLong()
 
+    // ---------------------------------------------------------------- zoom: t0..t1 = what is shown, fa..fb = the whole period
+    private var fa = 0L; private var fb = 0L
+    val zoomed get() = fb > fa && (t1 - t0) < (fb - fa) - 60_000L
+    /** Called when the zoom changes: (zoomed, shown from, shown to). */
+    var onZoom: ((Boolean, Long, Long) -> Unit)? = null
+    private var sticky = false            // zoomed: a tapped crosshair stays until the next tap
+    private var panning = false
+    private fun minSpan() = 30 * 60_000L
+    private fun setView(a0: Long, b0: Long) {
+        var span = (b0 - a0).coerceIn(minOf(minSpan(), fb - fa), fb - fa)
+        var a = a0; if (a < fa) a = fa; if (a + span > fb) a = fb - span
+        t0 = a; t1 = a + span
+        invalidate(); onZoom?.invoke(zoomed, t0, t1)
+    }
+    fun resetZoom() { cursorT = null; sticky = false; setView(fa, fb) }
+    private val scaler = android.view.ScaleGestureDetector(c, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(g: android.view.ScaleGestureDetector): Boolean { parent?.requestDisallowInterceptTouchEvent(true); dragging = false; panning = false; return true }
+        override fun onScale(g: android.view.ScaleGestureDetector): Boolean {
+            val f = g.currentSpanX.coerceAtLeast(1f) / g.previousSpanX.coerceAtLeast(1f)
+            if (f <= 0f) return true
+            val focusT = timeAt(g.focusX)
+            val span = ((t1 - t0) / f).toLong()
+            val ratio = ((g.focusX - gx0) / (gx1 - gx0)).coerceIn(0f, 1f)
+            setView(focusT - (span * ratio).toLong(), focusT - (span * ratio).toLong() + span)
+            return true
+        }
+    })
+    private val taps = android.view.GestureDetector(c, object : android.view.GestureDetector.SimpleOnGestureListener() {
+        override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+            if (zoomed) resetZoom() else { val t = timeAt(e.x); val span = (fb - fa) / 4; setView(t - span / 2, t + span / 2) }
+            return true
+        }
+    })
+
     override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
         if (t1 <= t0) return false
+        scaler.onTouchEvent(e); taps.onTouchEvent(e)
+        if (scaler.isInProgress || e.pointerCount > 1) return true
+        if (zoomed) when (e.actionMasked) {          // zoomed: drag = move earlier / later, tap = crosshair that stays
+            android.view.MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; panning = false; panFrom = t0; return true }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                val dx = e.x - downX
+                if (!panning && kotlin.math.abs(dx) > slop && kotlin.math.abs(dx) > kotlin.math.abs(e.y - downY)) { panning = true; parent?.requestDisallowInterceptTouchEvent(true) }
+                if (panning) { val dt = (dx / (gx1 - gx0) * (t1 - t0)).toLong(); setView(panFrom - dt, panFrom - dt + (t1 - t0)) }
+                return true
+            }
+            android.view.MotionEvent.ACTION_UP -> {
+                if (!panning && kotlin.math.abs(e.x - downX) < slop && kotlin.math.abs(e.y - downY) < slop) {
+                    val m = markAt(e.x, e.y)
+                    if (m != null) { performClick(); onMark?.invoke(m) } else { cursorT = timeAt(e.x); sticky = true; invalidate() }
+                }
+                panning = false; parent?.requestDisallowInterceptTouchEvent(false); return true
+            }
+            android.view.MotionEvent.ACTION_CANCEL -> { panning = false; return true }
+        }
         when (e.actionMasked) {
             android.view.MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; dragging = false; return true }
             android.view.MotionEvent.ACTION_MOVE -> {
@@ -80,9 +133,14 @@ class GraphView(c: Context) : View(c) {
     }
 
     override fun performClick(): Boolean { super.performClick(); return true }
+    private var panFrom = 0L
 
+    /** New period. A zoom is kept when the same period only moved on (new readings); otherwise the whole period is shown. */
     fun set(mode: String, t0: Long, t1: Long, rs: List<Reading>) {
-        this.mode = mode; this.t0 = t0; this.t1 = t1; readings = rs; invalidate()
+        val keep = zoomed && mode == this.mode && kotlin.math.abs((t1 - t0) - (fb - fa)) < 5 * 60_000L && kotlin.math.abs(t1 - fb) < 3 * 3600_000L
+        val za = this.t0; val zb = this.t1
+        this.mode = mode; fa = t0; fb = t1; readings = rs
+        if (keep) setView(za, zb) else { this.t0 = t0; this.t1 = t1; sticky = false; cursorT = null; invalidate(); onZoom?.invoke(false, t0, t1) }
     }
 
     private val d = resources.displayMetrics.density
@@ -114,14 +172,21 @@ class GraphView(c: Context) : View(c) {
     private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12 * d; isFakeBoldText = true; color = MARK }
 
     override fun onMeasure(w: Int, h: Int) {
-        setMeasuredDimension(View.MeasureSpec.getSize(w), (230 * d).toInt())
+        setMeasuredDimension(View.MeasureSpec.getSize(w), (240 * d).toInt())
     }
 
     private fun cal(t: Long) = Calendar.getInstance().apply { timeInMillis = t }
 
     override fun onDraw(cv: Canvas) {
         if (t1 <= t0) return
-        val left = 34 * d; val right = width - 30 * d; val top = 18 * d; val bottom = height - 22 * d
+        val left = 34 * d; val right = width - 30 * d; val top = 18 * d; val bottom = height - 30 * d
+        // zoomed: a thin bar at the very bottom shows where the view is in the whole period
+        if (zoomed) {
+            val by = height - 5 * d
+            fill.color = 0x33FFFFFF; cv.drawRoundRect(android.graphics.RectF(left, by - 2 * d, right, by + 2 * d), 2 * d, 2 * d, fill)
+            val xa = left + (t0 - fa).toFloat() / (fb - fa) * (right - left); val xb = left + (t1 - fa).toFloat() / (fb - fa) * (right - left)
+            fill.color = Ui.ACCENT; cv.drawRoundRect(android.graphics.RectF(xa, by - 3 * d, maxOf(xb, xa + 4 * d), by + 3 * d), 3 * d, 3 * d, fill)
+        }
         gx0 = left; gx1 = right; markBottom = top + 12 * d; gTop = top; gBottom = bottom
         val maxV = maxOf(300, (readings.maxOfOrNull { it.mg } ?: 0) + 20)
         val minV = 40
@@ -159,7 +224,25 @@ class GraphView(c: Context) : View(c) {
         limit(lowLine, 0xFFFF9B9E.toInt(), false); limit(urgentLine, 0xFFFF5A5F.toInt(), true)
 
         // ---------------------------------------------------------- x axis
-        when (mode) {
+        val span = t1 - t0
+        val axis = if (zoomed && span <= 3 * 24 * 3600_000L) "z" else mode
+        when (axis) {
+            "z" -> {
+                val stepM = when { span <= 75 * 60_000L -> 10; span <= 3 * 3600_000L -> 30; span <= 6 * 3600_000L -> 60; span <= 12 * 3600_000L -> 120; span <= 30 * 3600_000L -> 180; else -> 720 }
+                val c0 = cal(t0).apply { set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0); set(Calendar.MINUTE, (get(Calendar.MINUTE) / minOf(stepM, 60)) * minOf(stepM, 60)) }
+                if (stepM > 60) c0.set(Calendar.MINUTE, 0)
+                while (c0.timeInMillis < t0 || (c0.get(Calendar.HOUR_OF_DAY) * 60 + c0.get(Calendar.MINUTE)) % stepM != 0) c0.add(Calendar.MINUTE, if (stepM >= 60) 60 else stepM)
+                var lastR = -1f
+                while (c0.timeInMillis <= t1) {
+                    val xx = x(c0.timeInMillis)
+                    cv.drawLine(xx, top, xx, bottom, vgrid)
+                    val s = if (stepM >= 60 && c0.get(Calendar.HOUR_OF_DAY) == 0 && span > 12 * 3600_000L) java.text.SimpleDateFormat("EEE", L.loc()).format(c0.time)
+                        else "%02d:%02d".format(c0.get(Calendar.HOUR_OF_DAY), c0.get(Calendar.MINUTE))
+                    val tw = label.measureText(s)
+                    if (xx - tw / 2 > maxOf(left - 4 * d, lastR + 4 * d) && xx + tw / 2 < width) { cv.drawText(s, xx - tw / 2, height - 14 * d, label); lastR = xx + tw / 2 }
+                    c0.add(Calendar.MINUTE, stepM)
+                }
+            }
             "12", "24" -> {
                 val stepH = if (mode == "12") 1 else 3
                 val c0 = cal(t0).apply { set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
@@ -170,8 +253,19 @@ class GraphView(c: Context) : View(c) {
                     cv.drawLine(xx, top, xx, bottom, vgrid)
                     val s = "%02d".format(c0.get(Calendar.HOUR_OF_DAY))
                     val tw = label.measureText(s)
-                    if (xx - tw / 2 > left - 4 * d && xx + tw / 2 < width) cv.drawText(s, xx - tw / 2, height - 6 * d, label)
+                    if (xx - tw / 2 > left - 4 * d && xx + tw / 2 < width) cv.drawText(s, xx - tw / 2, height - 14 * d, label)
                     c0.add(Calendar.HOUR_OF_DAY, stepH)
+                }
+                // Last 24 hours: dotted midnight line with the two days' names
+                if (mode == "24") {
+                    val m0 = cal(t1).apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis
+                    if (m0 in (t0 + 1) until t1) {
+                        val xm = x(m0); crossLine.color = 0xAA8A93A0.toInt(); cv.drawLine(xm, top, xm, bottom, crossLine)
+                        val df = java.text.SimpleDateFormat("EEE d", L.loc())
+                        val a = df.format(java.util.Date(m0 - 1)); val b = df.format(java.util.Date(m0))
+                        if (xm - label.measureText(a) - 4 * d > left) cv.drawText(a, xm - label.measureText(a) - 4 * d, top + 11 * d, label)
+                        if (xm + label.measureText(b) + 4 * d < right) cv.drawText(b, xm + 4 * d, top + 11 * d, label)
+                    }
                 }
             }
             "w" -> {
@@ -182,7 +276,7 @@ class GraphView(c: Context) : View(c) {
                     cv.drawLine(xs, top, xs, bottom, vgrid)
                     val s = L.s(names[c0.get(Calendar.DAY_OF_WEEK) - 1])
                     val mid = xs + (right - left) / 14
-                    cv.drawText(s, mid - label.measureText(s) / 2, height - 6 * d, label)
+                    cv.drawText(s, mid - label.measureText(s) / 2, height - 14 * d, label)
                     c0.add(Calendar.DAY_OF_YEAR, 1)
                 }
             }
@@ -193,7 +287,7 @@ class GraphView(c: Context) : View(c) {
                     if (day == 1 || day % 7 == 1 || day == c0.getActualMaximum(Calendar.DAY_OF_MONTH)) {
                         val xx = x(c0.timeInMillis + 12 * 3600_000L)
                         val s = day.toString()
-                        cv.drawText(s, xx - label.measureText(s) / 2, height - 6 * d, label)
+                        cv.drawText(s, xx - label.measureText(s) / 2, height - 14 * d, label)
                     }
                     c0.add(Calendar.DAY_OF_YEAR, 1)
                 }
@@ -206,7 +300,7 @@ class GraphView(c: Context) : View(c) {
             cv.drawText(s, (width - label.measureText(s)) / 2f, height / 2f, label); return
         }
 
-        if (mode == "m") {
+        if (mode == "m" && !(zoomed && span <= 3 * 24 * 3600_000L)) {
             // Daily average line with lowest–highest band.
             val byDay = pts.groupBy { val c = cal(it.ts); c.get(Calendar.YEAR) * 400 + c.get(Calendar.DAY_OF_YEAR) }
             val days = byDay.values.map { l ->
@@ -241,8 +335,9 @@ class GraphView(c: Context) : View(c) {
             if (prev == null || r.ts - prev.ts > gap) path.moveTo(x(r.ts), y(r.mg)) else path.lineTo(x(r.ts), y(r.mg))
             prev = r
         }
-        line.strokeWidth = (if (mode == "w") 1.3f else 2.5f) * d
+        line.strokeWidth = (if (mode == "w" && !zoomed) 1.3f else 2.5f) * d
         cv.drawPath(path, line)
+        if (zoomed && span <= 3 * 3600_000L) { dot.color = Ui.TEXT; pts.forEach { cv.drawCircle(x(it.ts), y(it.mg), 2.6f * d, dot) } }
         // Crosshair: live by default, follows the finger while dragging
         val ct = cursorT
         val k = if (ct == null) pts.size - 1 else pts.indices.minByOrNull { kotlin.math.abs(pts[it].ts - ct) }!!
@@ -252,7 +347,16 @@ class GraphView(c: Context) : View(c) {
             val prev = pts.getOrNull(k - 1)?.takeIf { r.ts - it.ts < 20 * 60_000L }
             when { prev == null -> ""; r.mg - prev.mg > 3 -> "↗"; r.mg - prev.mg < -3 -> "↘"; else -> "→" }
         }
-        val hm = java.text.SimpleDateFormat(if (mode == "w") "EEE HH:mm" else "HH:mm", java.util.Locale.US).format(java.util.Date(r.ts))
+        val hm = java.text.SimpleDateFormat(if (mode == "w" || (mode == "24" && r.ts < t1 - 18 * 3600_000L)) "EEE HH:mm" else "HH:mm", java.util.Locale.US).format(java.util.Date(r.ts))
+        // change over the last 15 min, and time since the last meal / insulin
+        val back = pts.lastOrNull { it.ts <= r.ts - 12 * 60_000L && it.ts >= r.ts - 25 * 60_000L }
+        val ch = back?.let { b -> val dm = r.mg - b.mg; val mins = ((r.ts - b.ts) / 60_000).coerceAtLeast(1)
+            (if (dm >= 0) "+" else "") + "$dm " + L.s("in {0} min").replace("{0}", "$mins") + " · " + (if (dm >= 0) "+" else "") + "%.1f".format(java.util.Locale.US, dm.toFloat() / mins) + "/min" }
+        val lastMark = (meals.map { it to "M" } + doses.map { it to "I" } + longs.map { it to "LI" }).filter { it.first <= r.ts && r.ts - it.first < 6 * 3600_000L }.maxByOrNull { it.first }
+        val since = lastMark?.let { (mt, _) ->
+            val tags = (meals.map { it to "M" } + doses.map { it to "I" } + longs.map { it to "LI" }).filter { kotlin.math.abs(it.first - mt) < 15 * 60_000L }.map { it.second }.distinct().sorted().joinToString(" ")
+            L.s("{0} min after {1}").replace("{0}", "${(r.ts - mt) / 60_000}").replace("{1}", tags + " " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date(mt))) }
+        l3 = listOfNotNull(ch, since).joinToString(" · ")
         val ago = ((now - r.ts) / 60_000).let { m -> if (m < 1) "now" else if (m < 60) "$m min ago" else if (m < 48 * 60) "${m / 60} h ${m % 60} min ago" else "${m / 1440} days ago" }
         if (mode == "12" || live) { dot.color = colorFor(r.mg); cv.drawCircle(x(r.ts), y(r.mg), 6 * d, dot) }
         cross(cv, x(r.ts), y(r.mg), r.mg, live,
@@ -265,6 +369,7 @@ class GraphView(c: Context) : View(c) {
     private fun zone(v: Int) = when { v < urgentLine -> "urgent low"; v < lowLine -> "low"; v > veryHighLine -> "very high"; v > highLine -> "high"; else -> "in range" }
 
     /** Two guide lines (time and value) with their labels on the axes and a small card. Teal = live, blue = earlier time. */
+    private var l3 = ""
     private fun cross(cv: Canvas, x: Float, y: Float, v: Int, live: Boolean, l1: String, l2: String, xText: String,
                       left: Float, right: Float, top: Float, bottom: Float) {
         val col = if (live) Ui.ACCENT else 0xFF8FA8FF.toInt()
@@ -281,17 +386,20 @@ class GraphView(c: Context) : View(c) {
         cv.drawRoundRect(android.graphics.RectF(xl, bottom + 2 * d, xl + xw, bottom + 20 * d), 5 * d, 5 * d, fill)
         cv.drawText(xText, xl + 5 * d, bottom + 15 * d, chip)
         // card (hidden 10 s after the chart appears, shown while dragging)
-        if (!dragging && System.currentTimeMillis() > cardUntil) return
-        val w = maxOf(card1.measureText(l1), card2.measureText(l2)) + 18 * d
-        val h = 40 * d
-        val bx = if (x + 10 * d + w < right) x + 8 * d else x - 8 * d - w
+        if (!dragging && !sticky && System.currentTimeMillis() > cardUntil) return
+        val extra = if (mode == "m" && !zoomed) "" else l3
+        val w = minOf(maxOf(card1.measureText(l1), card2.measureText(l2), card3.measureText(extra)) + 18 * d, right - left)
+        val h = if (extra.isBlank()) 40 * d else 55 * d
+        val bx = (if (x + 10 * d + w < right) x + 8 * d else x - 8 * d - w).coerceIn(2 * d, width - w - 2 * d)
         val by = (y - h - 10 * d).coerceIn(top, bottom - h)
         val rr = android.graphics.RectF(bx, by, bx + w, by + h)
         cv.drawRoundRect(rr, 8 * d, 8 * d, cardBg)
         cardEdge.color = col; cv.drawRoundRect(rr, 8 * d, 8 * d, cardEdge)
         cv.drawText(l1, bx + 9 * d, by + 17 * d, card1)
         cv.drawText(l2, bx + 9 * d, by + 32 * d, card2)
+        if (extra.isNotBlank()) cv.drawText(extra, bx + 9 * d, by + 47 * d, card3)
     }
+    private val card3 = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Ui.WARN; textSize = 10.5f * d }
 
     companion object { const val MARK = 0xFFFF5A5F.toInt() }
 
