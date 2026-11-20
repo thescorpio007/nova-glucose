@@ -20,13 +20,13 @@ import java.io.File
  */
 object Sounds {
     val KINDS = listOf("urgent_low", "low", "high", "very_high", "stale")
-    val GENERAL = listOf("eat", "msg", "lantus", "net", "guard", "apps", "update", "tip", "weekly", "other")
+    val GENERAL = listOf("bell", "eat", "msg", "lantus", "net", "guard", "apps", "update", "tip", "weekly", "other")
     const val SILENT = "silent"
     /** Sounds built into the app (same on every phone). */
     val BUILTIN = listOf("builtin:blip" to "Nova Blip", "builtin:medical" to "Nova Medical", "builtin:beep" to "Nova Beep",
-        "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s", "builtin:voice" to "Nova Voice: connect your sensor")
+        "builtin:blip5" to "Nova Blip 5s", "builtin:beep5" to "Nova Beep 5s", "builtin:voice" to "Nova Voice: connect your sensor", "builtin:bell" to "Nova Bell")
     fun defaultFor(kind: String) = when (kind) {
-        "low", "urgent_low" -> "builtin:medical"; "urgent_low@school", "very_high@school", "stale", "guard", "net", "apps" -> "builtin:blip5"; "very_high" -> "builtin:medical"; "eat" -> "builtin:beep5"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
+        "low", "urgent_low" -> "builtin:medical"; "urgent_low@school", "very_high@school", "stale", "guard", "net", "apps" -> "builtin:blip5"; "very_high" -> "builtin:medical"; "eat" -> "builtin:beep5"; "bell" -> "builtin:bell"; "lantus" -> "builtin:medical"; else -> "builtin:blip" }
 
     /**
      * Each phone keeps its own notification choices (never shared, never reset by updates). Safety net at every update:
@@ -49,11 +49,13 @@ object Sounds {
         st.staleRepeat = 5
         if (st.isPatient) { st.staleAlert = true; st.setOn("stale", true); setBuiltin(c, "stale", "builtin:voice") }
         if (prev in 1 until b) try { Updater.notifyUpdated(c, b) } catch (_: Exception) { }
+        if (prev in 1 until 67 && b >= 67) st.urgLow = false          // build 67: Low (below 70) becomes a normal alert, once; anyone may tick it urgent again
         st.raw.edit().putInt("last_snd_build", b).apply()
     }
     fun builtinUri(c: Context, v: String): Uri? = when (v) {
         "builtin:blip" -> R.raw.nova_blip; "builtin:medical" -> R.raw.nova_medical; "builtin:beep" -> R.raw.nova_beep
         "builtin:blip5" -> R.raw.nova_blip5; "builtin:beep5" -> R.raw.nova_beep5
+        "builtin:bell" -> R.raw.nova_bell
         "builtin:voice" -> when (L.lang) { "fr" -> R.raw.nova_voice_fr; "ar" -> R.raw.nova_voice_ar; else -> R.raw.nova_voice_en }
         else -> null
     }?.let { Uri.parse("android.resource://${c.packageName}/$it") }
@@ -75,7 +77,7 @@ object Sounds {
         "high" -> "High (above ${st.high})"; "very_high" -> "Very high (above ${st.veryHigh})"; "stale" -> "No signal"
         "eat" -> "🍽 Time to eat"; "msg" -> "💬 Family messages"; "lantus" -> "💉 Night Lantus reminder"
         "guard" -> "📵 Patient's phone offline (parents)"; "net" -> "📶 Connection off (patient's phone)"; "apps" -> "🛡 Protected app removed or stopped (parents)"; "update" -> "⬆ App update available"
-        "tip" -> "✦ AI tips after alerts"; "weekly" -> "📈 Weekly progress summary (Sunday 19:00)"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
+        "tip" -> "✦ AI tips after alerts"; "bell" -> "🔔 Family bell (urgent)"; "weekly" -> "📈 Weekly progress summary (Sunday 19:00)"; else -> "👨‍👩‍👧 Other notifications (family, tests)"
     }
 
     private fun isAlarm(kind: String) = kind in KINDS

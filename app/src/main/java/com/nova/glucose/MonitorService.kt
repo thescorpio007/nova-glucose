@@ -127,7 +127,8 @@ class MonitorService : Service() {
             try { Net.maybe(this@MonitorService) } catch (_: Exception) { }
             try { AppGuard.maybe(this@MonitorService) } catch (_: Exception) { }
             try { Coach.maybeWeekly(this@MonitorService) } catch (_: Exception) { }      // 📈 Sunday summary
-            try { LibreLocal.ensure(this@MonitorService) } catch (_: Exception) { }      // 📡 LibreLink relay switched on (patient)          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
+            try { LibreLocal.ensure(this@MonitorService) } catch (_: Exception) { }
+            try { Bell.maybe(this@MonitorService) } catch (_: Exception) { }             // 🔔 ring again every 2 min      // 📡 LibreLink relay switched on (patient)          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             handler.postDelayed(this, next)
         }

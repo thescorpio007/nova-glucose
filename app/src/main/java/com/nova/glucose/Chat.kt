@@ -136,6 +136,24 @@ object Chat {
     }
 
     /** The conversation pop-up. */
+    /** 🔔 Choose a family phone and ring it. */
+    private fun pickBell(a: Activity, done: () -> Unit) {
+        val app = a.applicationContext
+        Ui.toast(a, "…")
+        Thread {
+            val res = try { FamilySync.memberDocs(app) } catch (_: Exception) { null }
+            a.runOnUiThread {
+                if (a.isFinishing) return@runOnUiThread
+                val rows = res?.let { Members.rows(a, it).first.filter { r -> !r.m.me } }.orEmpty()
+                if (rows.isEmpty()) { Ui.toast(a, "No other family phone found"); return@runOnUiThread }
+                AlertDialog.Builder(a).setTitle("🔔 " + L.s("Ring to talk"))
+                    .setItems(rows.map { it.name + if (it.patient) " · " + L.s("patient") else "" }.toTypedArray()) { _, w ->
+                        Bell.send(a, rows[w].m.uid, rows[w].name); Ui.toast(a, L.s("Ringing {0}…").replace("{0}", rows[w].name)); done() }
+                    .setNegativeButton(L.s("Cancel"), null).show()
+            }
+        }.start()
+    }
+
     fun show(a: Activity, onClose: () -> Unit = {}) {
         val st = Store(a)
         if (st.syncFam.isBlank()) { Ui.toast(a, "Turn on Family sync to send messages"); return }
@@ -150,7 +168,7 @@ object Chat {
         val hm = SimpleDateFormat("HH:mm", Locale.US); val dm = SimpleDateFormat("d MMM HH:mm", Locale.US)
         var shown = -1
         fun render(force: Boolean = false) {
-            val msgs = all(a); val sig = msgs.size * 1000 + msgs.sumOf { seenLine(a, it).length }
+            val msgs = all(a); val sig = msgs.size * 1000 + msgs.sumOf { seenLine(a, it).length } + (Bell.lastSent(a)?.let { it.optString("ans").length * 7 + 3 } ?: 0)
             if (!force && sig == shown) return
             shown = sig
             list.removeAllViews()
@@ -170,6 +188,14 @@ object Chat {
                 holder.addView(b, LinearLayout.LayoutParams(-2, -2).apply { if (me) marginStart = Ui.dp(a, 40) else marginEnd = Ui.dp(a, 40) })
                 list.addView(holder, Ui.lp(top = Ui.dp(a, 6)))
             }
+            Bell.lastSent(a)?.let { e ->
+                val hm2 = SimpleDateFormat("HH:mm", Locale.US)
+                val card = Ui.col(a).apply { background = Ui.round(0xFF3A1416.toInt(), Ui.dp(a, 12).toFloat()); setPadding(Ui.dp(a, 12), Ui.dp(a, 8), Ui.dp(a, 12), Ui.dp(a, 8)) }
+                card.addView(Ui.text(a, "🔔 " + L.s("You rang {0} · {1}").replace("{0}", e.optString("toName")).replace("{1}", hm2.format(Date(e.optLong("u")))), 13.5f, Ui.TEXT, true))
+                if (e.optString("ans").isBlank()) card.addView(Ui.text(a, L.s("Ringing again every 2 min until answered (up to {0})").replace("{0}", hm2.format(Date(e.optLong("u") + Bell.MAX_MS))), 11.5f, Ui.MUTED))
+                else card.addView(Ui.text(a, e.optString("ansBy") + ": " + Bell.answerText(e.optString("ans")) + " · " + hm2.format(Date(e.optLong("ansTs"))), 13.5f, Ui.GOOD))
+                list.addView(card, Ui.lp(top = Ui.dp(a, 10)))
+            }
             sv.post { sv.fullScroll(ScrollView.FOCUS_DOWN) }
             markRead(a, unread(a).map { it.id })
         }
@@ -178,6 +204,7 @@ object Chat {
             send(a, t); input.setText(""); render(true)
         }, Ui.lp(-2, -2))
         root.addView(row, Ui.lp(top = Ui.dp(a, 10)))
+        root.addView(Ui.button(a, "🔔 " + L.s("Ring to talk")) { pickBell(a) { render(true) } }.apply { setBackgroundColor(0xFFC62828.toInt()) }, Ui.lp(top = Ui.dp(a, 8)))
         val h = Handler(Looper.getMainLooper())
         val tick = object : Runnable { override fun run() { render(); h.postDelayed(this, 3000) } }
         val dlg = AlertDialog.Builder(a).setTitle("💬 " + L.s("Family messages")).setView(root)

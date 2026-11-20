@@ -200,7 +200,7 @@ class Store(c: Context) {
     // ---------------------------------------------------------------- urgent alarm
     var urgentOn: Boolean get() = b("urg_on", true); set(v) = putb("urg_on", v)
     var urgUrgentLow: Boolean get() = b("urg_ul", true); set(v) = putb("urg_ul", v)
-    var urgLow: Boolean get() = b("urg_l", true); set(v) = putb("urg_l", v)
+    var urgLow: Boolean get() = b("urg_l", false); set(v) = putb("urg_l", v)
     var urgHigh: Boolean get() = b("urg_h", false); set(v) = putb("urg_h", v)
     var urgVeryHigh: Boolean get() = b("urg_vh", true); set(v) = putb("urg_vh", v)
     var alarmSound: String get() = s("alarm_sound"); set(v) = put("alarm_sound", v)
