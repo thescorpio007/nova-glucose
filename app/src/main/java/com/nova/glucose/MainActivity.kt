@@ -41,7 +41,7 @@ class MainActivity : BaseActivity() {
     private lateinit var meetStrip: TextView
     private val MEET = 0xFF9646C8.toInt()
 
-    /** 📳 button: off → confirm 1 hour (15 min on the patient's phone); on → end now. */
+    /** 📳 button: off → confirm 1 hour (30 min on the patient's phone); on → end now. */
     private fun meetingTap() {
         if (Meeting.on(st)) {
             Tr.Builder(this).setTitle("📳 " + L.s("End meeting mode?")).setMessage(L.s("Nova Glucose sounds come back on this phone now."))

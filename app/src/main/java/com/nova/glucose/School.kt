@@ -27,7 +27,7 @@ object School {
 /** 📳 Meeting mode: for a while, every Nova Glucose sound on this phone becomes very strong vibration (urgent alarms too). */
 object Meeting {
     fun on(st: Store) = System.currentTimeMillis() < st.meetingUntil
-    fun minutesFor(st: Store) = if (st.isPatient) 15 else 60
+    fun minutesFor(st: Store) = if (st.isPatient) 30 else 60
     fun minutesLeft(st: Store) = ((st.meetingUntil - System.currentTimeMillis()) / 60_000L + 1).coerceAtLeast(0)
 
     @Suppress("DEPRECATION")
