@@ -330,6 +330,10 @@ class Store(c: Context) {
         const val PREFS = "nova_glucose"
         /** Never copied as plain settings (secrets, per-phone state). */
         fun privateKey(k: String) = k in setOf("pw", "token", "token_exp", "account_id", "backup_pw", "folder_uri", "resume_asked", "folder_layout") ||
-            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_") || k.startsWith("sync_") || k == "hc_on" || k == "phone_role" || k.startsWith("body_")
+            k.startsWith("key_") || k.startsWith("last_") || k.startsWith("alert_") || k.startsWith("sync_") || k == "hc_on" || k == "phone_role" || k.startsWith("body_") ||
+            // per-phone runtime state (changes by itself while the app runs)
+            k in setOf("alarm_dismissed", "wake_sync", "maint_since", "maint_quiet_log", "ul_since", "relay_ringing", "auto_try", "weekly_try", "weekly_done",
+                "apps_last_check", "apps_sig", "apps_sent", "net_down", "net_pop", "wifi_dirty", "pending_why", "pending_logged") ||
+            k.startsWith("loc_") || k.startsWith("bell_ring_") || k.startsWith("ll_")
     }
 }
