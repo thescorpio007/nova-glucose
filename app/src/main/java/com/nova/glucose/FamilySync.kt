@@ -382,6 +382,7 @@ object FamilySync {
         if (kind == "updreq") return Members.reqItem(c, gid)
         if (kind == "rd") return LibreLocal.item(c, gid)
         if (kind == "bell") return Bell.item(c, gid)
+        if (kind == "loc") return Locate.item(c, gid)
         if (kind == "who") return Members.whoItem(c)
         db.byGid("meals", gid)?.let { return mealItem(c, it.first) }
         db.byGid("insulin", gid)?.let { return doseItem(c, it.first) }
@@ -480,6 +481,7 @@ object FamilySync {
             "updreq" -> return Members.receivedReq(c, item)
             "rd" -> return LibreLocal.received(c, item)
             "bell" -> return Bell.received(c, item)
+            "loc" -> return Locate.received(c, item)
             "who" -> return Members.receivedWho(c, item)
             "hcst" -> {
                 val st = Store(c)

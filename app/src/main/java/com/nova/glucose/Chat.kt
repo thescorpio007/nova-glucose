@@ -136,6 +136,63 @@ object Chat {
     }
 
     /** The conversation pop-up. */
+    /** 📍 Parents: locate the patient's phone. */
+    private fun locate(a: Activity, done: () -> Unit) {
+        val app = a.applicationContext
+        Thread {
+            val res = try { FamilySync.memberDocs(app) } catch (_: Exception) { null }
+            a.runOnUiThread {
+                if (a.isFinishing) return@runOnUiThread
+                val p = res?.let { Members.rows(a, it).first.firstOrNull { r -> r.patient && !r.m.me } }
+                if (p == null) { Ui.toast(a, "The patient's phone was not found in the family"); return@runOnUiThread }
+                Locate.ask(a, p.m.uid, p.name); Ui.toast(a, L.s("Locating {0}…").replace("{0}", p.name)); done()
+            }
+        }.start()
+    }
+
+    private var tileKey = ""; private var tileBmp: android.graphics.Bitmap? = null
+    /** Position card: small map (OpenStreetMap), time, accuracy, battery, live follow, Open in Google Maps. */
+    private fun locCard(a: Activity, e: JSONObject): LinearLayout {
+        val hm = SimpleDateFormat("HH:mm", Locale.US); val hms = SimpleDateFormat("HH:mm:ss", Locale.US)
+        val card = Ui.col(a).apply { background = Ui.round(Ui.CARD2, Ui.dp(a, 12).toFloat()); setPadding(Ui.dp(a, 12), Ui.dp(a, 10), Ui.dp(a, 12), Ui.dp(a, 10)) }
+        val auto = e.optString("why").isNotBlank()
+        card.addView(Ui.text(a, (if (auto) "🚨 " else "📍 ") + L.s("{0}'s phone").replace("{0}", e.optString("by")) + " · " + hm.format(Date(e.optLong("u"))), 14f, Ui.TEXT, true))
+        if (auto) card.addView(Ui.text(a, L.s("sent automatically") + ": " + e.optString("why"), 12f, Ui.WARN))
+        if (!e.has("lat")) { card.addView(Ui.text(a, L.s("No position available (GPS / internet)") + " · 🔋 ${e.optInt("batt")}%", 13f, Ui.WARN)); return card }
+        val img = android.widget.ImageView(a).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; setBackgroundColor(0xFF13201B.toInt()) }
+        card.addView(img, LinearLayout.LayoutParams(-1, Ui.dp(a, 160)).apply { topMargin = Ui.dp(a, 8) })
+        val lat = e.optDouble("lat"); val lon = e.optDouble("lon"); val key = "%.5f,%.5f".format(Locale.US, lat, lon)
+        if (key == tileKey && tileBmp != null) img.setImageBitmap(tileBmp) else Thread {
+            try {
+                val z = 16; val n = Math.pow(2.0, z.toDouble())
+                val xf = (lon + 180) / 360 * n; val yf = (1 - Math.log(Math.tan(Math.toRadians(lat)) + 1 / Math.cos(Math.toRadians(lat))) / Math.PI) / 2 * n
+                val out = android.graphics.Bitmap.createBitmap(768, 512, android.graphics.Bitmap.Config.ARGB_8888); val cv = android.graphics.Canvas(out)
+                val px = xf * 256; val py = yf * 256; val ox = px - 384; val oy = py - 256
+                for (tx in Math.floor(ox / 256).toInt()..Math.floor((ox + 767) / 256).toInt()) for (ty in Math.floor(oy / 256).toInt()..Math.floor((oy + 511) / 256).toInt()) {
+                    val conn = java.net.URL("https://tile.openstreetmap.org/$z/$tx/$ty.png").openConnection() as java.net.HttpURLConnection
+                    conn.setRequestProperty("User-Agent", "NovaGlucose/1.0 (family safety app)"); conn.connectTimeout = 8000; conn.readTimeout = 8000
+                    val t = conn.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) } ?: continue
+                    cv.drawBitmap(t, (tx * 256 - ox).toFloat(), (ty * 256 - oy).toFloat(), null)
+                }
+                val mpp = 156543.03392 * Math.cos(Math.toRadians(lat)) / n          // metres per pixel
+                val r = (e.optInt("acc", 10) / mpp).toFloat().coerceIn(8f, 240f)
+                val pnt = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                pnt.color = 0x332EC4B6; cv.drawCircle(384f, 256f, r, pnt); pnt.style = android.graphics.Paint.Style.STROKE; pnt.strokeWidth = 3f; pnt.color = 0xFF2EC4B6.toInt(); cv.drawCircle(384f, 256f, r, pnt)
+                pnt.style = android.graphics.Paint.Style.FILL; pnt.color = 0xFFE53935.toInt(); cv.drawCircle(384f, 256f, 14f, pnt); pnt.color = 0xFFFFFFFF.toInt(); cv.drawCircle(384f, 256f, 5f, pnt)
+                pnt.textSize = 18f; pnt.color = 0xFF333333.toInt(); cv.drawText("© OpenStreetMap", 600f, 500f, pnt)
+                tileKey = key; tileBmp = out
+                a.runOnUiThread { img.setImageBitmap(out) }
+            } catch (_: Exception) { }
+        }.start()
+        card.addView(Ui.text(a, "± ${e.optInt("acc")} m · ${e.optString("prov").uppercase()} · 🔋 ${e.optInt("batt")}% · " + L.s("position {0}").replace("{0}", hms.format(Date(e.optLong("fix")))), 13f, Ui.TEXT)
+            .apply { setPadding(0, Ui.dp(a, 6), 0, 0) })
+        val until = e.optLong("until")
+        if (until > System.currentTimeMillis()) card.addView(Ui.text(a, "🔴 " + L.s("Live: updating every 1 min until {0}").replace("{0}", hm.format(Date(until))), 12f, Ui.MUTED))
+        card.addView(Ui.button(a, "🗺 " + L.s("Open in Google Maps"), true) {
+            try { a.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Locate.mapsUrl(e)))) } catch (_: Exception) { } }, Ui.lp(top = Ui.dp(a, 8)))
+        return card
+    }
+
     /** 🔔 Choose a family phone and ring it. */
     private fun pickBell(a: Activity, done: () -> Unit) {
         val app = a.applicationContext
@@ -168,7 +225,7 @@ object Chat {
         val hm = SimpleDateFormat("HH:mm", Locale.US); val dm = SimpleDateFormat("d MMM HH:mm", Locale.US)
         var shown = -1
         fun render(force: Boolean = false) {
-            val msgs = all(a); val sig = msgs.size * 1000 + msgs.sumOf { seenLine(a, it).length } + (Bell.lastSent(a)?.let { it.optString("ans").length * 7 + 3 } ?: 0)
+            val msgs = all(a); val sig = msgs.size * 1000 + msgs.sumOf { seenLine(a, it).length } + (Locate.latest(a)?.optLong("u")?.rem(100000)?.toInt() ?: 0) + (if (Locate.pending(a) != null) 13 else 0) + (Bell.lastSent(a)?.let { it.optString("ans").length * 7 + 3 } ?: 0)
             if (!force && sig == shown) return
             shown = sig
             list.removeAllViews()
@@ -196,6 +253,9 @@ object Chat {
                 else card.addView(Ui.text(a, e.optString("ansBy") + ": " + Bell.answerText(e.optString("ans")) + " · " + hm2.format(Date(e.optLong("ansTs"))), 13.5f, Ui.GOOD))
                 list.addView(card, Ui.lp(top = Ui.dp(a, 10)))
             }
+            Locate.pending(a)?.let { q -> list.addView(Ui.text(a, "📍 " + L.s("Locating {0}… (asked {1})").replace("{0}", q.optString("toName"))
+                .replace("{1}", SimpleDateFormat("HH:mm", Locale.US).format(Date(q.optLong("u")))), 13f, Ui.ACCENT).apply { setPadding(0, Ui.dp(a, 10), 0, 0) }) }
+            if (!st.isPatient) Locate.latest(a)?.let { e -> list.addView(locCard(a, e), Ui.lp(top = Ui.dp(a, 10))) }
             sv.post { sv.fullScroll(ScrollView.FOCUS_DOWN) }
             markRead(a, unread(a).map { it.id })
         }
@@ -205,6 +265,7 @@ object Chat {
         }, Ui.lp(-2, -2))
         root.addView(row, Ui.lp(top = Ui.dp(a, 10)))
         root.addView(Ui.button(a, "🔔 " + L.s("Ring to talk")) { pickBell(a) { render(true) } }.apply { setBackgroundColor(0xFFC62828.toInt()) }, Ui.lp(top = Ui.dp(a, 8)))
+        if (!st.isPatient) root.addView(Ui.button(a, "📍 " + L.s("Locate")) { locate(a) { render(true) } }.apply { setBackgroundColor(0xFF1565C0.toInt()) }, Ui.lp(top = Ui.dp(a, 8)))
         val h = Handler(Looper.getMainLooper())
         val tick = object : Runnable { override fun run() { render(); h.postDelayed(this, 3000) } }
         val dlg = AlertDialog.Builder(a).setTitle("💬 " + L.s("Family messages")).setView(root)

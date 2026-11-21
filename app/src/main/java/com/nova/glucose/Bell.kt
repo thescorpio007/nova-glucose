@@ -85,6 +85,13 @@ object Bell {
             .forEach { e -> if (now - st.raw.getLong("bell_ring_" + e.optString("id"), 0L) >= REPEAT_MS - 5_000L) ring(c, e) }
     }
 
+    /** A bell to this phone, not answered for [ms] (and less than 30 min old). */
+    fun unanswered(c: Context, ms: Long): JSONObject? {
+        val me = Store(c).syncUid; val now = System.currentTimeMillis(); val o = all(c)
+        return o.keys().asSequence().mapNotNull { o.optJSONObject(it) }
+            .filter { it.optString("to") == me && it.optString("ans").isBlank() && now - it.optLong("u") in ms..30 * 60_000L }.maxByOrNull { it.optLong("u") }
+    }
+
     private fun channel(c: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         c.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CH, "🔔 Family bell (urgent)", NotificationManager.IMPORTANCE_HIGH).apply {

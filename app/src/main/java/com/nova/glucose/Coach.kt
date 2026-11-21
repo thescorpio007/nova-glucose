@@ -26,6 +26,18 @@ Rules: ${AiData.OPEN_DATA} Do not diagnose. Do not invent data; if the data does
 say first to follow the family's care plan for it. No markdown other than "•".
 """.trimIndent()
 
+    /** Photos of products / labels / screenshots attached. */
+    val PRODUCTS = """
+Photos are attached (food products, nutrition labels, menus or screenshots). Read them carefully. If they show food products, answer in this order:
+1) One line per product: name — carbs per serving and per 100 g · sugars · fibre · sweeteners / sugar alcohols (e.g. maltitol: raises glucose more slowly, but still counts) · calories. If a value can't be read, say so.
+2) Ranking: 🥇 better choice, 🥈, 🥉 — one short reason each. Be honest: say "OK in a small portion, not ideal" when even the best one is not a good everyday choice. "0% added sugar" is not "no carbs".
+3) Portion tip: how many grams / pieces fit her usual snack carbs (see the profile), and the carbs of that portion.
+Never a dose. Plain text, no tables, "•" bullets only.
+""".trimIndent()
+
+    /** The patient herself, on her phone: short and friendly (read aloud). */
+    val SIMPLE = "She is asking herself, on her phone, and the answer is read aloud: 3 to 6 short, friendly sentences, simple words, the key number first, no long lists."
+
     private val WEEKLY = """
 Write this week's progress summary for the family (plain text for a phone screen), with exactly these headings:
 This week in one line

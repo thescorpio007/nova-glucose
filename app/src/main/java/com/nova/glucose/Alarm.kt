@@ -157,6 +157,7 @@ object AlarmPlayer {
     }
 
     fun dismiss(c: Context) {
+        try { Store(c).raw.edit().putLong("alarm_dismissed", System.currentTimeMillis()).apply() } catch (_: Exception) { }
         stopSound(c.applicationContext)
         (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(ID_URGENT)
     }
