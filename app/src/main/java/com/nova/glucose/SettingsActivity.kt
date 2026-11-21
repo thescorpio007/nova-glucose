@@ -332,7 +332,8 @@ class SettingsActivity : BaseActivity() {
         uc.addView(Ui.button(this, "🔔 Test urgent alarm", true) {
             save(false); startActivity(Intent(this, AlarmActivity::class.java).putExtra("test", true))
         }, Ui.lp(top = Ui.dp(this, 10)))
-        uc.addView(Ui.text(this, "Phone permissions for the alarm", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 14), 0, 0) })
+        uc.addView(Ui.text(this, "🔔 Bell & alerts readiness — every line must be ✓", 14f, Ui.TEXT, true).apply { setPadding(0, Ui.dp(context, 14), 0, 0) })
+        uc.addView(Ui.text(this, "Without these, a sleeping phone gets the bell, messages and urgent alerts late (15–30 min) or without the full screen.", 12f, Ui.MUTED))
         permStatus = Ui.text(this, "", 13f, Ui.MUTED)
         uc.addView(permStatus)
         val pr1 = Ui.row(this)
@@ -345,6 +346,12 @@ class SettingsActivity : BaseActivity() {
         uc.addView(pr2, Ui.lp(top = Ui.dp(this, 6)))
         uc.addView(Ui.button(this, "Display over other apps") { openOverlayPerm() }, Ui.lp(top = Ui.dp(this, 6)))
         uc.addView(Ui.text(this, brandTip(), 12f, Ui.WARN).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+        if (st.isPatient) {
+            val cmds = "adb shell appops set com.nova.glucose USE_FULL_SCREEN_INTENT allow\nadb shell appops set com.nova.glucose SYSTEM_ALERT_WINDOW allow\nadb shell appops set com.nova.glucose SCHEDULE_EXACT_ALARM allow\nadb shell dumpsys deviceidle whitelist +com.nova.glucose"
+            uc.addView(Ui.text(this, "Patient's phone: or allow them all at once from a computer (ADB):", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+            uc.addView(Ui.text(this, cmds, 11.5f, Ui.ACCENT).apply { setTextIsSelectable(true) })
+            uc.addView(Ui.smallButton(this, "📋 Copy commands") { Ui.copy(this, cmds); Ui.toast(this, "Copied") }.apply { tag = "free" }, Ui.lp(-2, Ui.dp(this, 36), top = Ui.dp(this, 4)))
+        }
         root.addView(uc)
 
         // ---------------------------------------------------------- Profile and insulin

@@ -70,6 +70,7 @@ class MonitorService : Service() {
         thread = HandlerThread("monitor").apply { start() }
         handler = Handler(thread.looper)
         handler.post(tick)
+        Wake.schedule(this)          // ⏰ 2-min wake-up even in deep sleep
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -130,6 +131,7 @@ class MonitorService : Service() {
             try { LibreLocal.ensure(this@MonitorService) } catch (_: Exception) { }
             try { Bell.maybe(this@MonitorService) } catch (_: Exception) { }             // 🔔 ring again every 2 min      // 📡 LibreLink relay switched on (patient)          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
+            try { Store(this@MonitorService).raw.edit().putLong("wake_sync", System.currentTimeMillis()).apply() } catch (_: Exception) { }
             handler.postDelayed(this, next)
         }
     }

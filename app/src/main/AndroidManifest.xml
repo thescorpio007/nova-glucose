@@ -160,6 +160,7 @@
         </activity>
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
+        <receiver android:name=".WakeReceiver" android:exported="false" />
 
         <receiver android:name=".GuardAdmin" android:exported="true" android:label="Nova Glucose protection"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
