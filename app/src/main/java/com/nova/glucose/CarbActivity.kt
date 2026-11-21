@@ -80,29 +80,25 @@ class CarbActivity : BaseActivity() {
     }
 
     @SuppressLint("SetTextI18n")
+    private lateinit var sv: ScrollView
+
     private fun build() {
         val root = Ui.col(this, 16)
-        val sv = ScrollView(this).apply { addView(root); setBackgroundColor(Ui.BG) }
+        sv = ScrollView(this).apply { addView(root); setBackgroundColor(Ui.BG) }
         val head = Ui.row(this)
         head.addView(Ui.title(this, "Carbs from photo"), Ui.lp(0, weight = 1f))
         head.addView(Ui.smallButton(this, "Close") { finish() })
         root.addView(head)
         root.addView(Ui.text(this, "AI: ${st.current().label}" + if (mgAtMeal > 0) "  ·  glucose now $mgAtMeal mg/dL" else "", 13f, Ui.MUTED))
 
-        // tips (always shown — how to estimate)
-        val tips = Ui.card(this)
-        tips.addView(Ui.text(this, "How to get a good estimate", 15f, Ui.ACCENT, true))
-        Foods.PHOTO_TIPS.forEach { tips.addView(Ui.text(this, "•  $it", 13f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 3), 0, 0) }) }
-        root.addView(tips, Ui.lp(top = Ui.dp(this, 10)))
-
+        // 📷 🖼 🎥 📂 in one compact row
         val r1 = Ui.row(this)
-        r1.addView(Ui.button(this, "📷 Take photo", true) { takePhoto() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
-        r1.addView(Ui.button(this, "🖼 Gallery") { pickImages() }, Ui.lp(0, weight = 1f))
+        fun chip(t: String, primary: Boolean, go: () -> Unit) = Ui.button(this, t, primary) { go() }.apply { textSize = 13f; setPadding(Ui.dp(context, 4), 0, Ui.dp(context, 4), 0); minHeight = Ui.dp(context, 44) }
+        r1.addView(chip("📷 " + L.s("Photo"), true) { takePhoto() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 6)))
+        r1.addView(chip("🖼 " + L.s("Gallery"), false) { pickImages() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 6)))
+        r1.addView(chip("🎥 " + L.s("Video"), false) { recordVideo() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 6)))
+        r1.addView(chip("📂 " + L.s("File"), false) { pickVideo() }, Ui.lp(0, weight = 1f))
         root.addView(r1, Ui.lp(top = Ui.dp(this, 12)))
-        val r2 = Ui.row(this)
-        r2.addView(Ui.button(this, "🎥 Record video") { recordVideo() }, Ui.lp(0, weight = 1f, end = Ui.dp(this, 8)))
-        r2.addView(Ui.button(this, "📂 Video file") { pickVideo() }, Ui.lp(0, weight = 1f))
-        root.addView(r2, Ui.lp(top = Ui.dp(this, 8)))
 
         thumbs = Ui.row(this)
         root.addView(HorizontalScrollView(this).apply { addView(thumbs); isHorizontalScrollBarEnabled = false },
@@ -119,6 +115,15 @@ class CarbActivity : BaseActivity() {
 
         result = Ui.card(this).apply { visibility = View.GONE }
         root.addView(result, Ui.lp(top = Ui.dp(this, 10)))
+
+        // ℹ️ tips, folded at the bottom
+        val tipsHead = Ui.row(this).apply { background = Ui.round(Ui.CARD, Ui.dp(context, 14).toFloat()); setPadding(Ui.dp(context, 14), Ui.dp(context, 12), Ui.dp(context, 14), Ui.dp(context, 12)) }
+        val arrow = Ui.text(this, "▾", 15f, Ui.MUTED)
+        tipsHead.addView(Ui.text(this, "ℹ️ " + L.s("Tips for a good estimate"), 14.5f, Ui.TEXT), Ui.lp(0, weight = 1f)); tipsHead.addView(arrow)
+        val tips = Ui.col(this).apply { visibility = View.GONE; setPadding(Ui.dp(context, 14), Ui.dp(context, 6), Ui.dp(context, 14), 0) }
+        Foods.PHOTO_TIPS.forEach { tips.addView(Ui.text(this, "•  $it", 13f, Ui.TEXT).apply { setPadding(0, Ui.dp(context, 3), 0, 0) }) }
+        tipsHead.setOnClickListener { val open = tips.visibility != View.VISIBLE; tips.visibility = if (open) View.VISIBLE else View.GONE; arrow.text = if (open) "▴" else "▾" }
+        root.addView(tipsHead, Ui.lp(top = Ui.dp(this, 12))); root.addView(tips)
         root.addView(Ui.signature(this))
         setContentView(sv)
     }
@@ -319,7 +324,7 @@ If the photo shows no food, return an empty items list and explain in notes.
 
     @SuppressLint("SetTextI18n")
     private fun renderResult() {
-        result.visibility = View.VISIBLE
+        result.visibility = View.VISIBLE; sv.postDelayed({ sv.smoothScrollTo(0, result.top - Ui.dp(this, 8)) }, 150)
         result.removeAllViews()
         result.addView(Ui.text(this, "Estimated carbs", 13f, Ui.MUTED, true))
         val total = Ui.text(this, "", 30f, Ui.ACCENT, true)
