@@ -130,6 +130,7 @@ class MonitorService : Service() {
             try { Coach.maybeWeekly(this@MonitorService) } catch (_: Exception) { }      // 📈 Sunday summary
             try { LibreLocal.ensure(this@MonitorService) } catch (_: Exception) { }
             try { Bell.maybe(this@MonitorService) } catch (_: Exception) { }
+            try { Relay.checkStop(this@MonitorService) } catch (_: Exception) { }
             try { Locate.maybe(this@MonitorService) } catch (_: Exception) { }           // 📍 live follow + automatic position             // 🔔 ring again every 2 min      // 📡 LibreLink relay switched on (patient)          // 🛡 protected apps            // 📶 patient's phone: internet check        // 💉 night Lantus reminder          // family phones: patient's phone silent for 2 h
             FamilySync.maybeRun(this@MonitorService)      // family sync every minute (even without a reading)
             try { Store(this@MonitorService).raw.edit().putLong("wake_sync", System.currentTimeMillis()).apply() } catch (_: Exception) { }

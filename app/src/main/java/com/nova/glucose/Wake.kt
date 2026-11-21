@@ -40,6 +40,7 @@ class WakeReceiver : BroadcastReceiver() {
                     FamilySync.maybeRun(app)
                 }
                 Bell.maybe(app)
+                try { Relay.checkStop(app) } catch (_: Exception) { }
                 try { Locate.maybe(app) } catch (_: Exception) { }
             } catch (_: Exception) { }
             finally {
